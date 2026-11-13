@@ -35,11 +35,3 @@
 选项，命令前后都可以：`-c 配置文件`，`--set 字段=值`（只对本次运行有效，如 `--set robot.hardware=isaac`），`--entry split_body|dual_arm|whole_body`，`--hand none|linkerhand_l6|xhand1`，`--hand-drive usb|485`，`--rviz`（同时启动 RViz）。
 
 模块、日志位置和排查方法见 [`docs/VR遥操作.md`](../docs/VR遥操作.md)；背后的实现在 [`fa_teleop`](../src/robot_teleop/fa_teleop/README.md) 和 [`w2_payload`](../src/robot_payload/w2_payload/README.md)。
-
-## measure_log_load.py、measure_log_baseline.sh：日志量和资源占用测量
-
-开发用，不是日常入口。`measure_log_baseline.sh [标签]` 在已 source 的 ROS 环境里（比如构建容器）依次起三种仿真模式，各测一个稳态窗口和一个 MPC 运行窗口，调用 `measure_log_load.py` 统计每个节点的日志行数、字节、级别占比，以及进程的 CPU 和内存。改日志相关代码前后各跑一次，对比结果。第一次的结果和结论见 [`docs/日志.md`](../docs/日志.md)。
-
-## check_cycle_logs.py：找周期路径里没限频的日志
-
-开发用。`scripts/check_cycle_logs.py` 列出 `update`、`read`、`write`、`run` 和各种回调函数里没有限频的 `RCLCPP_*` 调用。启发式的，列出来的多数是事件，要人判断，规则见 [`docs/日志.md`](../docs/日志.md)。
