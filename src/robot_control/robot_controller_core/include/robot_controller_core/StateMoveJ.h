@@ -1,0 +1,714 @@
+//
+// Common StateMoveJ for Arm Controllers
+//
+#pragma once
+
+#include "robot_controller_core/FSMState.h"
+#include "trajectory_manager/Interpolation.h"
+#include "robot_dynamics/JointServoFilter.h"
+#include "robot_dynamics/GravityCompensation.h"
+#include "trajectory_manager/JointTrajectoryManager.h"
+#include "trajectory_manager/JointSpeedStopPlanner.h"
+#include "robot_dynamics/JointLimitsManager.h"
+#include "robot_dynamics/HeadCouplingLimits.h"
+#include <vector>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <functional>
+#include <utility>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
+#include <rclcpp_lifecycle/lifecycle_node.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
+#include <std_msgs/msg/int32.hpp>
+#include <trajectory_msgs/msg/joint_trajectory.hpp>
+#include <eigen3/Eigen/Dense>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <nav_msgs/msg/path.hpp>
+#include <tf2_ros/buffer.hpp>
+#include "trajectory_manager/WaistLiftingPlanner.h"
+#include "robot_control_msgs/action/joint_trajectory.hpp"
+#include "robot_control_msgs/msg/joint_waypoint.hpp"
+#include "robot_control_msgs/srv/joint_trajectory.hpp"
+#include "robot_dynamics/Kinematics.h"
+#include "trajectory_manager/CartesianTrajectoryManager.h"
+#include "robot_control_msgs/action/execute_linear.hpp"
+#include "robot_control_msgs/action/movec_use_ik.hpp"
+#include "robot_control_msgs/action/waist_lifting_pose.hpp"
+#include "robot_control_msgs/srv/execute_linear.hpp"
+#include "robot_control_msgs/srv/movec_use_ik.hpp"
+
+namespace robot_controller_core
+{
+    /**
+     * @brief StateMoveJ - Moves arm joints to target position with smooth interpolation
+     * 
+     * Supports:
+     * - Smooth interpolation to target joint positions
+     * - Thread-safe target position updates
+     * - Optional gravity compensation (if hardware supports)
+     * - Configurable interpolation duration
+     */
+    class StateMoveJ : public FSMState
+    {
+    public:
+        using CollisionCheckCallback = std::function<bool(double)>;
+
+        /**
+         * @brief Constructor
+         * @param ctrl_interfaces Control interfaces
+         * @param node ROS lifecycle node for parameter access
+         * @param joint_names Joint names (empty vector to auto-initialize from interfaces)
+         * @param gravity_compensation Optional gravity compensation utility (nullptr if not needed)
+         */
+        explicit StateMoveJ(CtrlInterfaces& ctrl_interfaces,
+                            const std::shared_ptr<rclcpp_lifecycle::LifecycleNode>& node = nullptr,
+                            const std::vector<std::string>& joint_names = {},
+                            const std::shared_ptr<GravityCompensation>& gravity_compensation = nullptr);
+
+        // Call after URDF and loaned position interfaces are available; throws on invalid enabled setup.
+        void validateHeadCouplingSetup() const;
+        void enter() override;
+        void run(const rclcpp::Time& time, const rclcpp::Duration& period) override;
+        void exit() override;
+        FSMStateName checkChange() override;
+
+        /**
+         * @brief Set target position (thread-safe)
+         * @param target_pos Target joint positions
+         */
+        void setTargetPosition(const std::vector<double>& target_pos);
+
+        /**
+         * @brief Set target position for joints with specific prefix (thread-safe)
+         * @param prefix Joint name prefix (e.g., "left" for "left_joint1", "left_joint2", etc.)
+         * @param target_pos Target joint positions (should match the number of joints with the prefix)
+         */
+        void setTargetPosition(const std::string& prefix, const std::vector<double>& target_pos);
+
+        /**
+         * @brief Set joint names (should be called before setupSubscriptions if joint names are known)
+         * @param joint_names Vector of joint names
+         */
+        void setJointNames(const std::vector<std::string>& joint_names);
+
+        /**
+         * @brief Setup ROS subscriptions for target position topics
+         * @param topic_base_name Base name for topics (default: "joint_target_position")
+         * @param enable_prefix_topics If true, automatically detect prefixes (left, right, body) and subscribe to corresponding topics
+         *                             If false, only subscribe to the base topic (default: false)
+         */
+        void setupSubscriptions(const std::string& topic_base_name = "joint_target_position",
+                                bool enable_prefix_topics = false);
+
+        /**
+         * @brief Update joint limits from URDF
+         * 
+         * Updates joint limits by parsing the provided URDF string.
+         * Joint limits manager is automatically created in constructor.
+         * 
+         * @param robot_description URDF XML string
+         */
+        void updateJointLimitsFromURDF(const std::string& robot_description);
+
+        /**
+         * @brief Set joint limit checker callback function
+         * 
+         * This callback will be called whenever a target position is set to apply joint limits.
+         * The callback should take the target position vector and return a clamped position vector.
+         * 
+         * Example usage:
+         * - For arm_controller: Get limits from Pinocchio model
+         * 
+         * @param limit_checker Callback function: std::vector<double>(const std::vector<double>& target_pos)
+         *                       Input: target position vector, Output: clamped position vector
+         *                       If nullptr, joint limit checking is disabled
+         * 
+         * @note This will override any automatic limits set by enableJointLimitsFromURDF()
+         */
+        void setJointLimitChecker(std::function<std::vector<double>(const std::vector<double>&)> limit_checker);
+
+        /**
+         * @brief Set trajectory from ROS2 JointTrajectory message
+         * @param trajectory JointTrajectory message containing waypoints
+         * @note Current joint position will be used as the first waypoint
+         * @note Requires at least 2 points in trajectory (total >= 3 with current position)
+         * @note Uses trajectory_duration from JointTrajectoryManager for total duration
+         */
+        void setTrajectory(const trajectory_msgs::msg::JointTrajectory& trajectory);
+
+        /**
+         * @brief Setup ROS subscription for trajectory messages
+         * @param topic_name Topic name for trajectory messages (default: "joint_target_trajectory")
+         */
+        void setupTrajectorySubscription(const std::string& topic_name = "joint_target_trajectory");
+
+        // ---------- added for moveL / waist motion ----------
+        /**
+         * @brief Switch to MOVEJ vs MOVEL mode (default MOVEJ)
+         */
+        enum class MotionMode
+        {
+            MOVEJ,
+            MOVECARTESIAN,
+            WAIST_CONTROL
+        };
+
+        /**
+         * @brief Set motion type for next command
+         */
+        void setMotionMode(MotionMode mode) { motion_mode_ = mode; }
+
+        /**
+         * @brief 控制腰部相对当前位置移动局部 lifting_delta=[dx,dz,dphi]
+         */
+        bool moveWaistLifting(const Eigen::Vector3d& lifting_delta);
+        /**
+         * @brief 控制腰部移动到 body_base 坐标系下的绝对目标 target_xz_phi=[x,z,phi]
+         */
+        bool moveWaistLiftingToBodyBaseXz(const Eigen::Vector3d& target_xz_phi);
+
+        /**
+         * @brief Configure TF used by waist absolute pose commands.
+         *
+         * Absolute pose commands interpret input x/z in source_frame and transform
+         * the point into target_frame before converting it to a lifting delta.
+         * phi is currently passed through unchanged, matching the existing topic behavior.
+         */
+        void setupWaistAbsoluteTransform(
+            const std::shared_ptr<tf2_ros::Buffer>& tf_buffer,
+            const std::string& source_frame,
+            const std::string& target_frame);
+
+        /**
+         * @brief 控制腰部升降指令，command=0 停止，command=1 上升 ，command=2 下降
+         */
+        bool setWaistLiftingCommand(int command);
+
+        /**
+         * @brief 控制腰部升降速度系数，factor取值建议[-1, 1]
+         * 实际目标速度 = factor * default_waist_lifting_para_[0]
+         */
+        bool setWaistLiftingFactor(double factor);
+
+        /**
+         * @brief 控制腰部转向速度系数，factor取值建议[-1, 1]
+         * 实际目标速度 = factor * default_waist_turning_para_[0]
+         */
+        bool setWaistTurningFactor(double factor);
+        bool setWaistPhiFactor(double factor);
+
+
+        /**
+         * @brief Setup joint trajectory service
+         * @param service_name Service name (default: "joint_trajectory")
+         */
+        void setupJointTrajectoryService(const std::string& service_name = "joint_trajectory");
+        void setupJointTrajectoryAction(const std::string& action_name = "joint_trajectory");
+        void setupWaistLiftingPoseAction(const std::string& action_name = "waist_lifting_pose");
+
+        void setKinematicsSolver(const std::shared_ptr<ArmKinematics>& kinematics = nullptr);
+        // 在 StateMoveJ.h 的 public 部分添加
+        /**
+        * @brief Setup linear trajectory service for MoveL planning
+        * @param service_name Service name (default: "execute_linear")
+        */
+        void setupLinearTrajectoryService(const std::string& service_name = "execute_linear");
+
+        /**
+        * @brief Setup linear trajectory action for MoveL planning and execution
+        * @param action_name Action name (default: "execute_linear")
+        */
+        void setupLinearTrajectoryAction(const std::string& action_name = "execute_linear");
+
+        /**
+         * Share the controller TF buffer (from PoseBasedReferenceManager). Does not create a listener.
+         */
+        void setCartesianTfBuffer(std::shared_ptr<tf2_ros::Buffer> buffer);
+
+        /**
+         * Consume left/right_target/stamped (MOVEJ IK MoveL). Called from the shared OCS2 subscriber.
+         * No-op when MOVEJ is not active or motion_planning is unavailable.
+         */
+        void handleCartesianStampedTarget(
+            const std::string& arm_name,
+            const geometry_msgs::msg::PoseStamped& pose_stamped);
+
+        /**
+         * Consume dual_target/stamped. Called from the shared OCS2 subscriber.
+         */
+        void handleDualCartesianStampedTarget(const nav_msgs::msg::Path& path);
+
+        /**
+        * @brief Setup linear trajectory service for MoveL planning
+        * @param service_name Service name (default: "execute_linear")
+        */
+        void setupCircleTrajectoryService(const std::string& service_name = "execute_circle_use_ik");
+        /**
+         * @brief 设置碰撞检查回调
+         */
+        void setCollisionCheckCallback(CollisionCheckCallback callback);
+
+        /**
+         * @brief 启用/禁用碰撞检测
+         */
+        void setCollisionEnabled(bool enabled);
+
+        /**
+         * @brief 设置碰撞检测阈值
+         */
+        void setCollisionThreshold(double threshold);
+
+        /**
+        * @brief Setup circle trajectory action for MoveC planning and execution
+        * @param action_name Action name (default: "execute_circle_use_ik")
+        */
+        void setupCircleTrajectoryAction(const std::string& action_name = "execute_circle_use_ik");
+
+    private:
+        void loadHeadCouplingConfig();
+        bool headCouplingApplies() const;
+        HeadCouplingLimits headCouplingLimits() const;
+        HeadPose measuredHeadPose() const;
+        bool submitHeadTarget(const std::vector<double>& requested, const std::vector<bool>& mask);
+        bool prepareHeadTarget(const std::vector<double>& requested, const std::vector<bool>& mask,
+                               std::vector<double>& effective,
+                               std::unique_ptr<JointTrajectoryManager::HeadTimedCandidate>& candidate) const;
+        void clearHeadExecution();
+        bool runHeadWait(const rclcpp::Duration& period);
+        void failHeadExecution(const std::string& reason);
+        bool head_execution_active_{false};
+        bool head_waiting_{false};
+        double head_wait_elapsed_{0.0};
+        HeadPose head_final_endpoint_{};
+        std::unique_ptr<JointTrajectoryManager::HeadTimedCandidate> head_candidate_;
+        double head_elapsed_{0.0};
+        HeadCouplingConfig head_coupling_config_;
+        std::optional<HeadJointIndices> head_joint_indices_;
+        void updateParam();
+        void declareMoveJVelocityParameters();
+        void updateMoveJVelocityParameters();
+        double resolveTargetJointDuration(
+            const std::vector<double>& start_pos,
+            const std::vector<double>& target_pos,
+            double requested) const;
+        bool initTargetJointPositionInterpolation(
+            const std::vector<double>& start_pos,
+            const std::vector<double>& target_pos);
+
+        bool isMotionBusy() const;
+        bool isNonWaistMotionBusy() const;
+        void requestWaistOnlyMotionOrDefer(std::function<void()> apply_motion);
+        void beginWaistSpeedjStop();
+        bool requestMotionOrDefer(std::function<void()> apply_motion, std::function<void()> on_replaced = {});
+        void requestWaistMotionOrDefer(std::function<void()> apply_motion);
+        void abortActiveMotionForStop();
+        bool beginStopToZero();
+        bool validatePositionRequest(const std::vector<std::string>& names,
+                                     const std::vector<double>& positions) const;
+        bool validateWaypointRequest(const std::vector<std::string>& names,
+            const std::vector<robot_control_msgs::msg::JointWaypoint>& waypoints) const;
+        void clearPendingMotion();
+        bool runStopToZero(const rclcpp::Duration& period);
+
+        void setTargetPositionImpl(const std::vector<double>& target_pos);
+        void setTargetPositionImpl(const std::string& prefix, const std::vector<double>& target_pos);
+        void setTrajectoryImpl(const trajectory_msgs::msg::JointTrajectory& trajectory);
+        bool moveWaistLiftingImpl(const Eigen::Vector3d& lifting_delta);
+        bool moveWaistLiftingToBodyBaseXzImpl(const Eigen::Vector3d& target_xz_phi);
+
+        /**
+         * @brief 根据当前关节角计算腰部在 body_base 下的位姿 [x, z, phi]。
+         *
+         * 三关节：FK 计算末端 x/z/phi；单关节：表达为 [0, joint_angle, 0]。
+         * 供 absolute/relative 目标解析与 result 回填复用。
+         */
+        bool getCurrentWaistPoseForCommand(
+            const Eigen::VectorXd& current_angles,
+            Eigen::Vector3d& current_pose,
+            std::string& error_message) const;
+
+        /**
+         * @brief 将 source_frame 下的绝对目标 [x, z, phi] 经 TF 转换到 body_base。
+         *
+         * 仅对 x/z 做点变换（y 固定为 0）；phi 原样透传，与 topic absolute 语义一致。
+         * 依赖 setupWaistAbsoluteTransform() 注入的 TF buffer 与 frame 参数。
+         */
+        bool resolveWaistAbsoluteTargetToBodyBase(
+            const Eigen::Vector3d& source_xz_phi,
+            Eigen::Vector3d& body_base_xz_phi,
+            std::string& error_message) const;
+
+        /**
+         * @brief 将 WaistLiftingPose action goal 解析为规划用的 lifting_delta 与 requested_target。
+         *
+         * MODE_RELATIVE：三关节直接使用 [dx, dz, dphi]；单关节仅用 z（及透传 phi），x 归零。
+         * MODE_ABSOLUTE：三关节先 TF 再减当前 pose；单关节仅对 z 做 TF 后减当前关节位置。
+         * 不加锁，可在已持有 target_mutex_ 的 action 回调中安全调用。
+         */
+        bool resolveWaistPoseGoalToDelta(
+            uint8_t mode,
+            const Eigen::Vector3d& input_xz_phi,
+            const Eigen::VectorXd& current_angles,
+            Eigen::Vector3d& lifting_delta,
+            Eigen::Vector3d& requested_target,
+            std::string& error_message) const;
+        bool setWaistLiftingFactorImpl(double factor);
+        bool setWaistTurningFactorImpl(double factor);
+        bool setWaistPhiFactorImpl(double factor);
+        bool startJointTrajectoryRequestImpl(
+            const std::vector<std::string>& request_joint_names,
+            const std::vector<robot_control_msgs::msg::JointWaypoint>& request_waypoints,
+            std::string& message,
+            double& planned_duration);
+        bool startLinearTrajectoryImpl(
+            const robot_control_msgs::msg::LinearMessage& linear_params,
+            std::string& message,
+            double& estimated_duration);
+        bool startCircleTrajectoryImpl(
+            const robot_control_msgs::msg::CircleMessage& circle_params,
+            std::string& message,
+            double& estimated_duration);
+
+        std::shared_ptr<rclcpp_lifecycle::LifecycleNode> node_;
+        std::shared_ptr<GravityCompensation> gravity_compensation_;
+
+        void initializeServo(const std::vector<double>& positions);
+        bool canUpdateServoTarget() const;
+        std::vector<double> advanceServo(double period);
+        std::vector<JointServoFilter> servo_filters_;
+        bool servo_initialized_{false};
+
+        double duration_{3.0}; // Interpolation duration in seconds
+        double movej_max_velocity_{2.0};
+        double movej_max_acceleration_{4.0};
+        double movej_max_jerk_{20.0};
+        bool movej_auto_extend_duration_{true};
+
+        std::vector<double> start_pos_; // Starting position when entering state or starting new movement
+        std::vector<double> target_pos_; // Target position to move to
+        std::vector<double> hold_positions_; // Position cache used to hold uncommanded joints
+
+        std::mutex target_mutex_; // Mutex for thread-safe target position updates
+        bool has_target_{false}; // Whether a target position has been set
+        bool interpolation_active_{false}; // Whether interpolation is currently active
+        bool state_active_{false}; // Whether the state is currently active (entered)
+
+        // Joint filtering support
+        std::vector<std::string> joint_names_; // Joint names extracted from interfaces
+        std::string active_prefix_; // Active prefix for filtered control (empty means all joints)
+        std::vector<bool> joint_mask_; // Mask indicating which joints to control (true = control, false = hold)
+        bool use_prefix_filter_{false}; // Whether to use prefix filtering
+
+        // ROS subscriptions
+        std::string topic_base_name_; // Base name for target position topics
+        rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr target_position_subscription_;
+        rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr left_target_position_subscription_;
+        rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr right_target_position_subscription_;
+        rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr body_target_position_subscription_;
+        rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr head_target_position_subscription_;
+
+        // Trajectory message subscription
+        rclcpp::Subscription<trajectory_msgs::msg::JointTrajectory>::SharedPtr trajectory_subscription_;
+
+#ifdef HAS_MOTION_PLANNING
+        std::shared_ptr<tf2_ros::Buffer> cartesian_tf_buffer_;
+        bool transformCartesianPoseStamped(
+            const geometry_msgs::msg::PoseStamped& in,
+            geometry_msgs::msg::PoseStamped& out);
+#endif
+
+        // Current target joint publisher (shared convention across controllers)
+        rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr current_target_joint_publisher_;
+        void publishCurrentTargetJoint(const std::vector<double>& target_positions);
+
+        // Global FSM command publisher for collision-triggered HOLD transitions
+        rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr fsm_command_publisher_;
+        void publishFsmCommand(int32_t command);
+
+        // Joint limit checking
+        std::shared_ptr<JointLimitsManager> joint_limits_manager_;
+        // Optional joint limits manager for URDF-based limits
+        std::function<std::vector<double>(const std::vector<double>&)> joint_limit_checker_;
+        // Optional joint limit checker callback
+
+        // Interpolation configuration
+        InterpolationType interpolation_type_{InterpolationType::TANH};
+        double tanh_scale_{3.0};
+
+        // Unified trajectory manager
+        JointTrajectoryManager trajectory_manager_;
+
+        /**
+         * @brief Update joint mask based on prefix
+         * @param prefix Joint name prefix to filter
+         */
+        void updateJointMask(const std::string& prefix);
+
+        /**
+         * @brief Apply joint limit checking to target position
+         * @param target_pos Input target position to check
+         * @param log_message Optional log message prefix (empty string to skip logging)
+         * @return Clamped target position after applying joint limits
+         */
+        std::vector<double> applyJointLimits(const std::vector<double>& target_pos,
+                                             const std::string& log_message = "");
+
+        /**
+         * @brief Validate trajectory message
+         * @param trajectory Trajectory message to validate
+         * @return True if valid, false otherwise
+         */
+        bool validateTrajectory(const trajectory_msgs::msg::JointTrajectory& trajectory);
+
+        /**
+         * @brief Map trajectory joint names to controller joint indices
+         * @param trajectory_joint_names Joint names from trajectory message
+         * @return Vector of controller joint indices (empty if mapping fails)
+         */
+        std::vector<size_t> mapJointNames(const std::vector<std::string>& trajectory_joint_names);
+
+        /**
+         * @brief Calculate segment durations based on path length
+         * @param waypoints Vector of waypoints
+         * @param total_duration Total trajectory duration
+         * @return Vector of segment durations (size = waypoints.size() - 1)
+         */
+        std::vector<double> calculateSegmentDurations(
+            const std::vector<std::vector<double>>& waypoints,
+            double total_duration);
+
+        /**
+         * @brief Capture the latest commanded/observed joint positions for hold behavior
+         */
+        void refreshHoldPositions();
+
+        /** Sync hold/start/target from last_sent and command all joints (no stale hold). */
+        void maintainCommandFromLastSent();
+
+        static constexpr double TARGET_EPSILON = 1e-6; // Tolerance for comparing target positions
+
+        MotionMode motion_mode_{MotionMode::MOVEJ};
+        // indices of joints that belong to body/waist (determined from joint_names_)
+        std::vector<size_t> body_joint_indices_;
+
+
+        // Waist lifting support
+        std::shared_ptr<robot_controller_core::WaistLiftingPlanner> waist_lifting_planner_;
+        std::shared_ptr<tf2_ros::Buffer> waist_absolute_tf_buffer_;
+        std::string waist_absolute_source_frame_{"base_footprint"};
+        std::string waist_absolute_target_frame_{"body_base"};
+        bool waist_lifting_active_{false}; // shared lift/phi execution branch
+        double last_waist_phi_factor_{0.0};
+        enum class PendingWaistKind { NONE, LIFTING, TURNING, PHI };
+        PendingWaistKind pending_waist_kind_{PendingWaistKind::NONE};
+        PendingWaistKind pending_motion_waist_kind_{PendingWaistKind::NONE};
+        void cancelPendingWaist(PendingWaistKind kind);
+        Eigen::Vector3d default_waist_phi_para_{0.25, 1.0, 5.0};
+        bool waist_lifting_debug_print_active_{false};
+        std::shared_ptr<robot_controller_core::WaistLiftingPlanner> waist_turning_planner_;
+        bool waist_turning_active_{false};
+        double waist_lifting_duration_{3.0};
+        Eigen::Vector3d default_waist_lifting_para_;
+        Eigen::Vector3d default_waist_turning_para_;
+        double waist_turning_direction_{1.0};
+        void updateWaistParam();
+
+        double last_waist_factor_{0.0};
+        double last_waist_turning_factor_{0.0};
+        static constexpr double waist_factor_epsilon_{1e-6};
+        size_t waist_turning_joint_index_{0};
+        size_t waist_lift_joint_index_{0};
+        size_t waist_pitch_joint_index_{0};
+        std::string waist_single_joint_pitch_joint_name_{"body_joint2"};
+        bool waist_single_joint_has_pitch_{false};
+
+        std::vector<std::string> waist_joint_names_; // 腰部关节名称（前三个关节）
+        void setWaistLiftingPlanner();
+
+        /**
+         * @brief Update waist lifting limits from joint limits manager
+        */
+        void updateWaistLiftingLimits();
+        size_t waist_joint_count_ = 3;
+        /**
+         * @brief Get current waist joint angles
+         * @return Current waist joint angles as Eigen::Vector3d
+         */
+
+        /**
+         * @brief Get current waist joint angles
+         */
+        Eigen::VectorXd getCurrentWaistAngles();
+        std::vector<double> applyWaistJointLimits(const std::vector<double>& waist_positions);
+
+
+        // Service server
+        rclcpp::Service<robot_control_msgs::srv::JointTrajectory>::SharedPtr joint_trajectory_service_;
+
+        using JointTrajectoryAction = robot_control_msgs::action::JointTrajectory;
+        using JointTrajectoryGoalHandle = rclcpp_action::ServerGoalHandle<JointTrajectoryAction>;
+        rclcpp_action::Server<JointTrajectoryAction>::SharedPtr joint_trajectory_action_server_;
+        std::shared_ptr<JointTrajectoryGoalHandle> active_joint_trajectory_goal_;
+        rclcpp::Time joint_trajectory_action_start_time_;
+        double joint_trajectory_planned_duration_{0.0};
+        bool joint_trajectory_action_active_{false};
+
+        // Service handler
+        void handleJointTrajectory(
+            const std::shared_ptr<rmw_request_id_t> request_header,
+            const std::shared_ptr<robot_control_msgs::srv::JointTrajectory::Request> request,
+            const std::shared_ptr<robot_control_msgs::srv::JointTrajectory::Response> response);
+        rclcpp_action::GoalResponse handleJointTrajectoryGoal(
+            const rclcpp_action::GoalUUID& uuid,
+            std::shared_ptr<const JointTrajectoryAction::Goal> goal);
+        rclcpp_action::CancelResponse handleJointTrajectoryCancel(
+            const std::shared_ptr<JointTrajectoryGoalHandle> goal_handle);
+        void handleJointTrajectoryAccepted(
+            const std::shared_ptr<JointTrajectoryGoalHandle> goal_handle);
+        bool startJointTrajectoryRequest(
+            const std::vector<std::string>& joint_names,
+            const std::vector<robot_control_msgs::msg::JointWaypoint>& waypoints,
+            std::string& message,
+            double& planned_duration);
+        void publishJointTrajectoryFeedback();
+        void finishJointTrajectoryAction(bool success, bool canceled, const std::string& message);
+
+        using WaistLiftingPoseAction = robot_control_msgs::action::WaistLiftingPose;
+        using WaistLiftingPoseGoalHandle = rclcpp_action::ServerGoalHandle<WaistLiftingPoseAction>;
+        rclcpp_action::Server<WaistLiftingPoseAction>::SharedPtr waist_lifting_pose_action_server_;
+        std::shared_ptr<WaistLiftingPoseGoalHandle> active_waist_lifting_pose_goal_;
+        rclcpp::Time waist_lifting_pose_action_start_time_;
+        bool waist_lifting_pose_action_active_{false};
+        bool waist_lifting_pose_reachable_{false};
+        Eigen::Vector3d waist_lifting_pose_planned_target_{0.0, 0.0, 0.0};
+        rclcpp_action::GoalResponse handleWaistLiftingPoseGoal(
+            const rclcpp_action::GoalUUID& uuid,
+            std::shared_ptr<const WaistLiftingPoseAction::Goal> goal);
+        rclcpp_action::CancelResponse handleWaistLiftingPoseCancel(
+            const std::shared_ptr<WaistLiftingPoseGoalHandle> goal_handle);
+        void handleWaistLiftingPoseAccepted(
+            const std::shared_ptr<WaistLiftingPoseGoalHandle> goal_handle);
+        void publishWaistLiftingPoseFeedback();
+        void finishWaistLiftingPoseAction(bool success, int32_t error_code, const std::string& message);
+
+        // 辅助函数
+        bool validateJointNames(const std::vector<std::string>& request_joint_names, std::string& error_msg);
+        std::vector<double> getCurrentJointPositions(const std::vector<std::string>& joint_names);
+        std::vector<double> mapToFullJointPositions(
+            const std::vector<std::string>& request_joint_names,
+            const std::vector<double>& request_positions);
+
+        //增加movel相关的代码
+        CartesianTrajectoryManager cartesian_manager_;
+
+        struct CartesianCommandDefaults
+        {
+            std::string frame_id{"base_link"};
+            std::string ik_type{"AUTO"};
+            double max_linear_velocity{0.25};
+            double max_linear_acceleration{1.0};
+            double max_linear_jerk{5.0};
+            double max_angular_velocity{0.5};
+            double max_angular_acceleration{1.0};
+            double max_angular_jerk{5.0};
+        };
+
+        CartesianCommandDefaults cartesian_defaults_;
+        void declareCartesianDefaultParameters();
+        void updateCartesianDefaults();
+        robot_control_msgs::msg::LinearMessage applyCartesianDefaults(
+            const robot_control_msgs::msg::LinearMessage& linear_params) const;
+        robot_control_msgs::msg::CircleMessage applyCartesianDefaults(
+            const robot_control_msgs::msg::CircleMessage& circle_params) const;
+
+        using ExecuteLinearAction = robot_control_msgs::action::ExecuteLinear;
+        using ExecuteLinearGoalHandle = rclcpp_action::ServerGoalHandle<ExecuteLinearAction>;
+        using MovecUseIKAction = robot_control_msgs::action::MovecUseIK;
+        using MovecUseIKGoalHandle = rclcpp_action::ServerGoalHandle<MovecUseIKAction>;
+
+        // Service server for MoveL
+        rclcpp::Service<robot_control_msgs::srv::ExecuteLinear>::SharedPtr linear_trajectory_service_;
+
+        // Action server for MoveL
+        rclcpp_action::Server<ExecuteLinearAction>::SharedPtr linear_trajectory_action_server_;
+        std::shared_ptr<ExecuteLinearGoalHandle> active_linear_goal_;
+        rclcpp::Time linear_action_start_time_;
+        double linear_action_estimated_duration_{0.0};
+        bool linear_action_active_{false};
+
+        // Service handler for MoveL
+        void handleLinearTrajectory(
+            const std::shared_ptr<rmw_request_id_t> request_header,
+            const std::shared_ptr<robot_control_msgs::srv::ExecuteLinear::Request> request,
+            const std::shared_ptr<robot_control_msgs::srv::ExecuteLinear::Response> response);
+
+        rclcpp_action::GoalResponse handleLinearGoal(
+            const rclcpp_action::GoalUUID& uuid,
+            std::shared_ptr<const ExecuteLinearAction::Goal> goal);
+        rclcpp_action::CancelResponse handleLinearCancel(
+            const std::shared_ptr<ExecuteLinearGoalHandle> goal_handle);
+        void handleLinearAccepted(
+            const std::shared_ptr<ExecuteLinearGoalHandle> goal_handle);
+        bool startLinearTrajectory(
+            const robot_control_msgs::msg::LinearMessage& linear_params,
+            std::string& message,
+            double& estimated_duration);
+        void publishLinearFeedback();
+        void finishLinearAction(bool success, bool canceled, const std::string& message);
+
+        // 添加 MoveL 相关的辅助方法
+        bool validateLinearRequest(const robot_control_msgs::msg::LinearMessage& linear_params,
+                                   std::string& error_msg);
+
+        bool move_cartesian_active_{false};
+        std::vector<std::string> move_cartesian_joint_names_;
+        //Service for movec
+        rclcpp::Service<robot_control_msgs::srv::MovecUseIK>::SharedPtr circle_trajectory_service_;
+
+        // Action server for MoveC
+        rclcpp_action::Server<MovecUseIKAction>::SharedPtr circle_trajectory_action_server_;
+        std::shared_ptr<MovecUseIKGoalHandle> active_circle_goal_;
+        rclcpp::Time circle_action_start_time_;
+        double circle_action_estimated_duration_{0.0};
+        bool circle_action_active_{false};
+
+        // Service handler for Movec
+        void handleCircleTrajectory(
+            const std::shared_ptr<rmw_request_id_t> request_header,
+            const std::shared_ptr<robot_control_msgs::srv::MovecUseIK::Request> request,
+            const std::shared_ptr<robot_control_msgs::srv::MovecUseIK::Response> response);
+
+        rclcpp_action::GoalResponse handleCircleGoal(
+            const rclcpp_action::GoalUUID& uuid,
+            std::shared_ptr<const MovecUseIKAction::Goal> goal);
+        rclcpp_action::CancelResponse handleCircleCancel(
+            const std::shared_ptr<MovecUseIKGoalHandle> goal_handle);
+        void handleCircleAccepted(
+            const std::shared_ptr<MovecUseIKGoalHandle> goal_handle);
+        bool startCircleTrajectory(
+            const robot_control_msgs::msg::CircleMessage& circle_params,
+            std::string& message,
+            double& estimated_duration);
+        void publishCircleFeedback();
+        void finishCircleAction(bool success, bool canceled, const std::string& message);
+
+        // 添加 MoveL 相关的辅助方法
+        bool validateCircleRequest(const robot_control_msgs::msg::CircleMessage& circle_params,
+                                   std::string& error_msg);
+        CollisionCheckCallback collision_check_callback_;
+        bool collision_detection_enabled_{false};
+        double collision_threshold_{0.01};
+
+        Eigen::VectorXd getCurrentJointAngles() const;
+        bool checkAndHandleCollision();
+
+
+        bool stop_to_zero_active_{false};
+        std::function<void()> pending_motion_;
+        std::function<void()> pending_motion_cancel_;
+        std::function<void()> pending_waist_motion_;
+        JointSpeedStopPlanner speed_stop_planner_;
+    };
+} // namespace robot_controller_core

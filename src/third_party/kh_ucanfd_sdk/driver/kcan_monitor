@@ -1,0 +1,133 @@
+#!/bin/bash
+
+MYSELF=$(basename $0)
+SYSFSROOT="/sys/class"
+DRV="kcan"
+DRVROOT="${SYSFSROOT}/${DRV}"
+ECHO="echo"
+
+fmt="t"
+forever="y"
+title="y"
+devlist=$(ls $DRVROOT 2>/dev/null)
+
+if [ ! -f "$DRVROOT/version" ]; then
+    $ECHO "$MYSELF: kcan driver not loaded"
+    exit 1
+fi
+
+declare -A prev_rx prev_tx prev_time
+
+current_millis() {
+    date +%s%3N
+}
+
+print_line() {
+    local dev_name="$1"
+    local ndev="$2"
+    local bitrs="$3"
+    local bus="$4"
+    local bload="$5"
+    local txratio="$6"
+    local rx_fr_s="$7"
+    local tx_fr_s="$8"
+    local rxcnt="$9"
+    local txcnt="${10}"
+    local rec_tec="${11}"
+    local errcnt="${12}"
+    
+    printf "%-18s %-8s %-10s %-10s %-6s %-8s %-9s %-9s %-12s %-12s %-8s %-10s\n" \
+           "$dev_name" "$ndev" "$bitrs" "$bus" "$bload" "$txratio" \
+           "$rx_fr_s" "$tx_fr_s" "$rxcnt" "$txcnt" "$rec_tec" "$errcnt"
+}
+
+while :; do
+    clear
+    
+    if [ "$title" = "y" ]; then
+        print_line "dev name" "ndev" "bitrs" "bus" "%bus" "%txfifo" "rx_fr/s" "tx_fr/s" "rx" "tx" "rec/tec" "err"
+    fi
+
+    current_time=$(current_millis)
+    
+    for dev in $devlist; do
+        [ ! -d "$DRVROOT/$dev" ] && continue
+
+        prodname=$(cat $DRVROOT/$dev/adapter_name 2>/dev/null)
+        cardidx=$(cat $DRVROOT/$dev/adapter_number 2>/dev/null)
+        brdname="[${prodname} ${cardidx}]"
+        canidx=$(cat $DRVROOT/$dev/ctrlr_number 2>/dev/null)
+        
+        ndev=$(cat $DRVROOT/$dev/ndev 2>/dev/null || echo "CAN$((canidx + 1))")
+
+        btr=$(cat $DRVROOT/$dev/nom_bitrate 2>/dev/null)
+        if [ -n "$btr" ] && [ "$btr" -ge 1000000 2>/dev/null ]; then
+            btr="$((btr / 1000000))M"
+        elif [ -n "$btr" ] && [ "$btr" -ge 1000 2>/dev/null ]; then
+            btr="$((btr / 1000))k"
+        else
+            btr="0"
+        fi
+        
+        dbtr=""
+        if [ -f "$DRVROOT/$dev/data_bitrate" ]; then
+            dbtr=$(cat $DRVROOT/$dev/data_bitrate)
+            if [ -n "$dbtr" ] && [ "$dbtr" -ge 1000000 2>/dev/null ]; then
+                dbtr="$((dbtr / 1000000))M"
+            elif [ -n "$dbtr" ] && [ "$dbtr" -ge 1000 2>/dev/null ]; then
+                dbtr="$((dbtr / 1000))k"
+            fi
+        fi
+        [ -n "$dbtr" ] && btr="${btr}+${dbtr}"
+
+        bus_state=$(cat $DRVROOT/$dev/bus_state 2>/dev/null)
+        case $bus_state in
+            0) bus="CLOSED";;
+            1) bus="ACTIVE";;
+            2) bus="WARNING";;
+            3) bus="PASSIVE";;
+            4) bus="BUSOFF";;
+            *) bus="UNKNOWN";;
+        esac
+
+        rxcnt=$(cat $DRVROOT/$dev/read 2>/dev/null || echo "0")
+        txcnt=$(cat $DRVROOT/$dev/write 2>/dev/null || echo "0")
+        errcnt=$(cat $DRVROOT/$dev/errors 2>/dev/null || echo "0")
+        rxerr=$(cat $DRVROOT/$dev/rx_error_counter 2>/dev/null || echo "0")
+        txerr=$(cat $DRVROOT/$dev/tx_error_counter 2>/dev/null || echo "0")
+        rec_tec="${rxerr}/${txerr}"
+        bload=$(cat $DRVROOT/$dev/bus_load 2>/dev/null || echo "-")
+        txratio=$(cat $DRVROOT/$dev/tx_fifo_ratio 2>/dev/null || echo "n/a")
+        
+        if [ -z "${prev_rx[$dev]}" ]; then
+            rx_fr_s="0"
+            tx_fr_s="0"
+        else
+            time_diff=$(echo "scale=3; ($current_time - ${prev_time[$dev]}) / 1000" | bc 2>/dev/null || echo "1")
+            
+            if [ $(echo "$time_diff > 0" | bc 2>/dev/null) -eq 1 ] 2>/dev/null; then
+                rx_diff=$((rxcnt - prev_rx[$dev]))
+                tx_diff=$((txcnt - prev_tx[$dev]))
+                
+                rx_fr_s=$(echo "scale=0; $rx_diff / $time_diff" | bc 2>/dev/null || echo "0")
+                tx_fr_s=$(echo "scale=0; $tx_diff / $time_diff" | bc 2>/dev/null || echo "0")
+            else
+                rx_fr_s="0"
+                tx_fr_s="0"
+            fi
+        fi
+        
+        prev_rx[$dev]=$rxcnt
+        prev_tx[$dev]=$txcnt
+        prev_time[$dev]=$current_time
+
+        if [ $canidx -eq 0 ]; then
+            echo "$brdname"
+        fi
+        
+        print_line "|_ $dev" "$ndev" "$btr" "$bus" "$bload" "$txratio" \
+                  "$rx_fr_s" "$tx_fr_s" "$rxcnt" "$txcnt" "$rec_tec" "$errcnt"
+    done
+
+    sleep 1
+done

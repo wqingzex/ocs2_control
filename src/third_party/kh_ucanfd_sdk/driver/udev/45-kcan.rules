@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: GPL 2.0
+#
+# Special Udev rules for Kunhong-Elec PC CAN interfaces.
+#
+# Copyright (C) 2022-2026 Chengdu Kunhong Electronic Technology Co., Ltd <www.kunhong-elec.com>
+#
+# Contact: <support@cdkhdz.com>
+# Author:  Kunhong-Elec driver team <gene@cdkhdz.com>
+#
+# NOTES:
+#
+#	Since Linux 3.11, devices and their attrs can be created BEFORE
+#	notifying userspace. Thus, when running such Kernels, there is no need
+#	to use the WAIT_FOR keyword in the Udev rules.
+#
+#	When running any older Kernels, user should also run an udev daemon
+#	that recognizes the WAIT_FOR keyword, and, should also update below
+#	rules in order to uncomment lines containing the WAIT_FOR keyword.
+#
+ACTION!="add", GOTO="lbl_udev_end"
+
+# create symlinks: /dev/kcan-pcie_fd/devid=X -> /dev/kcanpciY (KCAN-PCIe FD)
+# only if devid is not the default value 0xffffffff.
+KERNEL=="kcanpcifd*",\
+	SYMLINK+="kcan-pcie_fd/$attr{adapter_number}/can$attr{ctrlr_number}"
+KERNEL=="kcanpcifd*",\
+	ATTR{devid} != "4294967295",\
+	SYMLINK+="kcan-pcie_fd/devid=$attr{devid}",\
+	GOTO="lbl_udev_kcan"
+
+# create symlinks: /dev/kcan-pci/devid=X -> /dev/kcanpciY (KCAN-PCIe only)
+# only if devid is not the default value 0xffffffff.
+KERNEL=="kcanpci*",\
+	SYMLINK+="kcan-pci/$attr{adapter_number}/can$attr{ctrlr_number}",\
+KERNEL=="kcanpci*",\
+	ATTR{devid} != "4294967295",\
+	SYMLINK+="kcan-pci/devid=$attr{devid}",\
+	GOTO="lbl_udev_kcan"
+
+# create symlinks: /dev/kcan-usb_fd/devid=X -> /dev/kcanusbY (KCAN-USB X6 only)
+# only if devid is not the default value 0xffffffff nor 0.
+#KERNEL=="kcanusbfd*", WAIT_FOR="hwtype", ATTR{hwtype}=="20",\
+KERNEL=="kcanusbfd*", ATTR{hwtype}=="20",\
+	SYMLINK+="kcan-usb_x6/$attr{adapter_number}/can$attr{ctrlr_number}"
+KERNEL=="kcanusbfd*", ATTR{hwtype}=="20",\
+	ATTR{devid} != "4294967295", ATTR{devid} != "0",\
+	SYMLINK+="kcan-usb_x6/devid=$attr{devid}",\
+	GOTO="lbl_udev_kcan"
+
+# create symlinks: /dev/kcan-usb_fd/devid=X -> /dev/kcanusbY (KCAN-USB X4 only)
+# only if devid is not the default value 0xffffffff nor 0.
+#KERNEL=="kcanusbfd*", WAIT_FOR="hwtype", ATTR{hwtype}=="32",\
+KERNEL=="kcanusbfd*", ATTR{hwtype}=="32",\
+	SYMLINK+="kcan-usb_x4/$attr{adapter_number}/can$attr{ctrlr_number}"
+KERNEL=="kcanusbfd*", ATTR{hwtype}=="32",\
+	ATTR{devid} != "4294967295", ATTR{devid} != "0",\
+	SYMLINK+="kcan-usb_x4/devid=$attr{devid}",\
+	GOTO="lbl_udev_kcan"
+
+# create symlinks: /dev/kcan-usb_fd/devid=X -> /dev/kcanusbY (KCAN-USB FD only)
+# (since v7.14, KCAN-USB FD hwtype attribute = 18)
+# only if devid is not the default value 0xffffffff nor 0.
+#KERNEL=="kcanusbfd*", WAIT_FOR="hwtype", ATTR{hwtype}=="18",\
+KERNEL=="kcanusbfd*", ATTR{hwtype}=="18",\
+	SYMLINK+="kcan-usb_fd/$attr{adapter_number}/can$attr{ctrlr_number}"
+KERNEL=="kcanusbfd*", ATTR{hwtype}=="18",\
+	ATTR{devid} != "4294967295", ATTR{devid} != "0",\
+	SYMLINK+="kcan-usb_fd/devid=$attr{devid}",\
+	GOTO="lbl_udev_kcan"
+
+# create symlinks: /dev/kcan-usb_pro_fd/devid=X -> /dev/kcanusbY (KCAN-USB Pro FD only)
+# (since v7.14, KCAN-USB Pro FD hwtype attribute = 17)
+# only if devid is not the default value 0xffffffff.
+#KERNEL=="kcanusbfd*", WAIT_FOR="hwtype", ATTR{hwtype}=="17",\
+KERNEL=="kcanusbfd*", ATTR{hwtype}=="17",\
+	SYMLINK+="kcanusbpfd%m",\
+	SYMLINK+="kcan-usb_pro_fd/$attr{adapter_number}/can$attr{ctrlr_number}"
+KERNEL=="kcanusbfd*", ATTR{hwtype}=="17",\
+	ATTR{devid} != "4294967295", ATTR{devid} != "0",\
+	SYMLINK+="kcan-usb_pro_fd/devid=$attr{devid}",\
+	GOTO="lbl_udev_kcan"
+
+# create symlinks: /dev/kcan-usb/devid=X -> /dev/kcanusbY (KCAN-USB only)
+# only if devid is not the default value 0xff.
+# (since v7.13, KCAN-USB devid attribute contains hard-coded device id)
+# Note:  New KCAN-USB devices use 00 as devid default value
+#KERNEL=="kcanusb*", WAIT_FOR="hwtype", ATTR{hwtype}=="11",\
+KERNEL=="kcanusb*", ATTR{hwtype}=="11",\
+	SYMLINK+="kcan-usb/$attr{adapter_number}/can$attr{ctrlr_number}"
+KERNEL=="kcanusb*", ATTR{hwtype}=="11",\
+	ATTR{devid} != "255", ATTR{devid} != "0",\
+	SYMLINK+="kcan-usb/devid=$attr{devid}",\
+	GOTO="lbl_udev_kcan"
+
+# create symlinks: /dev/kcan-usb_pro/devid=X ->/dev/kcanusbY (KCAN-USB Pro only)
+# (since v7.13, KCAN-USB Pro hwtype attribute = 13)
+# only if devid is not the default value 0xffffffff.
+#KERNEL=="kcanusb*", WAIT_FOR="hwtype", ATTR{hwtype}=="13",\
+KERNEL=="kcanusb*", ATTR{hwtype}=="13",\
+	SYMLINK+="kcanusbpro%m",\
+	SYMLINK+="kcan-usb_pro/$attr{adapter_number}/can$attr{ctrlr_number}"
+KERNEL=="kcanusb*", ATTR{hwtype}=="13",\
+	ATTR{devid} != "4294967295",\
+	SYMLINK+="kcan-usb_pro/devid=$attr{devid}",\
+	GOTO="lbl_udev_kcan"
+
+# All other KCAN devices
+LABEL="lbl_udev_kcan"
+KERNEL=="kcanpci*", SYMLINK+="kcan%m", MODE="0666"
+KERNEL=="kcanpccard*", SYMLINK+="kcan%m", MODE="0666"
+KERNEL=="kcanisa*", SYMLINK+="kcan%m", MODE="0666"
+KERNEL=="kcanepp*", SYMLINK+="kcan%m", MODE="0666"
+KERNEL=="kcansp*", SYMLINK+="kcan%m", MODE="0666"
+KERNEL=="kcanusb*", SYMLINK+="kcan%m", MODE="0666"
+
+LABEL="lbl_udev_end"

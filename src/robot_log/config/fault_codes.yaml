@@ -1,0 +1,267 @@
+# 故障码注册表：真机上会遇到的、需要靠日志定位的故障，一条一个编码。
+#
+# 这个文件是唯一的来源：docs/故障码.md 由它生成（python3 -m robot_log_tools.fault_codes --markdown），
+# test_fault_codes.py 检查每一条的 source.match 还能在代码里找到，改了日志文案却没改这里会让测试失败。
+#
+# 字段
+#   code        链路分段 + 序号：XR 头显和 PC Service，TEL 遥操作指令，CTL 控制器，HW 硬件，SYS 系统
+#   class       S1 硬件级停机（断电、抱闸）
+#               S2 控制级停机（切 HOLD），也包括“关键组件起不来，机器人不会动”的启动期失败
+#               M  监控类：继续运行，长期盯着
+#   title       一句话
+#   behavior    现在系统遇到它实际会怎么做（据代码，不是设想）
+#   check       出现时先查什么
+#   source      {file, match}：产生这条日志的文件（相对仓库根）和日志里的一段原文
+#   external    日志来自仓库外（ros2_control 等）的说明；没有 source 的条目必须写
+#   escalation  可选：什么情况下应从 M 升级为 S，现在没有实现，只是候选
+#   untagged    可选：这条日志不带 [CODE] 前缀的原因；其余有 source 的条目，源码里必须有 [CODE] 前缀
+
+- code: XR-001
+  class: M
+  title: 连接 XRoboToolkit PC Service 失败
+  behavior: 记 ERROR 并按 reconnect_interval_s 定期重试，XR 桥不发布数据，机械臂不受影响
+  check: "pgrep RoboticsService 看 PC Service 是否在跑；xr.start_pc_service 是否为 true；头显是否已连上 PC Service"
+  source: {file: src/robot_teleop/fa_teleop/src/xr_bridge_node.cpp, match: "连接 XRoboToolkit PC Service 失败"}
+
+- code: XR-002
+  class: M
+  title: PC Service 断开，重新初始化 SDK
+  behavior: 记 WARN，重新初始化 XRoboToolkit SDK 并重连
+  check: PC Service 是否被别人停掉或崩溃；同一台机器上是否有两个程序在抢它
+  source: {file: src/robot_teleop/fa_teleop/src/xr_bridge_node.cpp, match: "PC Service 未连接，重新初始化 XRoboToolkit SDK"}
+
+- code: XR-003
+  class: M
+  title: 超过 frame_timeout_ms 没收到头显数据
+  behavior: 记 WARN，停止发布 /xr/*，机械臂保持最后一个目标；数据恢复后记 INFO 并继续发布
+  check: 头显是否休眠或离线；Wi-Fi 信号和延迟；PC Service 是否还在收数据（XR-001、XR-002）
+  escalation: 在运动中持续断线超过 T 秒（候选 5 秒）应切 HOLD；现在只是保持最后目标
+  source: {file: src/robot_teleop/fa_teleop/src/xr_bridge_node.cpp, match: "未收到头显数据：停止发布，机械臂保持最后目标"}
+
+- code: XR-004
+  class: M
+  title: 头显数据解析失败
+  behavior: 记 WARN 并累计次数，丢弃这一帧
+  check: PC Service 和头显固件版本是否匹配；是否持续出现（偶发可忽略）
+  source: {file: src/robot_teleop/fa_teleop/src/xr_bridge_node.cpp, match: "头显数据解析失败"}
+
+- code: XR-005
+  class: S2
+  title: PC Service 没装或起不来
+  behavior: supervisor 启动 pc_service 模块时报错，XR 模块不会启动，遥操作不可用（机器人不会动）
+  check: "ls /opt/apps/roboticsservice/runService.sh；桌面版需要 DISPLAY；或把 xr.start_pc_service 设为 false 后手动启动"
+  source: {file: src/robot_teleop/fa_teleop/fa_teleop_runtime/pc_service.py, match: "XRoboToolkit PC Service not found"}
+
+- code: XR-006
+  class: M
+  title: 头显帧间隔过大（窗口内最长间隔超过 health_gap_warn_ms，但还没到断线）
+  behavior: 记 WARN，[HEALTH] 行里的 received_gap_max_ms 就是最长间隔；数据照常发布，机械臂会因为目标更新有空洞而卡顿
+  check: 头显的 Wi-Fi 信号和延迟；PC 的网卡和 PC Service 的 CPU 占用；received_hz 是否低于预期；是否伴随 XR-003（超过 frame_timeout_ms 就成了断线）
+  escalation: 间隔持续接近 frame_timeout_ms 时可以提前预警；现在只记录。阈值 health_gap_warn_ms 默认 100 ms，可用参数调
+  source: {file: src/robot_teleop/fa_teleop/src/xr_bridge_node.cpp, match: "[XR-006]"}
+
+- code: TEL-001
+  class: M
+  title: 找不到 xr_target_node，VR 控制关闭
+  behavior: 记日志并关闭 VR 控制，机械臂不响应 VR
+  check: xr 模块是否在运行（控制台“VR”）；节点名是否仍是 xr_target_node
+  source: {file: src/robot_hmi/teleop_command/src/VRInputHandler.cpp, match: "xr_target_node not found, VR control DISABLED"}
+
+- code: TEL-002
+  class: M
+  title: vr_control_scheme 配置值不认识
+  behavior: 记 ERROR，保持原来的方案不变
+  check: config/robot.local.yaml 里 xr.control_scheme 只能是 legacy 或 simple
+  source: {file: src/robot_hmi/teleop_command/src/VRInputHandler.cpp, match: "未知的 vr_control_scheme"}
+
+- code: CTL-001
+  class: M
+  title: MPC 单次求解超过控制周期
+  behavior: 记 WARN“tracking will lag”，MPC 继续运行，跟踪会滞后
+  check: CPU 负载和绑核；mpc_frequency 是否设得太高；MpcHealth 的 overruns 是否持续增加（CTL-002）
+  source: {file: src/robot_control/lib/mpc/mpc_core/src/MpcRuntimeBase.cpp, match: "exceeds period"}
+
+- code: CTL-002
+  class: M
+  title: MPC 窗口汇总里有超期或失败
+  behavior: 每 10 秒一行 MPC health；有超期或失败时这行升为 WARN，不会停
+  check: 看 overruns 和 failures 的趋势，和 CPU 负载、模型参数变化对照
+  escalation: failures 连续 N 次（候选 5 次）应切 HOLD；现在只记录
+  source: {file: src/robot_control/lib/mpc/mpc_core/include/mpc_core/mpc/MpcHealth.h, match: "MPC health ("}
+
+- code: CTL-003
+  class: M
+  title: MPC 更新线程抛出异常
+  behavior: 记 ERROR 并计入 MpcHealth 的 failures，线程继续运行
+  check: 异常文本；目标是否越界或含 NaN；.info 配置是否被改动
+  escalation: 同 CTL-002，持续异常应切 HOLD
+  source: {file: src/robot_control/lib/mpc/mpc_core/src/fsm/StateOCS2.cpp, match: "Error in MPC update"}
+
+- code: CTL-004
+  class: S2
+  title: 自碰撞检测命中，切 HOLD
+  behavior: 记 WARN“Will switch to HOLD state”，控制器切到 HOLD
+  check: 两臂目标是否过近；minimumDistance 配置；需要操作员确认后再切回 OCS2
+  source: {file: src/robot_control/lib/mpc/mpc_core/src/fsm/StateOCS2.cpp, match: "Collision detected! Distance <= minimumDistance"}
+
+- code: CTL-005
+  class: M
+  title: 笛卡尔运动逆解失败
+  behavior: 这条 MoveL / MoveC 失败并返回错误，不影响其他状态
+  check: 目标是否在工作空间内；起点关节角是否接近限位或奇异位形
+  source: {file: src/robot_control/lib/trajectory_manager/src/CartesianTrajectoryManager.cpp, match: "IK failed while calculating"}
+
+- code: CTL-006
+  class: M
+  title: 腰升降规划失败，升降停止
+  behavior: 记 WARN，升降停止并保持当前位置，action 返回失败
+  check: 腰是否在限位或奇异位置；升降目标是否超出范围
+  source: {file: src/robot_control/robot_controller_core/src/StateMoveJ.cpp, match: "Failed to calculate next waist lifting point"}
+
+- code: CTL-007
+  class: M
+  title: 回零动作速度偏快
+  behavior: 记 WARN，仍然执行
+  check: 当前姿态离 home 是否太远；home_duration 是否过短；home_speed_warn 阈值
+  source: {file: src/robot_control/robot_controller_core/src/StateHome.cpp, match: "Home move is fast"}
+
+- code: CTL-008
+  class: M
+  title: 进入 HOME 时轨迹管理器初始化失败
+  behavior: 起点已经等于 HOME 时会出现，部署包里一样，不影响行为（见 docs/待办.md）；否则要看具体原因
+  check: 先看是不是起点等于 HOME 的空操作；不是的话检查 home 配置和关节数
+  source: {file: src/robot_control/robot_controller_core/src/StateHome.cpp, match: "Failed to initialize trajectory manager in StateHome::enter()"}
+
+- code: CTL-009
+  class: M
+  title: 工作线程绑核失败
+  behavior: 记 WARN，线程不绑核继续运行，实时性可能变差
+  check: cpu_affinity 参数是否超出本机核数；容器或权限限制
+  source: {file: src/robot_control/lib/mpc/mpc_core/include/mpc_core/rt/ThreadScheduling.h, match: "Failed to set thread CPU affinity"}
+
+- code: CTL-010
+  class: S2
+  title: 控制器进程退出或加载失败
+  behavior: ros2_control_node 或 spawner 退出，supervisor 在日志里认出 process has died；机器人不再被控制
+  check: 往上翻同一个模块日志里第一条 ERROR；控制器 yaml 的 type 是否写对；planning_urdf_path 是否生成
+  external: ros2_control（controller_manager 的 Failed loading controller 等）；supervisor 在 last_error() 里按 process has died 识别
+  untagged: 日志文本来自 ros2_control，不是我们写的，只能在 supervisor 里识别
+  source: {file: src/robot_teleop/fa_teleop/fa_teleop_runtime/supervisor.py, match: "process has died"}
+
+- code: CTL-011
+  class: M
+  title: 控制周期超时（周期之间的间隔超过 1.5 个周期）
+  behavior: 每个健康窗口（normal 10 秒、debug 1 秒）每个控制器一行 [HEALTH]；窗口里有迟到的周期时这行升为 WARN，控制继续运行
+  check: 看 late 和 period_max_ms：持续出现说明控制线程被抢占；对照 MPC 求解耗时（CTL-001）、CPU 负载、实时调度权限（SYS-001）、绑核（CTL-009）
+  escalation: 持续晚到或 period_max_ms 达到数个周期应升级为 S2（切 HOLD）；阈值要用真机数据定，现在只记录
+  source: {file: src/robot_control/robot_controller_core/src/FsmControllerBase.cpp, match: "CTL-011"}
+  untagged: 前缀 [CTL-011] 由 robot_log::logCycleHealth 按传入的编码加在 WARN 行上
+
+- code: HW-001
+  class: S1
+  title: Marvin 硬件进入错误状态，急停
+  behavior: 停发关节指令，ctrl_mode 置为 POWER_OFF，执行急停序列并断开与机械臂的连接
+  check: 同一时间之前的 ERROR；机械臂控制器是否掉线；网线和 device_ip
+  source: {file: src/robot_hardware/marvin_hardware/src/marvin_hardware.cpp, match: "emergency brake"}
+
+- code: HW-013
+  class: M
+  title: Marvin 或 Juxie 硬件的读或写周期迟到（周期之间的间隔超过 1.5 个 rw_rate 周期）
+  behavior: 每个健康窗口各一行 [HEALTH]（名字以 .read 和 .write 结尾）；有迟到的周期时升为 WARN。rw_rate 是 0 时认不出“迟到”，只报告最大间隔和耗时
+  check: 看 late、period_max_ms 和 duration_max_us：duration 大说明 SDK 调用慢（网络、机械臂控制器）；period 大而 duration 小说明控制线程被抢占（对照 CTL-011、SYS-001、CTL-009）
+  escalation: 持续迟到应升级为 S2；现在只记录
+  source: {file: src/robot_hardware/marvin_hardware/src/marvin_hardware.cpp, match: "HW-013"}
+  untagged: 前缀 [HW-013] 由 robot_log::logCycleHealth 按传入的编码加在 WARN 行上
+
+- code: HW-002
+  class: S2
+  title: 连接 Marvin 机械臂失败
+  behavior: 硬件组件激活失败，机器人不会被控制
+  check: device_ip 和网络；机械臂控制器是否上电；是否有别的程序占着 SDK 端口
+  source: {file: src/robot_hardware/marvin_hardware/src/marvin_hardware.cpp, match: "Failed to connect to Marvin hardware"}
+
+- code: HW-003
+  class: S2
+  title: 读不到 Marvin 的初始关节状态
+  behavior: 重试若干次后激活失败
+  check: 机械臂是否在报警或未使能；通信是否稳定
+  source: {file: src/robot_hardware/marvin_hardware/src/marvin_hardware.cpp, match: "Failed to read initial joint states after"}
+
+- code: HW-004
+  class: M
+  title: Marvin 工具通道心跳丢失
+  behavior: 超过阈值（30 秒）没有有效应答时发布 /Base_HardwareError 并记 WARN，机器人继续运行
+  check: 工具（夹爪、手）供电和 485 接线；对应通道号
+  source: {file: src/robot_hardware/marvin_hardware/src/marvin_hardware.cpp, match: "tool heartbeat offline"}
+
+- code: HW-005
+  class: M
+  title: Marvin 硬件参数写错，被换成默认值
+  behavior: 记 ERROR 并使用默认值继续启动（限速、限加速度、端口、工具扭矩等）
+  check: xacro 里对应参数是否带了多余字符或超出范围；默认值是否可接受
+  source: {file: src/robot_hardware/marvin_hardware/src/marvin_hardware.cpp, match: "is not an integer, using the default"}
+
+- code: HW-006
+  class: S2
+  title: Juxie 电机状态读取失败
+  behavior: read() 返回 ERROR，交给 ros2_control 处理；腰、头的指令不再下发
+  check: CAN 线和电源；candump -e can0 看错误帧；ip -details -statistics link show can0
+  source: {file: src/robot_hardware/juxie_hardware/src/jx_hardware.cpp, match: "motor error ,return"}
+
+- code: HW-007
+  class: S2
+  title: Juxie CAN FD 接口配置失败
+  behavior: 硬件激活失败，腰、头不可用
+  check: ./scripts/setup.sh host 是否已写入免密 sudo 规则；can_interface 名字；CAN 适配器是否识别
+  source: {file: src/robot_hardware/juxie_hardware/src/jx_hardware.cpp, match: "[CAN FD] Failed to configure"}
+
+- code: HW-008
+  class: S2
+  title: Juxie CAN 参数非法
+  behavior: 硬件初始化失败
+  check: can_bitrate、can_data_bitrate（CAN FD 必须大于 0）等参数
+  source: {file: src/robot_hardware/juxie_hardware/src/jx_hardware.cpp, match: "Invalid CAN parameters"}
+
+- code: HW-009
+  class: M
+  title: Juxie 控制线程抖动或丢帧（统计窗口）
+  behavior: 只在 stats_log_period_s > 0 时每个窗口打一行 Control loop stats；晚醒周期、发送失败、反馈缺失都在里面
+  check: late、failed sends 应为 0，feedback missing 接近 0%，CAN errors 为 0（见 juxie_hardware/README.md）
+  escalation: 持续晚醒或发送失败应升级为 S2；现在默认不开统计
+  source: {file: src/robot_hardware/juxie_hardware/src/jx_hardware.cpp, match: "wake-up lateness mean"}
+
+- code: HW-010
+  class: S2
+  title: Rokae xCoreSDK 初始化失败
+  behavior: 硬件激活失败，机械臂不可用
+  check: 机械臂 IP 和网络；SDK 版本；控制器是否处于可远程控制模式
+  source: {file: src/robot_hardware/rokae_hardware/src/rokae_hardware.cpp, match: "Failed to initialize xCoreSDK"}
+
+- code: HW-011
+  class: S2
+  title: Rokae 机械臂上电失败
+  behavior: 激活失败，机械臂不使能
+  check: 急停是否按下；机械臂报警；运行模式
+  source: {file: src/robot_hardware/rokae_hardware/src/rokae_hardware.cpp, match: "Failed to power on arm"}
+
+- code: HW-012
+  class: M
+  title: 串口读写出错
+  behavior: 通信层返回错误，上层（手、传感器）按各自逻辑重试或报错
+  check: USB 转 485 适配器、线缆；latency_timer；设备权限（dialout 组）
+  source: {file: src/robot_hardware/comm/robot_comm_serial/src/posix_serial_port.cpp, match: "read failed"}
+
+- code: SYS-001
+  class: M
+  title: 没有实时调度权限
+  behavior: controller_manager 报 Could not enable FIFO RT scheduling policy，控制线程按普通优先级运行，周期抖动变大
+  check: 用户的 rtprio 和 memlock 限制（/etc/security/limits.d）；容器里需要给权限
+  escalation: 真机上应视为必须修复；是否直接拒绝启动要你定
+  external: ros2_control（controller_manager）
+
+- code: SYS-002
+  class: M
+  title: 录制磁盘空间不足
+  behavior: 拒绝开始新的录制（已有的不受影响）
+  check: 磁盘剩余空间；清理 logs/、旧录制和诊断包
+  source: {file: src/robot_teleop/fa_teleop/fa_teleop_runtime/recording.py, match: "磁盘剩余空间不足"}

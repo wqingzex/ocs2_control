@@ -1,0 +1,78 @@
+# ROS2 Colcon 工作空间构建输出目录
+build/
+install/
+log/
+logs/
+_rokae_log_/
+log.txt
+
+# Python 缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# CMake 生成文件
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# 编译产物
+*.o
+*.a
+# Rokae SDK 预编译静态库需随仓库分发
+!src/robot_hardware/rokae_hardware/external/librokae/lib/**/*.a
+*.dylib
+*.dll
+
+# IDE 文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# Per-robot hardware profile (copy from config/robot.template.yaml)
+config/robot.local.yaml
+
+# 临时 / 备份文件
+*.bak
+cmake-build-*/
+.tmp_*/
+
+# VR 录包（./scripts/start.sh record）
+xr_bags/
+bags/
+# start.sh 模块状态
+run/
+# Web 控制台访问令牌
+config/console.token
+# fa_teleop 编译生成的本机架构双击入口
+/W2控制台
+# 本机 ROS 通信环境变量（RMW / Domain ID / Zenoh），start.sh 会读取
+config/ros_env.sh
+
+# kh_ucanfd_sdk 是厂家驱动源码：它的 Makefile 要提交，编译产物不要
+!src/third_party/kh_ucanfd_sdk/**/Makefile
+src/third_party/kh_ucanfd_sdk/**/*.cmd
+src/third_party/kh_ucanfd_sdk/**/*.ko
+src/third_party/kh_ucanfd_sdk/**/*.mod
+src/third_party/kh_ucanfd_sdk/**/*.mod.c
+src/third_party/kh_ucanfd_sdk/**/modules.order
+src/third_party/kh_ucanfd_sdk/**/Module.symvers
+src/third_party/kh_ucanfd_sdk/driver/kcan-settings
+src/third_party/kh_ucanfd_sdk/KH-socket-can-test/cantx_1KHz
+src/third_party/kh_ucanfd_sdk/KH-socket-can-test/kcanfdtest
+src/third_party/kh_ucanfd_sdk/tools/fw_tool/kcan_fw_tool
+# Transient initialization locks (the configuration remains in robot.local.yaml).
+config/*.setup.lock
+config/*.wizard.lock
+
+# 部署工作空间的参考副本，只在本机对照用，不进仓库
+/fa-deploy-ws/
+/fa-deploy-ws.tar

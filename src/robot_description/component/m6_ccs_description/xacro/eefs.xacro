@@ -1,0 +1,136 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <xacro:arg name="collider" default="simple"/>
+
+    <!-- Eager includes so collider is configured once at file scope. -->
+    <xacro:include filename="$(find jodell_description)/xacro/RG75-300.xacro"/>
+    <xacro:include filename="$(find xhand1_description)/xacro/xhand1.xacro"/>
+
+    <!-- Per-side default load (dyn_param) for MarvinHardware; 10 values: m, mx, my, mz, ixx, ixy, ixz, iyy, iyz, izz.
+         Override via launch left_dyn_param/right_dyn_param (robot.local.yaml).
+         No end effector (empty ee_key) -> all zeros. -->
+    <xacro:macro name="ee_dyn_param" params="side ee_key arg_val">
+        <xacro:if value="${arg_val != ''}">
+            <param name="${side}_dyn_param">${arg_val}</param>
+        </xacro:if>
+        <xacro:unless value="${arg_val != ''}">
+            <xacro:if value="${ee_key == '' or ee_key == 'none'}">
+                <param name="${side}_dyn_param">0,0,0,0,0,0,0,0,0,0</param>
+            </xacro:if>
+            <xacro:unless value="${ee_key == '' or ee_key == 'none'}">
+            <xacro:if value="${side == 'left'}">
+                <xacro:if value="${ee_key == 'rg75'}">
+                    <param name="${side}_dyn_param">1.6200799541791235, 1.4285009257202586, -0.5789585762443014, 104.39051192831192, 0.004873874899366342, 0.0, 0.0, 0.001, 0.0, 0.0019355638096347936</param>
+                </xacro:if>
+                <xacro:if value="${ee_key == 'linkerhand_l6'}">
+                    <param name="${side}_dyn_param">0.6929861562459377, -0.02709362955502027, 21.325042427584716, 142.0468769124068, 0.001, 0.0, 0.0, 0.001, 0.0, 0.004408438461135547</param>
+                </xacro:if>
+            </xacro:if>
+            <xacro:if value="${side == 'right'}">
+                <xacro:if value="${ee_key == 'rg75'}">
+                    <param name="${side}_dyn_param">1.6200799541791235, 1.4285009257202586, -0.5789585762443014, 104.39051192831192, 0.004873874899366342, 0.0, 0.0, 0.001, 0.0, 0.0019355638096347936</param>
+                </xacro:if>
+                <xacro:if value="${ee_key == 'linkerhand_l6'}">
+                    <param name="${side}_dyn_param">0.757127258546731, -18.86292230512758, -23.37191007763647, 69.11766685323222, 0.02103669807705659, 0.0, 0.0, 0.01131025204380805, 0.0, 0.00955246486803428</param>
+                </xacro:if>
+            </xacro:if>
+            </xacro:unless>
+        </xacro:unless>
+    </xacro:macro>
+
+    <xacro:macro name="OCS2SideEefFrame" params="side parent_link">
+        <link name="${side}_eef"/>
+        <joint name="${side}_eef_joint" type="fixed">
+            <parent link="${parent_link}"/>
+            <child link="${side}_eef"/>
+        </joint>
+    </xacro:macro>
+
+    <xacro:macro name="SideEndEffectorHand" params="side hand_type eef_fixed_joints">
+        <xacro:if value="${hand_type == 'linkerhand_l6'}">
+            <xacro:include filename="$(find linkerhand_description)/xacro/l6.xacro"/>
+            <xacro:LinkerHandL6 name="${side}_hand" direction="${1 if side == 'left' else -1}" use_flange="true" fixed_joints="${eef_fixed_joints}"/>
+            <joint name="${side}_hand_base_joint" type="fixed">
+                <xacro:if value="${side == 'left'}">
+                    <origin xyz="0 0 0.0045" rpy="0 0 ${PI}"/>
+                </xacro:if>
+                <xacro:if value="${side == 'right'}">
+                    <origin xyz="0 0 0.0045"/>
+                </xacro:if>
+                <parent link="${side}_tcp"/>
+                <child link="${side}_hand_flange"/>
+            </joint>
+        </xacro:if>
+
+        <xacro:if value="${hand_type == 'xhand1'}">
+            <xacro:XHand1 name="${side}_hand" direction="${1 if side == 'left' else -1}" use_flange="true" fixed_joints="${eef_fixed_joints}"/>
+            <joint name="${side}_hand_base_joint" type="fixed">
+                <xacro:if value="${side == 'left'}">
+                    <origin xyz="0 0 0.0045" rpy="0 0 ${PI}"/>
+                </xacro:if>
+                <xacro:if value="${side == 'right'}">
+                    <origin xyz="0 0 0.0045" rpy="0 0 ${PI}"/>
+                </xacro:if>
+                <parent link="${side}_tcp"/>
+                <child link="${side}_hand_flange"/>
+            </joint>
+        </xacro:if>
+
+        <!-- Hands with built-in ${side}_hand_eef; alias ${side}_eef for OCS2 / task.info -->
+        <xacro:if value="${hand_type == 'xhand1'}">
+            <link name="${side}_eef"/>
+            <joint name="${side}_eef_joint" type="fixed">
+                <parent link="${side}_hand_hand_ee_link"/>
+                <child link="${side}_eef"/>
+            </joint>
+        </xacro:if>
+        <xacro:if value="${hand_type == 'linkerhand_l6'}">
+            <link name="${side}_eef"/>
+            <joint name="${side}_eef_joint" type="fixed">
+                <parent link="${side}_hand_eef"/>
+                <child link="${side}_eef"/>
+            </joint>
+        </xacro:if>
+    </xacro:macro>
+
+    <!-- Parallel gripper on the tool flange: Jodell RG75-300 (provides ${side}_gripper_joint and ${side}_eef).
+         eef_fixed_joints=true: OCS2 planning URDF, no actuated finger joints. -->
+    <xacro:macro name="SideEndEffectorGripper" params="side gripper_type gripper_pad eef_fixed_joints">
+        <xacro:if value="${gripper_type == 'rg75'}">
+            <xacro:RG75-300 name="${side}" use_flange="true" pad="${gripper_pad}" kinematic_only="${eef_fixed_joints}"/>
+            <joint name="${side}_gripper_base_joint" type="fixed">
+                <parent link="${side}_tcp"/>
+                <child link="${side}_flange"/>
+            </joint>
+        </xacro:if>
+    </xacro:macro>
+
+    <xacro:macro name="SideEndEffector" params="side hand_type gripper_type gripper_pad eef_fixed_joints:=false">
+        <xacro:if value="${hand_type == '' and gripper_type == ''}">
+            <xacro:OCS2SideEefFrame side="${side}" parent_link="${side}_tcp"/>
+        </xacro:if>
+        <xacro:if value="${hand_type == '' and gripper_type != ''}">
+            <xacro:SideEndEffectorGripper side="${side}" gripper_type="${gripper_type}" gripper_pad="${gripper_pad}" eef_fixed_joints="${eef_fixed_joints}"/>
+        </xacro:if>
+        <xacro:unless value="${hand_type == ''}">
+            <!-- eef_fixed_joints=true: OCS2 planning URDF, no actuated EEF DOF -->
+            <xacro:SideEndEffectorHand side="${side}" hand_type="${hand_type}" eef_fixed_joints="${eef_fixed_joints}"/>
+        </xacro:unless>
+    </xacro:macro>
+
+    <xacro:macro name="EndEffectors"
+                 params="eef_fixed_joints:=false
+                         left_hand_type:='' left_gripper_type:='' left_gripper_pad:='default'
+                         right_hand_type:='' right_gripper_type:='' right_gripper_pad:='default'">
+        <xacro:SideEndEffector side="left"
+                               eef_fixed_joints="${eef_fixed_joints}"
+                               hand_type="${left_hand_type}"
+                               gripper_type="${left_gripper_type}"
+                               gripper_pad="${left_gripper_pad}"/>
+        <xacro:SideEndEffector side="right"
+                               eef_fixed_joints="${eef_fixed_joints}"
+                               hand_type="${right_hand_type}"
+                               gripper_type="${right_gripper_type}"
+                               gripper_pad="${right_gripper_pad}"/>
+    </xacro:macro>
+</robot>

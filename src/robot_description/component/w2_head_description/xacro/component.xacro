@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<robot name="W2 head" xmlns:xacro="http://www.ros.org/wiki/xacro">
+	<xacro:arg name="variant" default=""/>
+	<xacro:arg name="collider" default="simple"/>
+	<xacro:arg name="isaac" default="true"/>
+
+	<link name="head_mount"/>
+	<xacro:include filename="$(find w2_head_description)/xacro/head.xacro"/>
+	<xacro:head variant="$(arg variant)" collider="$(arg collider)" isaac="$(arg isaac)"/>
+</robot>

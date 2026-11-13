@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "images": [
+    {
+      "filename": "KH-UCANFD-G2_PDA_REL-0x40000_8.6.5-260513.enc",
+      "device_channels": 4,
+      "fw_version": "8.6.5",
+      "boot_compatible": "any"
+    }
+  ]
+}
+

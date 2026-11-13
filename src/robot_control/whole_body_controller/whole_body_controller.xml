@@ -1,0 +1,9 @@
+<library path="whole_body_controller">
+    <class name="whole_body_controller/WholeBodyController"
+           type="whole_body_controller::WholeBodyController"
+           base_class_type="controller_interface::ControllerInterface">
+        <description>
+            FSM controller (HOME / HOLD / MOVEJ / OCS2) driven by the whole-body MPC task of a wheeled humanoid.
+        </description>
+    </class>
+</library>

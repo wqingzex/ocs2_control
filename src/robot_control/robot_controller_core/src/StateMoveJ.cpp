@@ -1,0 +1,5636 @@
+//
+// Common StateMoveJ Implementation
+//
+#include "robot_controller_core/StateMoveJ.h"
+#include "robot_controller_core/SharedPublishers.h"
+#include <algorithm>
+#include <cmath>
+#include <sstream>
+#include <limits>
+#include <tuple>
+#include <string>
+#include <std_msgs/msg/int32.hpp>
+#include <geometry_msgs/msg/point_stamped.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <rclcpp/logging.hpp>
+#include <robot_dynamics/LogClock.h>
+
+// // planners/kinematics required for cartesian moveL support
+// #include "motion_planning/path_planner/movel.h"
+// #include "motion_planning/kinematics/fiveages_w2_fk.h"
+// #include "motion_planning/kinematics/fiveages_w2_ik.h"
+
+namespace
+{
+    bool areJointPositionsSame(
+        const std::vector<double>& lhs,
+        const std::vector<double>& rhs,
+        double epsilon = 1.0e-9)
+    {
+        if (lhs.size() != rhs.size())
+        {
+            return false;
+        }
+
+        for (size_t i = 0; i < lhs.size(); ++i)
+        {
+            if (std::abs(lhs[i] - rhs[i]) > epsilon)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool isJointInPrefixGroup(const std::string& joint_name, const std::string& prefix)
+    {
+        if (prefix == "body")
+        {
+            return joint_name == "lift_joint" || joint_name.find("body") == 0;
+        }
+
+        return joint_name.find(prefix) == 0;
+    }
+}
+
+namespace robot_controller_core
+{
+    void StateMoveJ::publishCurrentTargetJoint(const std::vector<double>& target_positions)
+    {
+        if (!current_target_joint_publisher_)
+        {
+            return;
+        }
+
+        std_msgs::msg::Float64MultiArray msg;
+        msg.data = target_positions;
+        current_target_joint_publisher_->publish(msg);
+    }
+
+    void StateMoveJ::refreshHoldPositions()
+    {
+        size_t num_joints = ctrl_interfaces_.joint_position_state_interface_.size();
+        hold_positions_.resize(num_joints);
+        for (size_t i = 0; i < num_joints; ++i)
+        {
+            hold_positions_[i] = ctrl_interfaces_.last_sent_joint_positions_[i];
+        }
+    }
+
+    void StateMoveJ::maintainCommandFromLastSent()
+    {
+        refreshHoldPositions();
+        target_pos_ = ctrl_interfaces_.last_sent_joint_positions_;
+        start_pos_ = target_pos_;
+        for (size_t i = 0; i < ctrl_interfaces_.joint_position_command_interface_.size(); ++i)
+        {
+            if (i < ctrl_interfaces_.last_sent_joint_positions_.size())
+            {
+                ctrl_interfaces_.setJointPositionCommand(
+                    i, ctrl_interfaces_.last_sent_joint_positions_[i]);
+            }
+        }
+    }
+
+    StateMoveJ::StateMoveJ(CtrlInterfaces& ctrl_interfaces,
+                           const std::shared_ptr<rclcpp_lifecycle::LifecycleNode>& node,
+                           const std::vector<std::string>& joint_names,
+                           const std::shared_ptr<GravityCompensation>& gravity_compensation)
+        : FSMState(FSMStateName::MOVEJ, "movej", ctrl_interfaces),
+          node_(node),
+          gravity_compensation_(gravity_compensation),
+          joint_names_(joint_names),
+          joint_limit_checker_(nullptr),
+          trajectory_manager_(node->get_logger())
+    {
+        joint_limits_manager_ = std::make_shared<JointLimitsManager>(node_->get_logger());
+        joint_limits_manager_->setJointNames(joint_names_);
+        last_waist_factor_ = 0.0;
+        last_waist_turning_factor_ = 0.0;
+        if (node_)
+        {
+            loadHeadCouplingConfig();
+            declareCartesianDefaultParameters();
+            declareMoveJVelocityParameters();
+            current_target_joint_publisher_ =
+                robot_controller_core::utils::getOrCreateCurrentTargetJointPublisher(node_);
+            fsm_command_publisher_ = node_->create_publisher<std_msgs::msg::Int32>(
+                "fsm_command", 1);
+        }
+    }
+
+    void StateMoveJ::loadHeadCouplingConfig()
+    {
+        auto& c = head_coupling_config_;
+        const auto read = [this](const std::string& field, auto& value) {
+            const std::string name = "head_coupling." + field;
+            if (!node_->has_parameter(name)) node_->declare_parameter(name, value);
+            node_->get_parameter(name, value);
+        };
+        read("yaw_joint", c.yaw_joint);
+        read("pitch_joint", c.pitch_joint);
+
+        // Enable by default only when this controller owns both configured head joints.
+        // An explicit parameter override still takes precedence over this default.
+        c.enabled = std::find(joint_names_.begin(), joint_names_.end(), c.yaw_joint) != joint_names_.end() &&
+                    std::find(joint_names_.begin(), joint_names_.end(), c.pitch_joint) != joint_names_.end();
+        read("enabled", c.enabled);
+        head_joint_indices_ = findHeadJointIndices(c, joint_names_);
+        if (c.enabled)
+            RCLCPP_INFO(node_->get_logger(),
+                "Head coupling enabled for direct doubles/linear/tanh position targets");
+    }
+
+    void StateMoveJ::validateHeadCouplingSetup() const
+    {
+        if (!head_coupling_config_.enabled) return;
+        const auto indices = findHeadJointIndices(head_coupling_config_, joint_names_).value();
+        for (size_t index : {indices.yaw, indices.pitch})
+        {
+            if (index >= ctrl_interfaces_.joint_position_state_interface_.size() ||
+                ctrl_interfaces_.joint_position_state_interface_[index].get().get_prefix_name() != joint_names_[index])
+                throw std::invalid_argument("Head coupling position interfaces missing or out of order");
+            const auto value = ctrl_interfaces_.joint_position_state_interface_[index].get().get_optional();
+            if (!value || !std::isfinite(*value))
+                throw std::invalid_argument("Head coupling position feedback unavailable");
+        }
+        const auto yaw = joint_limits_manager_->getJointLimits(head_coupling_config_.yaw_joint);
+        const auto pitch = joint_limits_manager_->getJointLimits(head_coupling_config_.pitch_joint);
+        if (!yaw.initialized || !pitch.initialized)
+            throw std::invalid_argument("Head coupling requires URDF position limits before activation");
+        const HeadCouplingLimits limits(head_coupling_config_, {yaw.lower, yaw.upper},
+                                        {pitch.lower, pitch.upper});
+        (void)limits;
+    }
+
+    bool StateMoveJ::headCouplingApplies() const
+    {
+        return head_coupling_config_.enabled && head_joint_indices_ &&
+               (interpolation_type_ == InterpolationType::DOUBLES ||
+                interpolation_type_ == InterpolationType::LINEAR ||
+                interpolation_type_ == InterpolationType::TANH);
+    }
+
+    HeadCouplingLimits StateMoveJ::headCouplingLimits() const
+    {
+        const auto yaw = joint_limits_manager_->getJointLimits(head_coupling_config_.yaw_joint);
+        const auto pitch = joint_limits_manager_->getJointLimits(head_coupling_config_.pitch_joint);
+        if (!yaw.initialized || !pitch.initialized)
+        {
+            throw std::invalid_argument("Head coupling requires URDF limits");
+        }
+        return HeadCouplingLimits(head_coupling_config_, {yaw.lower, yaw.upper}, {pitch.lower, pitch.upper});
+    }
+
+    HeadPose StateMoveJ::measuredHeadPose() const
+    {
+        const auto indices = head_joint_indices_.value();
+        const auto read = [this](size_t index) {
+            if (index >= ctrl_interfaces_.joint_position_state_interface_.size())
+                throw std::invalid_argument("Head position interface unavailable");
+            const auto value = ctrl_interfaces_.joint_position_state_interface_[index].get().get_optional();
+            if (!value || !std::isfinite(*value))
+                throw std::invalid_argument("Head position feedback unavailable");
+            return *value;
+        };
+        return {read(indices.yaw), read(indices.pitch)};
+    }
+
+    void StateMoveJ::clearHeadExecution()
+    {
+        head_execution_active_ = false;
+        head_waiting_ = false;
+        head_wait_elapsed_ = 0.0;
+        head_candidate_.reset();
+        head_elapsed_ = 0.0;
+    }
+
+    bool StateMoveJ::prepareHeadTarget(
+        const std::vector<double>& requested,
+        const std::vector<bool>& mask,
+        std::vector<double>& effective,
+        std::unique_ptr<JointTrajectoryManager::HeadTimedCandidate>& candidate) const
+    {
+        try
+        {
+            // 检查配置、输入维度和当前实测姿态。
+            validateHeadCouplingSetup();
+            const auto limits = headCouplingLimits();
+            const auto indices = head_joint_indices_.value();
+            auto start = ctrl_interfaces_.last_sent_joint_positions_;
+
+            if (requested.size() != joint_names_.size() ||
+                start.size() != requested.size() ||
+                mask.size() != requested.size())
+            {
+                throw std::invalid_argument("Head target dimensions do not match controller");
+            }
+
+            const auto measured = measuredHeadPose();
+            if (!limits.containsMeasured(measured))
+            {
+                throw std::invalid_argument(
+                    "Head feedback outside measured tolerance: yaw=" + std::to_string(measured.yaw) +
+                    ", pitch=" + std::to_string(measured.pitch) + " rad");
+            }
+
+            // Initial commands may originate from encoder feedback just outside a boundary.
+            // Normalize only this local candidate start, not the stored command or target limits.
+            const auto normalized = limits.normalizedStart({start[indices.yaw], start[indices.pitch]});
+            if ((!mask[indices.yaw] && normalized.yaw != start[indices.yaw]) ||
+                (!mask[indices.pitch] && normalized.pitch != start[indices.pitch]))
+            {
+                throw std::invalid_argument("Head start correction requires both affected joints to be authorized");
+            }
+            start[indices.yaw] = normalized.yaw;
+            start[indices.pitch] = normalized.pitch;
+
+            // 应用原有限位；未选中的关节保持最后下发位置。
+            effective = joint_limit_checker_ ? joint_limit_checker_(requested) : requested;
+            if (effective.size() != requested.size())
+            {
+                throw std::invalid_argument("Joint limit callback returned invalid dimensions");
+            }
+
+            for (size_t i = 0; i < effective.size(); ++i)
+            {
+                if (!mask[i])
+                {
+                    effective[i] = start[i];
+                }
+            }
+
+            // 根据最终水平角裁剪俯仰，不能擅自移动未授权的俯仰轴。
+            const auto clipped = limits.clipPitch({effective[indices.yaw], effective[indices.pitch]});
+            if (clipped.clipped && !mask[indices.pitch])
+            {
+                throw std::invalid_argument("Head avoidance requires authorized pitch movement");
+            }
+            effective[indices.pitch] = clipped.value;
+
+            // 沿用当前控制器的插值模式、时长和运动限制。
+            JointTrajectoryManager::HeadCandidateOptions options;
+            options.duration = duration_;
+            options.type = interpolation_type_;
+            options.frequency = ctrl_interfaces_.frequency_;
+            options.tanh_scale = tanh_scale_ > 0.0 ? tanh_scale_ : 3.0;
+            options.auto_extend_duration = movej_auto_extend_duration_;
+            options.max_velocity = movej_max_velocity_;
+            options.max_acceleration = movej_max_acceleration_;
+            options.max_jerk = movej_max_jerk_;
+
+            // 生成独立候选，不替换或推进当前执行中的轨迹。
+            std::string error;
+            if (!trajectory_manager_.buildHeadTimedCandidate(
+                    start, effective, indices, limits,
+                    mask[indices.yaw], mask[indices.pitch], options, candidate, error))
+            {
+                throw std::invalid_argument(error);
+            }
+
+            return true;
+        }
+        catch (const std::exception& error)
+        {
+            RCLCPP_WARN(node_->get_logger(), "Head target rejected: %s", error.what());
+            return false;
+        }
+    }
+
+    bool StateMoveJ::submitHeadTarget(const std::vector<double>& requested, const std::vector<bool>& mask)
+    {
+        const auto indices = head_joint_indices_.value();
+        if (!mask[indices.yaw] && !mask[indices.pitch]) return false;
+        std::vector<double> effective;
+        std::unique_ptr<JointTrajectoryManager::HeadTimedCandidate> candidate;
+        if (!prepareHeadTarget(requested, mask, effective, candidate)) return true;
+        if (head_execution_active_ && !stop_to_zero_active_ && joint_mask_ == mask &&
+            areJointPositionsSame(target_pos_, effective)) return true;
+
+        // 空闲时立即执行此回调；有旧运动时，停止完成后再执行。
+        requestMotionOrDefer([this, requested, mask]() {
+            // 起点可能因停止而改变，必须从最后下发位置重新规划。
+            std::vector<double> final_target;
+            std::unique_ptr<JointTrajectoryManager::HeadTimedCandidate> planned;
+            if (!headCouplingApplies() ||
+                !prepareHeadTarget(requested, mask, final_target, planned))
+            {
+                return;
+            }
+
+            // 新候选已准备好，替换旧任务并记录有效最终目标。
+            clearHeadExecution();
+            trajectory_manager_.reset();
+            start_pos_ = ctrl_interfaces_.last_sent_joint_positions_;
+            target_pos_ = final_target;
+
+            // 仅执行本次授权的关节，其余关节保持当前命令。
+            joint_mask_ = mask;
+            use_prefix_filter_ = true;
+            active_prefix_.clear();
+            refreshHoldPositions();
+
+            // 相同目标无需启动新的计时运动。
+            has_target_ = !areJointPositionsSame(start_pos_, target_pos_);
+            interpolation_active_ = has_target_;
+            head_execution_active_ = has_target_;
+
+            // 对外反馈最终目标，而不是第一段的过渡点。
+            publishCurrentTargetJoint(target_pos_);
+            if (requested[head_joint_indices_->pitch] != target_pos_[head_joint_indices_->pitch])
+            {
+                RCLCPP_INFO(node_->get_logger(), "Head pitch clipped from %.9f to %.9f rad",
+                            requested[head_joint_indices_->pitch], target_pos_[head_joint_indices_->pitch]);
+            }
+
+            if (has_target_)
+            {
+                head_candidate_ = std::move(planned);
+            }
+
+        });
+        return true;
+    }
+
+    void StateMoveJ::failHeadExecution(const std::string& reason)
+    {
+        RCLCPP_ERROR(node_->get_logger(), "Head execution aborted: %s; requesting HOLD", reason.c_str());
+        clearPendingMotion();
+        clearHeadExecution();
+        trajectory_manager_.reset();
+        interpolation_active_ = false;
+        has_target_ = false;
+        maintainCommandFromLastSent();
+        ctrl_interfaces_.fsm_command_ = 2;
+        publishFsmCommand(2);
+    }
+
+    bool StateMoveJ::runHeadWait(const rclcpp::Duration& period)
+    {
+        if (!head_execution_active_) return false;
+        try
+        {
+            const auto limits = headCouplingLimits();
+            const auto measured = measuredHeadPose();
+            if (!limits.containsMeasured(measured))
+            {
+                throw std::invalid_argument(
+                    "Head feedback outside measured tolerance: yaw=" + std::to_string(measured.yaw) +
+                    ", pitch=" + std::to_string(measured.pitch) + " rad");
+            }
+            if (!head_waiting_) return false;
+            const bool arrived = std::abs(measured.yaw - head_final_endpoint_.yaw) <=
+                                     HeadCouplingConfig::position_tolerance &&
+                                 std::abs(measured.pitch - head_final_endpoint_.pitch) <=
+                                     HeadCouplingConfig::position_tolerance;
+            if (arrived)
+            {
+                head_waiting_ = false;
+                head_wait_elapsed_ = 0.0;
+                clearHeadExecution();
+                interpolation_active_ = false;
+                has_target_ = false;
+                trajectory_manager_.reset();
+            }
+            else
+            {
+                head_wait_elapsed_ += period.seconds();
+                if (head_wait_elapsed_ >= HeadCouplingConfig::transition_timeout)
+                    throw std::invalid_argument("Head position arrival timeout");
+            }
+            // Keep the final command; arrival uses position feedback only.
+            refreshHoldPositions();
+            for (size_t i = 0; i < hold_positions_.size(); ++i)
+            {
+                ctrl_interfaces_.setJointPositionCommand(i, hold_positions_[i]);
+                ctrl_interfaces_.setCommandDerivatives(i, 0.0, 0.0);
+            }
+            return true;
+        }
+        catch (const std::exception& error)
+        {
+            failHeadExecution(error.what());
+            return true;
+        }
+    }
+
+    void StateMoveJ::publishFsmCommand(int32_t command)
+    {
+        if (!fsm_command_publisher_)
+        {
+            return;
+        }
+
+        std_msgs::msg::Int32 msg;
+        msg.data = command;
+        fsm_command_publisher_->publish(msg);
+    }
+
+    void StateMoveJ::updateParam()
+    {
+        const auto previous_type = interpolation_type_;
+        duration_ = node_->get_parameter("movej_duration").as_double();
+        interpolation_type_ = parseInterpolationType(node_->get_parameter("movej_interpolation_type").as_string(),
+                                                     InterpolationType::TANH);
+        tanh_scale_ = node_->get_parameter("movej_tanh_scale").as_double();
+
+        trajectory_manager_.setTrajectoryDuration(node_->get_parameter("movej_trajectory_duration").as_double());
+        trajectory_manager_.setCommonJointBlendRatios(node_->get_parameter("movej_trajectory_blend_ratio").as_double());
+        trajectory_manager_.setControllerFrequency(ctrl_interfaces_.frequency_);
+        updateMoveJVelocityParameters();
+        updateCartesianDefaults();
+        if (previous_type != interpolation_type_ && head_execution_active_)
+        {
+            clearHeadExecution();
+            trajectory_manager_.reset();
+            interpolation_active_ = false;
+            has_target_ = false;
+        }
+        if (previous_type != interpolation_type_ &&
+            (previous_type == InterpolationType::SERVO || interpolation_type_ == InterpolationType::SERVO))
+        {
+            servo_initialized_ = false;
+            // Single-position interpolation is rebuilt on the next update.
+            // Explicit trajectories keep their own execution path.
+            if (!joint_trajectory_action_active_ &&
+                (!trajectory_manager_.isInitialized() || trajectory_manager_.isSingleNode()))
+            {
+                trajectory_manager_.reset();
+                interpolation_active_ = false;
+            }
+        }
+    }
+
+    bool StateMoveJ::canUpdateServoTarget() const
+    {
+        return interpolation_type_ == InterpolationType::SERVO &&
+               !stop_to_zero_active_ && !trajectory_manager_.isInitialized() &&
+               !move_cartesian_active_ && !waist_lifting_active_ && !waist_turning_active_ &&
+               !joint_trajectory_action_active_ && !linear_action_active_ && !circle_action_active_;
+    }
+
+    void StateMoveJ::initializeServo(const std::vector<double>& positions)
+    {
+        const auto command = ctrl_interfaces_.getCommandMotionState();
+        servo_filters_.assign(positions.size(), JointServoFilter{});
+        for (size_t i = 0; i < positions.size(); ++i)
+        {
+            auto& filter = servo_filters_[i];
+            filter.v_min = -movej_max_velocity_;
+            filter.v_max = movej_max_velocity_;
+            filter.a_min = -movej_max_acceleration_;
+            filter.a_max = movej_max_acceleration_;
+            filter.jerk_limit = movej_max_jerk_;
+            const double velocity = i < command.velocities.size() ? command.velocities[i] : 0.0;
+            const double acceleration = i < command.accelerations.size() ? command.accelerations[i] : 0.0;
+            filter.reset(positions[i], std::isfinite(velocity) ? velocity : 0.0,
+                         std::isfinite(acceleration) ? acceleration : 0.0);
+        }
+        servo_initialized_ = true;
+        use_prefix_filter_ = false;
+    }
+
+    std::vector<double> StateMoveJ::advanceServo(double period)
+    {
+        if (!std::isfinite(period) || period <= 0.0 || period > 0.1 ||
+            servo_filters_.size() != target_pos_.size() ||
+            !validatePositionRequest(joint_names_, target_pos_))
+            return {}; // Do not advance the filter on invalid/stale controller ticks.
+        // Keep the original filter's integration step at or below 1 ms.
+        const size_t steps = static_cast<size_t>(std::ceil(period / 0.001));
+        std::vector<double> result(servo_filters_.size());
+        for (size_t i = 0; i < servo_filters_.size(); ++i)
+        {
+            auto& filter = servo_filters_[i];
+            filter.dt = period / static_cast<double>(steps);
+            const auto limits = joint_limits_manager_->getJointLimits(joint_names_[i]);
+            for (size_t step = 0; step < steps; ++step)
+            {
+                const double previous_position = filter.q;
+                filter.updateTo(target_pos_[i]);
+                if (!std::isfinite(filter.q) || !std::isfinite(filter.qd) || !std::isfinite(filter.qdd))
+                {
+                    filter.reset(previous_position);
+                    break;
+                }
+                if (limits.motion_type != JointMotionType::CONTINUOUS)
+                {
+                    const double bounded = std::clamp(filter.q, limits.lower, limits.upper);
+                    if (bounded != filter.q)
+                        filter.reset(bounded);
+                }
+            }
+            result[i] = filter.q;
+        }
+        return result;
+    }
+
+    void StateMoveJ::declareMoveJVelocityParameters()
+    {
+        auto declare_double = [this](const std::string& name, double default_value)
+        {
+            if (!node_->has_parameter(name))
+            {
+                node_->declare_parameter<double>(name, default_value);
+            }
+        };
+        auto declare_bool = [this](const std::string& name, bool default_value)
+        {
+            if (!node_->has_parameter(name))
+            {
+                node_->declare_parameter<bool>(name, default_value);
+            }
+        };
+
+        declare_double("movej_max_velocity", movej_max_velocity_);
+        declare_double("movej_max_acceleration", movej_max_acceleration_);
+        declare_double("movej_max_jerk", movej_max_jerk_);
+        declare_bool("movej_auto_extend_duration", movej_auto_extend_duration_);
+    }
+
+    void StateMoveJ::updateMoveJVelocityParameters()
+    {
+        const auto read_limit = [this](const char* name, double previous)
+        {
+            const double value = node_->get_parameter(name).as_double();
+            if (std::isfinite(value) && value > 0.0) return value;
+            RCLCPP_WARN(node_->get_logger(), "Invalid %s; retaining %.6f", name, previous);
+            return previous;
+        };
+        movej_max_velocity_ = read_limit("movej_max_velocity", movej_max_velocity_);
+        movej_max_acceleration_ = read_limit("movej_max_acceleration", movej_max_acceleration_);
+        movej_max_jerk_ = read_limit("movej_max_jerk", movej_max_jerk_);
+        movej_auto_extend_duration_ = node_->get_parameter("movej_auto_extend_duration").as_bool();
+        trajectory_manager_.setDefaultJointMotionLimits(
+            movej_max_velocity_, movej_max_acceleration_, movej_max_jerk_);
+    }
+
+    double StateMoveJ::resolveTargetJointDuration(
+        const std::vector<double>& start_pos,
+        const std::vector<double>& target_pos,
+        double requested) const
+    {
+        if (!movej_auto_extend_duration_ || interpolation_type_ == InterpolationType::NONE)
+        {
+            return requested;
+        }
+
+        constexpr double kEps = 1e-9;
+        const double vmax = std::max(movej_max_velocity_, kEps);
+        double max_delta = 0.0;
+        const size_t n = std::min(start_pos.size(), target_pos.size());
+        for (size_t i = 0; i < n; ++i)
+        {
+            max_delta = std::max(max_delta, std::abs(target_pos[i] - start_pos[i]));
+        }
+
+        double t_min = 0.0;
+        if (interpolation_type_ == InterpolationType::TANH)
+        {
+            const double scale = tanh_scale_ > 0.0 ? tanh_scale_ : 3.0;
+            t_min = scale * max_delta / vmax;
+        }
+        else
+        {
+            // LINEAR, and DOUBLES falling back to LINEAR without motion_planning
+            t_min = max_delta / vmax;
+        }
+
+        const double actual = std::max(requested, t_min);
+        if (actual > requested + 1e-6)
+        {
+            RCLCPP_INFO_THROTTLE(
+                node_->get_logger(), *node_->get_clock(), 2000,
+                "MoveJ duration extended from %.3fs to %.3fs to satisfy limits",
+                requested, actual);
+        }
+        return actual;
+    }
+
+    bool StateMoveJ::initTargetJointPositionInterpolation(
+        const std::vector<double>& start_pos,
+        const std::vector<double>& target_pos)
+    {
+        if (interpolation_type_ == InterpolationType::NONE)
+        {
+            return trajectory_manager_.initSingleNode(
+                start_pos, target_pos, duration_, interpolation_type_,
+                ctrl_interfaces_.frequency_, tanh_scale_, false,
+                movej_max_velocity_, movej_max_acceleration_, movej_max_jerk_);
+        }
+
+        if (interpolation_type_ == InterpolationType::DOUBLES &&
+            JointTrajectoryManager::isDoublesAvailable())
+        {
+            return trajectory_manager_.initSingleNode(
+                start_pos, target_pos, duration_, interpolation_type_,
+                ctrl_interfaces_.frequency_, tanh_scale_,
+                movej_auto_extend_duration_,
+                movej_max_velocity_, movej_max_acceleration_, movej_max_jerk_);
+        }
+
+        const double actual = resolveTargetJointDuration(start_pos, target_pos, duration_);
+        return trajectory_manager_.initSingleNode(
+            start_pos, target_pos, actual, interpolation_type_,
+            ctrl_interfaces_.frequency_, tanh_scale_, false,
+                movej_max_velocity_, movej_max_acceleration_, movej_max_jerk_);
+    }
+
+    void StateMoveJ::declareCartesianDefaultParameters()
+    {
+        auto declare_string = [this](const std::string& name, const std::string& default_value)
+        {
+            if (!node_->has_parameter(name))
+            {
+                node_->declare_parameter<std::string>(name, default_value);
+            }
+        };
+
+        auto declare_double = [this](const std::string& name, double default_value)
+        {
+            if (!node_->has_parameter(name))
+            {
+                node_->declare_parameter<double>(name, default_value);
+            }
+        };
+
+        declare_string("cartesian_defaults.frame_id", cartesian_defaults_.frame_id);
+        declare_string("cartesian_defaults.ik_type", cartesian_defaults_.ik_type);
+        declare_double("cartesian_defaults.max_linear_velocity", cartesian_defaults_.max_linear_velocity);
+        declare_double("cartesian_defaults.max_linear_acceleration", cartesian_defaults_.max_linear_acceleration);
+        declare_double("cartesian_defaults.max_linear_jerk", cartesian_defaults_.max_linear_jerk);
+        declare_double("cartesian_defaults.max_angular_velocity", cartesian_defaults_.max_angular_velocity);
+        declare_double("cartesian_defaults.max_angular_acceleration", cartesian_defaults_.max_angular_acceleration);
+        declare_double("cartesian_defaults.max_angular_jerk", cartesian_defaults_.max_angular_jerk);
+    }
+
+    void StateMoveJ::updateCartesianDefaults()
+    {
+        cartesian_defaults_.frame_id = node_->get_parameter("cartesian_defaults.frame_id").as_string();
+        cartesian_defaults_.ik_type = node_->get_parameter("cartesian_defaults.ik_type").as_string();
+        cartesian_defaults_.max_linear_velocity =
+            node_->get_parameter("cartesian_defaults.max_linear_velocity").as_double();
+        cartesian_defaults_.max_linear_acceleration =
+            node_->get_parameter("cartesian_defaults.max_linear_acceleration").as_double();
+        cartesian_defaults_.max_linear_jerk =
+            node_->get_parameter("cartesian_defaults.max_linear_jerk").as_double();
+        cartesian_defaults_.max_angular_velocity =
+            node_->get_parameter("cartesian_defaults.max_angular_velocity").as_double();
+        cartesian_defaults_.max_angular_acceleration =
+            node_->get_parameter("cartesian_defaults.max_angular_acceleration").as_double();
+        cartesian_defaults_.max_angular_jerk =
+            node_->get_parameter("cartesian_defaults.max_angular_jerk").as_double();
+    }
+
+    robot_control_msgs::msg::LinearMessage StateMoveJ::applyCartesianDefaults(
+        const robot_control_msgs::msg::LinearMessage& linear_params) const
+    {
+        auto params = linear_params;
+        if (params.frame_id.empty())
+        {
+            params.frame_id = cartesian_defaults_.frame_id;
+        }
+        if (params.ik_type.empty())
+        {
+            params.ik_type = cartesian_defaults_.ik_type;
+        }
+        if (params.max_linear_velocity <= 0.0)
+        {
+            params.max_linear_velocity = cartesian_defaults_.max_linear_velocity;
+        }
+        if (params.max_linear_acceleration <= 0.0)
+        {
+            params.max_linear_acceleration = cartesian_defaults_.max_linear_acceleration;
+        }
+        if (params.max_linear_jerk <= 0.0)
+        {
+            params.max_linear_jerk = cartesian_defaults_.max_linear_jerk;
+        }
+        if (params.max_angular_velocity <= 0.0)
+        {
+            params.max_angular_velocity = cartesian_defaults_.max_angular_velocity;
+        }
+        if (params.max_angular_acceleration <= 0.0)
+        {
+            params.max_angular_acceleration = cartesian_defaults_.max_angular_acceleration;
+        }
+        if (params.max_angular_jerk <= 0.0)
+        {
+            params.max_angular_jerk = cartesian_defaults_.max_angular_jerk;
+        }
+        return params;
+    }
+
+    robot_control_msgs::msg::CircleMessage StateMoveJ::applyCartesianDefaults(
+        const robot_control_msgs::msg::CircleMessage& circle_params) const
+    {
+        auto params = circle_params;
+        if (params.frame_id.empty())
+        {
+            params.frame_id = cartesian_defaults_.frame_id;
+        }
+        if (params.ik_type.empty())
+        {
+            params.ik_type = cartesian_defaults_.ik_type;
+        }
+        if (params.max_linear_velocity <= 0.0)
+        {
+            params.max_linear_velocity = cartesian_defaults_.max_linear_velocity;
+        }
+        if (params.max_linear_acceleration <= 0.0)
+        {
+            params.max_linear_acceleration = cartesian_defaults_.max_linear_acceleration;
+        }
+        if (params.max_linear_jerk <= 0.0)
+        {
+            params.max_linear_jerk = cartesian_defaults_.max_linear_jerk;
+        }
+        if (params.max_angular_velocity <= 0.0)
+        {
+            params.max_angular_velocity = cartesian_defaults_.max_angular_velocity;
+        }
+        if (params.max_angular_acceleration <= 0.0)
+        {
+            params.max_angular_acceleration = cartesian_defaults_.max_angular_acceleration;
+        }
+        if (params.max_angular_jerk <= 0.0)
+        {
+            params.max_angular_jerk = cartesian_defaults_.max_angular_jerk;
+        }
+        return params;
+    }
+
+    void StateMoveJ::enter()
+    {
+        updateParam();
+
+        // Mark state as active
+        {
+            std::lock_guard lock(target_mutex_);
+            state_active_ = true;
+        }
+
+
+        // Get current joint positions as starting positions
+        start_pos_.clear();
+        for (auto i : ctrl_interfaces_.joint_position_state_interface_)
+        {
+            auto value = i.get().get_optional();
+            start_pos_.push_back(value.value_or(0.0));
+        }
+        refreshHoldPositions();
+
+        interpolation_active_ = false;
+
+        // Reset prefix filtering
+        use_prefix_filter_ = false;
+        active_prefix_.clear();
+        joint_mask_.clear();
+        joint_mask_.resize(joint_names_.size(), true); // Default: control all joints
+
+        // Check if we have a target position
+        std::lock_guard lock(target_mutex_);
+        servo_initialized_ = false;
+        if (interpolation_type_ == InterpolationType::SERVO)
+        {
+            start_pos_ = ctrl_interfaces_.last_sent_joint_positions_;
+            initializeServo(start_pos_);
+            if (!has_target_ || target_pos_.size() != start_pos_.size())
+                target_pos_ = start_pos_;
+            has_target_ = true;
+            interpolation_active_ = true;
+            return;
+        }
+        if (has_target_ && target_pos_.size() == start_pos_.size())
+        {
+            if (initTargetJointPositionInterpolation(start_pos_, target_pos_))
+            {
+                interpolation_active_ = true;
+                RCLCPP_INFO(node_->get_logger(),
+                            "Starting interpolation to target position over %.1f seconds (type=%s)",
+                            trajectory_manager_.getPlanningTime(),
+                            toString(interpolation_type_));
+            }
+            else
+            {
+                interpolation_active_ = false;
+                RCLCPP_WARN(node_->get_logger(),
+                            "Failed to initialize MOVEJ interpolation on enter; waiting for a new target");
+            }
+        }
+        else
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "No target position set, waiting for target position...");
+        }
+    }
+
+    void StateMoveJ::run(const rclcpp::Time& time, const rclcpp::Duration& period)
+    {
+        std::lock_guard lock(target_mutex_);
+
+        if (head_execution_active_ || trajectory_manager_.isInitialized() || move_cartesian_active_ ||
+            waist_lifting_active_ || waist_turning_active_ || stop_to_zero_active_)
+            servo_initialized_ = false;
+
+        const int32_t fsm_cmd = ctrl_interfaces_.fsm_command_;
+        if (fsm_cmd == 1 || fsm_cmd == 2)
+        {
+            clearPendingMotion();
+            stop_to_zero_active_ = false;
+            speed_stop_planner_.reset();
+            abortActiveMotionForStop();
+            refreshHoldPositions();
+            return;
+        }
+
+        if (runStopToZero(period))
+        {
+            return;
+        }
+
+        if (checkAndHandleCollision())
+        {
+            return;
+        }
+        if (runHeadWait(period)) return;
+
+        // 优先处理腰部升降（与转向互斥）
+        if (waist_lifting_active_ && waist_lifting_planner_)
+        {
+            if (active_waist_lifting_pose_goal_ && waist_lifting_pose_action_active_ &&
+                active_waist_lifting_pose_goal_->is_canceling())
+            {
+                waist_lifting_active_ = false;
+                waist_lifting_debug_print_active_ = false;
+                waist_lifting_planner_->setCurrentVelToZero();
+                motion_mode_ = MotionMode::MOVEJ;
+                refreshHoldPositions();
+                finishWaistLiftingPoseAction(
+                    false,
+                    WaistLiftingPoseAction::Result::ERROR_CANCELED,
+                    "goal canceled");
+                return;
+            }
+            std::vector<double> next_waist_pos;
+
+            if (waist_lifting_planner_->calNextPoint(next_waist_pos))
+            {
+                if (next_waist_pos.size() >= waist_joint_count_)
+                {
+                    std::vector<double> waist_positions(next_waist_pos.begin(),
+                                                        next_waist_pos.begin() + waist_joint_count_);
+
+                    waist_positions = applyWaistJointLimits(waist_positions);
+
+                    if (!waist_lifting_planner_->isBodyThreeJoint())
+                    {
+                        if (waist_positions.size() >= 1 &&
+                            waist_lift_joint_index_ < ctrl_interfaces_.joint_position_command_interface_.size())
+                        {
+                            ctrl_interfaces_.setJointPositionCommand(
+                                waist_lift_joint_index_, waist_positions[0]);
+                        }
+
+                        if (waist_positions.size() >= 2 && waist_single_joint_has_pitch_ &&
+                            waist_pitch_joint_index_ < ctrl_interfaces_.joint_position_command_interface_.size())
+                        {
+                            ctrl_interfaces_.setJointPositionCommand(
+                                waist_pitch_joint_index_, waist_positions[1]);
+                        }
+
+                        for (size_t i = 0; i < ctrl_interfaces_.joint_position_command_interface_.size(); ++i)
+                        {
+                            if (i == waist_lift_joint_index_ ||
+                                (waist_single_joint_has_pitch_ && i == waist_pitch_joint_index_))
+                            {
+                                continue;
+                            }
+                            ctrl_interfaces_.setJointPositionCommand(
+                                i, ctrl_interfaces_.last_sent_joint_positions_[i]);
+                        }
+                    }
+                    else
+                    {
+                        for (size_t i = 0; i < waist_joint_count_ &&
+                             i < ctrl_interfaces_.joint_position_command_interface_.size(); i++)
+                        {
+                            ctrl_interfaces_.setJointPositionCommand(i, waist_positions[i]);
+                        }
+
+                        for (size_t i = waist_joint_count_;
+                             i < ctrl_interfaces_.joint_position_command_interface_.size(); i++)
+                        {
+                            ctrl_interfaces_.setJointPositionCommand(i, ctrl_interfaces_.last_sent_joint_positions_[i]);
+                        }
+                    }
+
+                    if (waist_lifting_debug_print_active_)
+                    {
+                        std::ostringstream oss;
+                        oss << "Waist lifting command positions:";
+                        for (size_t i = 0; i < waist_positions.size(); ++i)
+                        {
+                            oss << " [" << i << "]=" << waist_positions[i];
+                        }
+                        RCLCPP_INFO(node_->get_logger(), "%s", oss.str().c_str());
+
+                    }
+
+                    //实时更新当前位置，避免因为奇异而停止
+                    target_pos_ = ctrl_interfaces_.last_sent_joint_positions_;
+                    has_target_ = false;
+                    start_pos_ = target_pos_;
+                    // Waist lifting is continuous speed planning; publish the updated
+                    // commanded joint target each cycle so observers can track it.
+                    publishCurrentTargetJoint(target_pos_);
+                    publishWaistLiftingPoseFeedback();
+
+                    if (waist_lifting_planner_->isMotionOver())
+                    {
+                        if (pending_waist_motion_)
+                        {
+                            finishWaistLiftingPoseAction(
+                                false,
+                                WaistLiftingPoseAction::Result::ERROR_CANCELED,
+                                "preempted by a new waist motion");
+                            auto apply = std::move(pending_waist_motion_);
+                            pending_waist_motion_ = nullptr;
+                            pending_waist_kind_ = PendingWaistKind::NONE;
+                            waist_lifting_active_ = false;
+                            last_waist_phi_factor_ = 0.0;
+                            apply();
+                            return;
+                        }
+                        waist_lifting_active_ = false;
+                        last_waist_phi_factor_ = 0.0;
+                        waist_lifting_debug_print_active_ = false;
+                        motion_mode_ = MotionMode::MOVEJ;
+                        maintainCommandFromLastSent();
+                        has_target_ = false;
+                        finishWaistLiftingPoseAction(
+                            true,
+                            WaistLiftingPoseAction::Result::ERROR_NONE,
+                            waist_lifting_pose_reachable_
+                                ? "target reached"
+                                : "target clamped and planned target reached");
+                        RCLCPP_INFO(node_->get_logger(),
+                                    "waist lifting trajectory completed, returning to MOVEJ mode");
+                    }
+                }
+                else
+                {
+                    RCLCPP_WARN(node_->get_logger(),
+                                "Waist lifting planner returned %zu positions, expected at least %zu",
+                                next_waist_pos.size(), waist_joint_count_);
+                    waist_lifting_active_ = false;
+                    last_waist_phi_factor_ = 0.0;
+                    motion_mode_ = MotionMode::MOVEJ;
+                }
+            }
+            else
+            {
+                refreshHoldPositions();
+                last_waist_factor_ = 0.0;
+                waist_lifting_active_ = false;
+                last_waist_phi_factor_ = 0.0;
+                waist_lifting_debug_print_active_ = false;
+                waist_lifting_planner_->setCurrentVelToZero(); //奇异了，报错停止，然后把当前实际的速度设为0
+                motion_mode_ = MotionMode::MOVEJ;
+                finishWaistLiftingPoseAction(
+                    false,
+                    WaistLiftingPoseAction::Result::ERROR_RUNTIME_FAILED,
+                    "failed to calculate next waist lifting point");
+                RCLCPP_WARN(node_->get_logger(), "[CTL-006] Failed to calculate next waist lifting point");
+            }
+
+            return;
+        }
+
+        // 其次处理腰部转向（单关节 speedj）
+        if (waist_turning_active_ && waist_turning_planner_)
+        {
+            std::vector<double> next_turn_pos;
+            if (waist_turning_planner_->calNextPoint(next_turn_pos) && !next_turn_pos.empty())
+            {
+                size_t cmd_size = ctrl_interfaces_.joint_position_command_interface_.size();
+                size_t target_idx = std::min(waist_turning_joint_index_, (cmd_size > 0 ? cmd_size - 1 : 0));
+                for (size_t i = 0; i < cmd_size; ++i)
+                {
+                    if (i == target_idx)
+                    {
+                        ctrl_interfaces_.setJointPositionCommand(i, next_turn_pos[0]);
+                    }
+                    else
+                    {
+                        ctrl_interfaces_.setJointPositionCommand(i, ctrl_interfaces_.last_sent_joint_positions_[i]);
+                    }
+                }
+
+                target_pos_ = ctrl_interfaces_.last_sent_joint_positions_;
+                has_target_ = false;
+                start_pos_ = target_pos_;
+                publishCurrentTargetJoint(target_pos_);
+
+                if (waist_turning_planner_->isMotionOver())
+                {
+                    if (pending_waist_motion_)
+                    {
+                        auto apply = std::move(pending_waist_motion_);
+                        pending_waist_motion_ = nullptr;
+                        pending_waist_kind_ = PendingWaistKind::NONE;
+                        apply();
+                        return;
+                    }
+                    refreshHoldPositions();
+                    waist_turning_active_ = false;
+                    motion_mode_ = MotionMode::MOVEJ;
+                }
+            }
+            else
+            {
+                refreshHoldPositions();
+                last_waist_turning_factor_ = 0.0;
+                waist_turning_active_ = false;
+                waist_turning_planner_->setCurrentVelToZero();
+                motion_mode_ = MotionMode::MOVEJ;
+                RCLCPP_WARN(node_->get_logger(), "Failed to calculate next waist turning point");
+            }
+            return;
+        }
+
+        // ===== 新增：处理 MoveL 直线运动 或者 MoveC圆弧运动=====
+        if (motion_mode_ == MotionMode::MOVECARTESIAN && move_cartesian_active_)
+        {
+            if ((active_linear_goal_ && active_linear_goal_->is_canceling()) ||
+                (active_circle_goal_ && active_circle_goal_->is_canceling()))
+            {
+                refreshHoldPositions();
+                move_cartesian_active_ = false;
+                motion_mode_ = MotionMode::MOVEJ;
+                cartesian_manager_.clearPlanner();
+                finishLinearAction(false, true, "MoveL trajectory canceled");
+                finishCircleAction(false, true, "MoveC trajectory canceled");
+                return;
+            }
+
+            std::vector<double> next_joint_pos;
+
+            // 获取下一个关节位置
+            cartesian_manager_.setSampleStamp(time.seconds());
+            if (cartesian_manager_.getNextJointPos(next_joint_pos))
+            {
+                std::vector<double> full_joint_pos = mapToFullJointPositions(
+                    move_cartesian_joint_names_, next_joint_pos);
+
+
+                // 检查 next_joint_pos 的大小是否正确
+                size_t expected_size = ctrl_interfaces_.joint_position_command_interface_.size();
+
+                if (full_joint_pos.size() == expected_size)
+                {
+                    // 发送关节位置命令
+                    for (size_t i = 0; i < expected_size; ++i)
+                    {
+                        ctrl_interfaces_.setJointPositionCommand(i, full_joint_pos[i]);
+                    }
+                    target_pos_ = ctrl_interfaces_.last_sent_joint_positions_;
+                    has_target_ = false;
+                    start_pos_ = target_pos_;
+
+                    // 发布当前目标位置（用于监控）
+                    publishCurrentTargetJoint(full_joint_pos);
+                    publishLinearFeedback();
+                    publishCircleFeedback();
+
+                    // 检查 MoveL或者Movec 是否完成
+                    if (cartesian_manager_.isCompleted())
+                    {
+                        RCLCPP_INFO(node_->get_logger(),
+                                    "Cartesian trajectory completed successfully");
+                        move_cartesian_active_ = false;
+                        motion_mode_ = MotionMode::MOVEJ;
+                        // 更新保持位置
+                        refreshHoldPositions();
+                        cartesian_manager_.clearPlanner();
+                        finishLinearAction(true, false, "MoveL trajectory completed successfully");
+                        finishCircleAction(true, false, "MoveC trajectory completed successfully");
+                    }
+                }
+                else
+                {
+                    RCLCPP_ERROR(node_->get_logger(),
+                                 "MoveL joint position size mismatch: expected %zu, got %zu",
+                                 expected_size, next_joint_pos.size());
+                    refreshHoldPositions();
+                    move_cartesian_active_ = false;
+                    motion_mode_ = MotionMode::MOVEJ;
+                    cartesian_manager_.clearPlanner();
+                    finishLinearAction(false, false, "MoveL joint position size mismatch");
+                    finishCircleAction(false, false, "MoveC joint position size mismatch");
+                }
+            }
+            else
+            {
+                std::string error_msg = cartesian_manager_.getLastError();
+                if (error_msg.empty())
+                {
+                    error_msg = "Failed to get next joint position from cartesian planner";
+                }
+                refreshHoldPositions();
+                move_cartesian_active_ = false;
+                motion_mode_ = MotionMode::MOVEJ;
+                cartesian_manager_.clearPlanner();
+                RCLCPP_WARN(node_->get_logger(), "%s", error_msg.c_str());
+                finishLinearAction(false, false, error_msg);
+                finishCircleAction(false, false, error_msg);
+            }
+
+            return; // MoveL 优先级高于 MOVEJ
+        }
+
+
+        if (joint_trajectory_action_active_ && active_joint_trajectory_goal_ &&
+            active_joint_trajectory_goal_->is_canceling())
+        {
+            refreshHoldPositions();
+            trajectory_manager_.reset();
+            interpolation_active_ = false;
+            has_target_ = false;
+            finishJointTrajectoryAction(false, true, "Joint trajectory canceled");
+
+            for (size_t i = 0; i < ctrl_interfaces_.joint_position_command_interface_.size() &&
+                 i < hold_positions_.size(); ++i)
+            {
+                ctrl_interfaces_.setJointPositionCommand(i, hold_positions_[i]);
+            }
+            return;
+        }
+
+        if (trajectory_manager_.isInitialized())
+        {
+            // Check if multi-node trajectory is initialized (from setTrajectory)
+            // Multi-node trajectory is active, directly execute it
+            if (!interpolation_active_)
+            {
+                interpolation_active_ = true;
+                RCLCPP_INFO(node_->get_logger(), "Multi-node trajectory execution started");
+            }
+        }
+        // Check single-node trajectory conditions
+        else if (!has_target_ || target_pos_.size() != start_pos_.size())
+        {
+            maintainCommandFromLastSent();
+            return;
+        }
+        else if (interpolation_type_ == InterpolationType::SERVO)
+        {
+            if (!servo_initialized_)
+                initializeServo(ctrl_interfaces_.last_sent_joint_positions_);
+            interpolation_active_ = true;
+        }
+        else if (interpolation_type_ == InterpolationType::NONE)
+        {
+            if (hold_positions_.size() != ctrl_interfaces_.joint_position_command_interface_.size())
+            {
+                refreshHoldPositions();
+            }
+
+            for (size_t i = 0; i < ctrl_interfaces_.joint_position_command_interface_.size() &&
+                 i < target_pos_.size(); ++i)
+            {
+                double position_to_set = target_pos_[i];
+                if (use_prefix_filter_ && i < joint_mask_.size() && !joint_mask_[i])
+                {
+                    position_to_set = (i < hold_positions_.size())
+                                          ? hold_positions_[i]
+                                          : ((i < start_pos_.size()) ? start_pos_[i] : 0.0);
+                }
+                ctrl_interfaces_.setJointPositionCommand(i, position_to_set);
+            }
+
+            refreshHoldPositions();
+            target_pos_ = ctrl_interfaces_.last_sent_joint_positions_;
+            start_pos_ = target_pos_;
+            has_target_ = false;
+            interpolation_active_ = false;
+            trajectory_manager_.reset();
+
+            // In force control mode, calculate static torques (same as interpolation path)
+            if (ctrl_interfaces_.control_mode_ == ControlMode::MIX && gravity_compensation_)
+            {
+                // Get commanded joint positions
+                std::vector<double> commanded_positions;
+                for (auto i : ctrl_interfaces_.joint_position_command_interface_)
+                {
+                    auto value = i.get().get_optional();
+                    commanded_positions.push_back(value.value_or(0.0));
+                }
+
+                // Calculate static torques
+                std::vector<double> static_torques =
+                    gravity_compensation_->calculateStaticTorques(commanded_positions);
+
+                // Set effort commands
+                for (size_t i = 0; i < ctrl_interfaces_.joint_force_command_interface_.size() &&
+                     i < static_torques.size(); ++i)
+                {
+                    std::ignore = ctrl_interfaces_.joint_force_command_interface_[i].get().set_value(static_torques[i]);
+                }
+            }
+            return;
+        }
+        else if (!interpolation_active_)
+        {
+            start_pos_.clear();
+            for (size_t i = 0; i < ctrl_interfaces_.joint_position_state_interface_.size(); ++i)
+            {
+                start_pos_.push_back(ctrl_interfaces_.last_sent_joint_positions_[i]);
+            }
+
+            if (areJointPositionsSame(start_pos_, target_pos_))
+            {
+                RCLCPP_WARN(node_->get_logger(),
+                            "Target joint position matches the last sent joint position; no MOVEJ interpolation is needed. This can happen when the published waist joint target is already the current command. joint_count=%zu",
+                            target_pos_.size());
+                maintainCommandFromLastSent();
+                has_target_ = false;
+                interpolation_active_ = false;
+                return;
+            }
+
+            if (!initTargetJointPositionInterpolation(start_pos_, target_pos_))
+            {
+                RCLCPP_WARN(node_->get_logger(),
+                            "Failed to initialize MOVEJ interpolation for target joint position; holding last sent joint position. joint_count=%zu, interpolation_type=%s",
+                            target_pos_.size(), toString(interpolation_type_));
+                maintainCommandFromLastSent();
+                has_target_ = false;
+                interpolation_active_ = false;
+                return;
+            }
+
+            interpolation_active_ = true;
+            RCLCPP_DEBUG(node_->get_logger(),
+                         "Target position received, starting interpolation from last sent position over %.3f seconds (type=%s)",
+                         trajectory_manager_.getPlanningTime(),
+                         toString(interpolation_type_));
+        }
+
+        // Get next trajectory point from unified manager (works for both single and multi-node)
+        double runtime_step = period.seconds();
+        const bool servo_step = interpolation_type_ == InterpolationType::SERVO &&
+                                !trajectory_manager_.isInitialized();
+        JointTrajectoryManager::TimedPoint head_point;
+        std::vector<double> next_positions;
+        if (head_execution_active_)
+        {
+            try
+            {
+                if (!head_candidate_ || !std::isfinite(runtime_step) || runtime_step <= 0.0)
+                    throw std::invalid_argument("Invalid head execution candidate or control period");
+                head_elapsed_ = std::min(head_elapsed_ + runtime_step, head_candidate_->duration());
+                head_point = head_candidate_->evaluateAt(head_elapsed_);
+                next_positions = head_point.positions;
+            }
+            catch (const std::exception& error)
+            {
+                failHeadExecution(error.what());
+                return;
+            }
+        }
+        else
+        {
+            next_positions = servo_step ? advanceServo(runtime_step)
+                                        : trajectory_manager_.getNextPoint(runtime_step);
+        }
+
+        if (next_positions.empty())
+        {
+            // Trajectory not initialized or error occurred
+            if (trajectory_manager_.isInitialized())
+            {
+                // Trajectory is initialized but returned empty - this shouldn't happen normally
+                RCLCPP_WARN_THROTTLE(node_->get_logger(), steadyLogClock(), 5000,
+                                     "Trajectory manager returned empty positions (trajectory may be completed or error occurred)");
+
+                //实时更新当前位置，避免起点和当前点不一致
+                target_pos_ = ctrl_interfaces_.last_sent_joint_positions_;
+                start_pos_ = target_pos_;
+                refreshHoldPositions();
+                // Maintain current position
+                for (size_t i = 0; i < ctrl_interfaces_.joint_position_command_interface_.size() &&
+                     i < hold_positions_.size(); ++i)
+                {
+                    ctrl_interfaces_.setJointPositionCommand(i, hold_positions_[i]);
+                }
+
+                if (joint_trajectory_action_active_)
+                {
+                    finishJointTrajectoryAction(
+                        false, false, "Joint trajectory returned empty positions during execution");
+                }
+            }
+            else
+            {
+                maintainCommandFromLastSent();
+            }
+            return;
+        }
+
+        if (next_positions.size() != ctrl_interfaces_.joint_position_command_interface_.size())
+        {
+            RCLCPP_WARN_THROTTLE(node_->get_logger(), steadyLogClock(), 5000,
+                                 "Trajectory manager returned positions with size mismatch: expected %zu, got %zu",
+                                 ctrl_interfaces_.joint_position_command_interface_.size(),
+                                 next_positions.size());
+            // Maintain current position on size mismatch
+            for (size_t i = 0; i < ctrl_interfaces_.joint_position_command_interface_.size() &&
+                 i < start_pos_.size(); ++i)
+            {
+                ctrl_interfaces_.setJointPositionCommand(i, start_pos_[i]);
+            }
+
+            if (joint_trajectory_action_active_)
+            {
+                finishJointTrajectoryAction(false, false, "Joint trajectory position size mismatch");
+            }
+            return;
+        }
+
+        // Apply interpolated position to joints (with joint mask filtering for multi-node trajectory)
+        // For joints not in the mask, keep them at cached hold positions
+        if (hold_positions_.size() != ctrl_interfaces_.joint_position_command_interface_.size())
+        {
+            refreshHoldPositions();
+        }
+
+        for (size_t i = 0; i < ctrl_interfaces_.joint_position_command_interface_.size() &&
+             i < next_positions.size(); ++i)
+        {
+            double position_to_set;
+
+            // Check if joint filtering is enabled (for both single-node prefix filter and multi-node trajectory)
+            if (use_prefix_filter_ && i < joint_mask_.size())
+            {
+                // Apply joint mask: control if true, hold if false
+                // For multi-node trajectory: only joints specified in trajectory message are controlled
+                // For single-node trajectory: only joints matching prefix are controlled
+                if (joint_mask_[i])
+                {
+                    // Controlled joint: use interpolated position
+                    position_to_set = next_positions[i];
+                }
+                else
+                {
+                    if (i < hold_positions_.size())
+                    {
+                        position_to_set = hold_positions_[i];
+                    }
+                    else
+                    {
+                        // Fallback to start_pos_ if real-time position not available
+                        position_to_set = (i < start_pos_.size()) ? start_pos_[i] : 0.0;
+                    }
+                }
+            }
+            else
+            {
+                // No filtering: use interpolated position for all joints
+                position_to_set = next_positions[i];
+            }
+
+            ctrl_interfaces_.setJointPositionCommand(i, position_to_set);
+            if (servo_step)
+            {
+                ctrl_interfaces_.setCommandDerivatives(i, servo_filters_[i].qd, servo_filters_[i].qdd);
+            }
+            else if (head_execution_active_)
+            {
+                const bool held = use_prefix_filter_ && i < joint_mask_.size() && !joint_mask_[i];
+                ctrl_interfaces_.setCommandDerivatives(i, held ? 0.0 : head_point.velocities[i],
+                                                      held ? 0.0 : head_point.accelerations[i]);
+            }
+            else if (trajectory_manager_.lastVelocities().size() == next_positions.size())
+            {
+                const bool held = use_prefix_filter_ && i < joint_mask_.size() && !joint_mask_[i];
+                ctrl_interfaces_.setCommandDerivatives(i, held ? 0.0 : trajectory_manager_.lastVelocities()[i],
+                                                      held ? 0.0 : trajectory_manager_.lastAccelerations()[i]);
+            }
+        }
+
+        if (joint_trajectory_action_active_)
+        {
+            publishJointTrajectoryFeedback();
+
+            if (trajectory_manager_.isCompleted())
+            {
+                refreshHoldPositions();
+                trajectory_manager_.reset();
+                interpolation_active_ = false;
+                has_target_ = false;
+                finishJointTrajectoryAction(true, false, "Joint trajectory completed successfully");
+            }
+        }
+        else if (head_execution_active_ && head_elapsed_ >= head_candidate_->duration())
+        {
+            const auto indices = head_joint_indices_.value();
+            head_final_endpoint_ = {ctrl_interfaces_.last_sent_joint_positions_[indices.yaw],
+                                    ctrl_interfaces_.last_sent_joint_positions_[indices.pitch]};
+            head_waiting_ = true;
+            head_wait_elapsed_ = 0.0;
+        }
+        else if (!servo_step && trajectory_manager_.isCompleted())
+        {
+            refreshHoldPositions();
+            target_pos_ = ctrl_interfaces_.last_sent_joint_positions_;
+            start_pos_ = target_pos_;
+            trajectory_manager_.reset();
+            interpolation_active_ = false;
+            has_target_ = false;
+        }
+
+        // In force control mode, calculate static torques
+        if (ctrl_interfaces_.control_mode_ == ControlMode::MIX && gravity_compensation_)
+        {
+            // Get interpolated joint positions
+            std::vector<double> interpolated_positions;
+            for (auto i : ctrl_interfaces_.joint_position_command_interface_)
+            {
+                auto value = i.get().get_optional();
+                interpolated_positions.push_back(value.value_or(0.0));
+            }
+
+            // Calculate static torques
+            std::vector<double> static_torques =
+                gravity_compensation_->calculateStaticTorques(interpolated_positions);
+
+            // Set effort commands
+            for (size_t i = 0; i < ctrl_interfaces_.joint_force_command_interface_.size() &&
+                 i < static_torques.size(); ++i)
+            {
+                std::ignore = ctrl_interfaces_.joint_force_command_interface_[i].get().set_value(static_torques[i]);
+            }
+        }
+    }
+
+    void StateMoveJ::exit()
+    {
+        std::lock_guard lock(target_mutex_);
+        // Mark state as inactive
+        state_active_ = false;
+        servo_initialized_ = false;
+
+        // Reset all state variables
+        interpolation_active_ = false;
+        has_target_ = false;
+        target_pos_.clear();
+        start_pos_.clear();
+
+        // Reset trajectory manager
+        clearHeadExecution();
+        trajectory_manager_.reset();
+
+        // Reset prefix filtering
+        use_prefix_filter_ = false;
+        active_prefix_.clear();
+        joint_mask_.clear();
+
+        motion_mode_ = MotionMode::MOVEJ;
+
+        move_cartesian_active_ = false;
+        cartesian_manager_.clearPlanner();
+        finishLinearAction(false, false, "StateMoveJ exited before MoveL trajectory completed");
+        finishCircleAction(false, false, "StateMoveJ exited before MoveC trajectory completed");
+        finishJointTrajectoryAction(false, false, "StateMoveJ exited before joint trajectory completed");
+        finishWaistLiftingPoseAction(
+            false,
+            WaistLiftingPoseAction::Result::ERROR_RUNTIME_FAILED,
+            "StateMoveJ exited before waist lifting pose completed");
+
+        last_waist_factor_ = 0.0;
+        last_waist_turning_factor_ = 0.0;
+        waist_lifting_active_ = false;
+        last_waist_phi_factor_ = 0.0;
+        waist_turning_active_ = false;
+        clearPendingMotion();
+        stop_to_zero_active_ = false;
+        speed_stop_planner_.reset();
+        waist_lifting_planner_.reset();
+        waist_turning_planner_.reset();
+        RCLCPP_DEBUG(node_->get_logger(), "StateMoveJ exited, all state variables reset");
+    }
+
+    bool StateMoveJ::isNonWaistMotionBusy() const
+    {
+        if (stop_to_zero_active_)
+        {
+            return false;
+        }
+        if (move_cartesian_active_ || joint_trajectory_action_active_ ||
+            linear_action_active_ || circle_action_active_)
+        {
+            return true;
+        }
+        if (trajectory_manager_.isInitialized() && !trajectory_manager_.isCompleted())
+        {
+            return true;
+        }
+        if (interpolation_active_ && has_target_)
+        {
+            return true;
+        }
+        return false;
+    }
+
+    bool StateMoveJ::isMotionBusy() const
+    {
+        if (waist_lifting_active_ || waist_turning_active_)
+        {
+            return true;
+        }
+        return isNonWaistMotionBusy();
+    }
+
+    void StateMoveJ::beginWaistSpeedjStop()
+    {
+        if (waist_turning_active_)
+        {
+            setWaistTurningFactorImpl(0.0);
+            RCLCPP_INFO(node_->get_logger(), "Waist turning speedj stop-to-zero before pending motion");
+            return;
+        }
+        if (waist_lifting_active_)
+        {
+            if (waist_lifting_planner_ && waist_lifting_planner_->isPhiSpeedMode())
+                setWaistPhiFactorImpl(0.0);
+            else
+                setWaistLiftingFactorImpl(0.0);
+            RCLCPP_INFO(node_->get_logger(), "Waist lifting speedj stop-to-zero before pending motion");
+        }
+    }
+
+    void StateMoveJ::requestWaistOnlyMotionOrDefer(std::function<void()> apply_motion)
+    {
+        pending_waist_kind_ = PendingWaistKind::NONE;
+        if (waist_lifting_active_ && waist_lifting_planner_ && !waist_lifting_planner_->isSpeedMode())
+        {
+            // A pose trajectory must stop through the synchronized joint planner.
+            requestMotionOrDefer(std::move(apply_motion));
+            return;
+        }
+        if (waist_lifting_active_ || waist_turning_active_)
+        {
+            const bool already_stopping = static_cast<bool>(pending_waist_motion_);
+            pending_waist_motion_ = std::move(apply_motion);
+            if (!already_stopping)
+            {
+                beginWaistSpeedjStop();
+            }
+            else
+            {
+                RCLCPP_INFO(node_->get_logger(), "Updated pending waist motion while speedj stop is active");
+            }
+            return;
+        }
+
+        apply_motion();
+    }
+
+    void StateMoveJ::requestWaistMotionOrDefer(std::function<void()> apply_motion)
+    {
+        pending_motion_waist_kind_ = PendingWaistKind::NONE;
+        if (!isNonWaistMotionBusy() && !stop_to_zero_active_)
+        {
+            requestWaistOnlyMotionOrDefer(std::move(apply_motion));
+            return;
+        }
+
+        if (pending_motion_cancel_) pending_motion_cancel_();
+        pending_motion_cancel_ = nullptr;
+        pending_motion_ = std::move(apply_motion);
+        if (!stop_to_zero_active_)
+        {
+            if (beginStopToZero()) abortActiveMotionForStop();
+            else pending_motion_ = nullptr;
+            pending_motion_waist_kind_ = PendingWaistKind::NONE;
+        }
+        else
+        {
+            RCLCPP_INFO(node_->get_logger(),
+                        "Updated pending waist motion while stop-to-zero is active");
+        }
+    }
+
+    void StateMoveJ::cancelPendingWaist(PendingWaistKind kind)
+    {
+        if (pending_waist_kind_ == kind)
+        {
+            pending_waist_motion_ = nullptr;
+            pending_waist_kind_ = PendingWaistKind::NONE;
+        }
+        if (pending_motion_waist_kind_ == kind)
+        {
+            if (pending_motion_cancel_) pending_motion_cancel_();
+            pending_motion_cancel_ = nullptr;
+            pending_motion_ = nullptr;
+            pending_motion_waist_kind_ = PendingWaistKind::NONE;
+        }
+    }
+
+    void StateMoveJ::clearPendingMotion()
+    {
+        pending_waist_kind_ = PendingWaistKind::NONE;
+        pending_motion_waist_kind_ = PendingWaistKind::NONE;
+        if (pending_motion_cancel_) pending_motion_cancel_();
+        pending_motion_cancel_ = nullptr;
+        pending_motion_ = nullptr;
+        pending_waist_motion_ = nullptr;
+    }
+
+    void StateMoveJ::abortActiveMotionForStop()
+    {
+        clearHeadExecution();
+        pending_waist_motion_ = nullptr;
+        pending_waist_kind_ = PendingWaistKind::NONE;
+        servo_initialized_ = false;
+        trajectory_manager_.reset();
+        interpolation_active_ = false;
+
+        move_cartesian_active_ = false;
+        cartesian_manager_.clearPlanner();
+        finishLinearAction(false, false, "MoveL preempted for stop-to-zero");
+        finishCircleAction(false, false, "MoveC preempted for stop-to-zero");
+        finishJointTrajectoryAction(false, false, "Joint trajectory preempted for stop-to-zero");
+        finishWaistLiftingPoseAction(
+            false,
+            WaistLiftingPoseAction::Result::ERROR_RUNTIME_FAILED,
+            "waist lifting pose preempted for stop-to-zero");
+
+        waist_lifting_active_ = false;
+        last_waist_phi_factor_ = 0.0;
+        waist_turning_active_ = false;
+        last_waist_factor_ = 0.0;
+        last_waist_turning_factor_ = 0.0;
+        if (waist_lifting_planner_)
+        {
+            waist_lifting_planner_->setCurrentVelToZero();
+        }
+        if (waist_turning_planner_)
+        {
+            waist_turning_planner_->setCurrentVelToZero();
+        }
+        motion_mode_ = MotionMode::MOVEJ;
+
+        const size_t num_joints = ctrl_interfaces_.joint_position_command_interface_.size();
+        for (size_t i = 0; i < num_joints; ++i)
+        {
+            if (i < ctrl_interfaces_.last_sent_joint_positions_.size())
+            {
+                ctrl_interfaces_.setJointPositionCommand(
+                    i, ctrl_interfaces_.last_sent_joint_positions_[i]);
+            }
+        }
+    }
+
+    bool StateMoveJ::beginStopToZero()
+    {
+        const auto command = ctrl_interfaces_.getCommandMotionState();
+        std::vector<double> lower, upper;
+        const auto* limits_manager = joint_limits_manager_.get();
+        if (!limits_manager || joint_names_.size() != command.positions.size())
+        {
+            RCLCPP_ERROR(node_->get_logger(), "Stop rejected: joint limits not ready; retaining current motion");
+            return false;
+        }
+        for (const auto& name : joint_names_)
+        {
+            const auto limits = limits_manager->getJointLimits(name);
+            if (limits.motion_type == JointMotionType::CONTINUOUS)
+            {
+                lower.push_back(-std::numeric_limits<double>::infinity());
+                upper.push_back(std::numeric_limits<double>::infinity());
+            }
+            else if (limits.initialized)
+            {
+                lower.push_back(limits.lower); upper.push_back(limits.upper);
+            }
+            else
+            {
+                RCLCPP_ERROR(node_->get_logger(), "Stop rejected: missing limits for %s", name.c_str());
+                return false;
+            }
+        }
+        if (headCouplingApplies())
+        {
+            try
+            {
+                const auto limits = headCouplingLimits();
+                const auto indices = head_joint_indices_.value();
+                const HeadPose commanded{command.positions[indices.yaw], command.positions[indices.pitch]};
+                const auto measured = measuredHeadPose();
+                if (!limits.containsMeasured(measured))
+                {
+                    throw std::invalid_argument(
+                        "Head stop feedback outside measured tolerance: yaw=" + std::to_string(measured.yaw) +
+                        ", pitch=" + std::to_string(measured.pitch) + " rad");
+                }
+                if (!limits.contains(commanded))
+                    throw std::invalid_argument("Head stop command begins outside coupling range");
+                const auto yaw = limits.yawRange();
+                lower[indices.yaw] = std::max(lower[indices.yaw], yaw.lower);
+                upper[indices.yaw] = std::min(upper[indices.yaw], yaw.upper);
+                const auto pitch = limits.pitchRange(commanded.yaw);
+                lower[indices.pitch] = std::max(lower[indices.pitch], pitch.lower);
+                upper[indices.pitch] = std::min(upper[indices.pitch], pitch.upper);
+                if (commanded.pitch > HeadCouplingConfig::pitch_side_upper)
+                {
+                    lower[indices.yaw] = std::max(lower[indices.yaw], -HeadCouplingConfig::yaw_boundary);
+                    upper[indices.yaw] = std::min(upper[indices.yaw], HeadCouplingConfig::yaw_boundary);
+                }
+                else
+                {
+                    upper[indices.pitch] = std::min(upper[indices.pitch], HeadCouplingConfig::pitch_side_upper);
+                }
+            }
+            catch (const std::exception& error)
+            {
+                RCLCPP_ERROR(node_->get_logger(), "Head stop rejected: %s; retaining motion", error.what());
+                return false;
+            }
+        }
+        double vmax, amax, jmax;
+        const auto& stop_trajectory = head_candidate_ ? *head_candidate_->base : trajectory_manager_;
+        if (stop_trajectory.isInitialized())
+        {
+            vmax = stop_trajectory.stopMaxVelocity();
+            amax = stop_trajectory.stopMaxAcceleration();
+            jmax = stop_trajectory.stopMaxJerk();
+        }
+        else
+        {
+            std::tie(vmax, amax, jmax) = std::make_tuple(movej_max_velocity_, movej_max_acceleration_, movej_max_jerk_);
+        }
+        const bool truncate = !stop_trajectory.isInitialized() || !stop_trajectory.isDoubles();
+        if (!speed_stop_planner_.init(command.positions, command.velocities, command.accelerations,
+                                      vmax, amax, jmax, lower, upper, truncate))
+        {
+            RCLCPP_ERROR(node_->get_logger(), "Stop rejected: %s; retaining current motion",
+                         speed_stop_planner_.error().c_str());
+            return false;
+        }
+        if (speed_stop_planner_.wasTruncated())
+            RCLCPP_WARN(node_->get_logger(), "Synchronized stop will truncate all joints at the first position limit");
+        stop_to_zero_active_ = true;
+        RCLCPP_INFO(node_->get_logger(), "Synchronized joint stop started from command q/v/a (v=%.3f, a=%.3f, j=%.3f)",
+                    vmax, amax, jmax);
+        return true;
+    }
+
+    bool StateMoveJ::requestMotionOrDefer(std::function<void()> apply_motion, std::function<void()> on_replaced)
+    {
+        pending_motion_waist_kind_ = PendingWaistKind::NONE;
+        if (stop_to_zero_active_)
+        {
+            if (pending_motion_cancel_) pending_motion_cancel_();
+            pending_motion_cancel_ = std::move(on_replaced);
+            pending_motion_ = std::move(apply_motion);
+            return true;
+        }
+        if (!isMotionBusy())
+        {
+            apply_motion();
+            return true;
+        }
+        if (!beginStopToZero()) return false;
+        // The stop is fully validated; only now discard the old trajectory.
+        abortActiveMotionForStop();
+        pending_motion_cancel_ = std::move(on_replaced);
+        pending_motion_ = std::move(apply_motion);
+        return true;
+    }
+
+    bool StateMoveJ::runStopToZero(const rclcpp::Duration& period)
+    {
+        if (!stop_to_zero_active_)
+        {
+            return false;
+        }
+
+        std::vector<double> next_positions = speed_stop_planner_.run(period.seconds());
+        if (!next_positions.empty() &&
+            next_positions.size() == ctrl_interfaces_.joint_position_command_interface_.size())
+        {
+            for (size_t i = 0; i < next_positions.size(); ++i)
+            {
+                ctrl_interfaces_.setJointPositionCommand(i, next_positions[i]);
+                ctrl_interfaces_.setCommandDerivatives(i, speed_stop_planner_.velocities()[i],
+                                                      speed_stop_planner_.accelerations()[i]);
+            }
+            refreshHoldPositions();
+            target_pos_ = ctrl_interfaces_.last_sent_joint_positions_;
+            start_pos_ = target_pos_;
+        }
+
+        if (speed_stop_planner_.isMotionOver())
+        {
+            stop_to_zero_active_ = false;
+            speed_stop_planner_.reset();
+            RCLCPP_INFO(node_->get_logger(), "Stop-to-zero completed");
+
+            if (pending_motion_)
+            {
+                auto apply = std::move(pending_motion_);
+                pending_motion_ = nullptr;
+                pending_motion_waist_kind_ = PendingWaistKind::NONE;
+                pending_motion_cancel_ = nullptr;
+                apply();
+                RCLCPP_INFO(node_->get_logger(), "Pending motion applied");
+            }
+        }
+
+        return true;
+    }
+
+    FSMStateName StateMoveJ::checkChange()
+    {
+        // MOVEJ 只能回到 HOLD；HOME 必须经 HOLD，与 FSMStateTransitionValidator 一致
+        switch (ctrl_interfaces_.fsm_command_)
+        {
+        case 2:
+            return FSMStateName::HOLD;
+        default:
+            return FSMStateName::MOVEJ;
+        }
+    }
+
+    bool StateMoveJ::validatePositionRequest(const std::vector<std::string>& names,
+                                              const std::vector<double>& positions) const
+    {
+        if (names.empty() || names.size() != positions.size() || !joint_limits_manager_)
+        {
+            RCLCPP_ERROR(node_->get_logger(), "MOVEJ target rejected: invalid joint count or unavailable limits");
+            return false;
+        }
+        for (size_t i = 0; i < names.size(); ++i)
+        {
+            const auto limits = joint_limits_manager_->getJointLimits(names[i]);
+            if (std::find(joint_names_.begin(), joint_names_.end(), names[i]) == joint_names_.end() ||
+                std::find(names.begin(), names.begin()+i, names[i]) != names.begin()+i ||
+                !std::isfinite(positions[i]) ||
+                (limits.motion_type != JointMotionType::CONTINUOUS &&
+                 (!limits.initialized || !std::isfinite(limits.lower) || !std::isfinite(limits.upper) ||
+                  limits.lower > limits.upper || positions[i] < limits.lower || positions[i] > limits.upper)))
+            {
+                RCLCPP_ERROR(node_->get_logger(), "MOVEJ target rejected: invalid/unbounded/out-of-range joint %s (%.9f)",
+                             names[i].c_str(), positions[i]);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool StateMoveJ::validateWaypointRequest(const std::vector<std::string>& names,
+        const std::vector<robot_control_msgs::msg::JointWaypoint>& waypoints) const
+    {
+        if (waypoints.empty()) return false;
+        for (const auto& wp : waypoints)
+        {
+            if (!validatePositionRequest(names, wp.position) ||
+                (!wp.velocity.empty() && wp.velocity.size() != names.size()) ||
+                !std::all_of(wp.velocity.begin(), wp.velocity.end(), [](double v) { return std::isfinite(v); }) ||
+                !std::isfinite(wp.blend_ratio_percent) || wp.blend_ratio_percent < 0 || wp.blend_ratio_percent > 1 ||
+                !std::isfinite(wp.total_time) || (wp.time_mode && wp.total_time <= 0)) return false;
+            for (const auto* values : {&wp.max_velocity, &wp.max_acceleration, &wp.max_jerk})
+                if ((!values->empty() && values->size() != 1 && values->size() != names.size()) ||
+                    !std::all_of(values->begin(), values->end(), [](double v) { return std::isfinite(v) && v > 0; }))
+                    return false;
+        }
+        return true;
+    }
+
+    void StateMoveJ::setTargetPosition(const std::vector<double>& target_pos)
+    {
+        std::lock_guard lock(target_mutex_);
+        ctrl_interfaces_.recordTarget(target_pos, 0);
+        if (!validatePositionRequest(joint_names_, target_pos)) return;
+        updateParam();
+        if (state_active_ && headCouplingApplies() &&
+            submitHeadTarget(target_pos, std::vector<bool>(joint_names_.size(), true))) return;
+        if (interpolation_type_ != InterpolationType::SERVO && interpolation_active_ &&
+            !stop_to_zero_active_ && has_target_ && areJointPositionsSame(target_pos_, target_pos)) return;
+
+        if (!state_active_)
+        {
+            RCLCPP_WARN(
+                node_->get_logger(),
+                "Cannot set target position: StateMoveJ is not active. Please enter MOVEJ state first.");
+            return;
+        }
+
+        if (canUpdateServoTarget())
+        {
+            setTargetPositionImpl(target_pos);
+            return;
+        }
+        const std::vector<double> captured_target = target_pos;
+        requestMotionOrDefer([this, captured_target]() { setTargetPositionImpl(captured_target); });
+    }
+
+    void StateMoveJ::setTargetPositionImpl(const std::vector<double>& target_pos)
+    {
+        if (target_pos.size() != joint_names_.size() ||
+            !std::all_of(target_pos.begin(), target_pos.end(), [](double q) { return std::isfinite(q); }))
+        {
+            RCLCPP_WARN(node_->get_logger(), "Ignoring invalid joint position target");
+            return;
+        }
+        use_prefix_filter_ = false;
+        active_prefix_.clear();
+        joint_mask_.clear();
+        if (!joint_names_.empty())
+        {
+            joint_mask_.resize(joint_names_.size(), true);
+        }
+
+        bool is_same_target = false;
+        if (has_target_ && target_pos_.size() == target_pos.size())
+        {
+            is_same_target = true;
+            for (size_t i = 0; i < target_pos.size(); ++i)
+            {
+                if (std::abs(target_pos_[i] - target_pos[i]) > TARGET_EPSILON)
+                {
+                    is_same_target = false;
+                    break;
+                }
+            }
+        }
+
+        if (is_same_target && interpolation_active_ && interpolation_type_ != InterpolationType::SERVO)
+        {
+            RCLCPP_DEBUG(node_->get_logger(), "Received same target position, skipping re-interpolation");
+            return;
+        }
+
+        target_pos_ = applyJointLimits(target_pos, "target position");
+        has_target_ = true;
+        publishCurrentTargetJoint(target_pos_);
+        if (interpolation_type_ == InterpolationType::SERVO)
+            return;
+        interpolation_active_ = false;
+        trajectory_manager_.reset();
+    }
+
+    void StateMoveJ::setTargetPosition(const std::string& prefix, const std::vector<double>& target_pos)
+    {
+        std::lock_guard lock(target_mutex_);
+        ctrl_interfaces_.recordTarget(target_pos, prefix == "left" ? 1 : prefix == "right" ? 2 : prefix == "body" ? 3 : prefix == "head" ? 4 : 0);
+        std::vector<std::string> selected_names;
+        std::vector<double> previous_target;
+        for (size_t i = 0; i < joint_names_.size(); ++i)
+            if (isJointInPrefixGroup(joint_names_[i], prefix))
+            {
+                selected_names.push_back(joint_names_[i]);
+                if (i < target_pos_.size()) previous_target.push_back(target_pos_[i]);
+            }
+        if (!validatePositionRequest(selected_names, target_pos)) return;
+        updateParam();
+        if (state_active_ && headCouplingApplies())
+        {
+            auto full_target = ctrl_interfaces_.last_sent_joint_positions_;
+            std::vector<bool> mask(joint_names_.size(), false);
+            if (full_target.size() != mask.size()) return;
+            size_t selected = 0;
+            for (size_t i = 0; i < joint_names_.size(); ++i)
+            {
+                if (isJointInPrefixGroup(joint_names_[i], prefix))
+                {
+                    mask[i] = true;
+                    full_target[i] = target_pos[selected++];
+                }
+            }
+            if (submitHeadTarget(full_target, mask)) return;
+        }
+        if (interpolation_type_ != InterpolationType::SERVO && interpolation_active_ &&
+            !stop_to_zero_active_ && has_target_ && areJointPositionsSame(previous_target, target_pos)) return;
+
+        if (!state_active_)
+        {
+            RCLCPP_WARN(
+                node_->get_logger(),
+                "Cannot set target position for prefix '%s': StateMoveJ is not active. Please enter MOVEJ state first.",
+                prefix.c_str());
+            return;
+        }
+
+        if (canUpdateServoTarget())
+        {
+            setTargetPositionImpl(prefix, target_pos);
+            return;
+        }
+        const std::string captured_prefix = prefix;
+        const std::vector<double> captured_target = target_pos;
+        requestMotionOrDefer([this, captured_prefix, captured_target]()
+        {
+            setTargetPositionImpl(captured_prefix, captured_target);
+        });
+    }
+
+    void StateMoveJ::setTargetPositionImpl(const std::string& prefix, const std::vector<double>& target_pos)
+    {
+        updateJointMask(prefix);
+
+        // Count how many joints match the prefix
+        size_t matching_joints = 0;
+        for (bool mask : joint_mask_)
+        {
+            if (mask) matching_joints++;
+        }
+
+        // Validate target position size
+        if (matching_joints == 0 || target_pos.size() != matching_joints ||
+            !std::all_of(target_pos.begin(), target_pos.end(), [](double q) { return std::isfinite(q); }))
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "Target position size (%zu) does not match number of joints with prefix '%s' (%zu). "
+                        "Ignoring target position.",
+                        target_pos.size(), prefix.c_str(), matching_joints);
+            return;
+        }
+
+        // Create full target position vector (only set values for matching joints)
+        if (target_pos_.size() != joint_names_.size())
+        {
+            target_pos_.resize(joint_names_.size());
+            // Initialize with current positions for all joints
+            for (size_t i = 0; i < ctrl_interfaces_.joint_position_state_interface_.size() &&
+                 i < target_pos_.size(); ++i)
+            {
+                auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
+                target_pos_[i] = value.value_or(0.0);
+            }
+        }
+
+        // Set target positions only for joints matching the prefix
+        size_t target_idx = 0;
+        for (size_t i = 0; i < joint_mask_.size() && i < target_pos_.size(); ++i)
+        {
+            if (joint_mask_[i])
+            {
+                if (target_idx < target_pos.size())
+                {
+                    target_pos_[i] = target_pos[target_idx++];
+                }
+            }
+        }
+
+        // Apply joint limit checking if callback is set
+        target_pos_ = applyJointLimits(target_pos_, "target position for prefix '" + prefix + "'");
+
+        has_target_ = true;
+        publishCurrentTargetJoint(target_pos_);
+        if (interpolation_type_ == InterpolationType::SERVO)
+        {
+            // Each prefix updates only its targets; other joints keep tracking theirs.
+            use_prefix_filter_ = false;
+            active_prefix_.clear();
+            return;
+        }
+        use_prefix_filter_ = true;
+        active_prefix_ = prefix;
+        refreshHoldPositions();
+        interpolation_active_ = false;
+        trajectory_manager_.reset();
+    }
+
+    void StateMoveJ::setJointNames(const std::vector<std::string>& joint_names)
+    {
+        const auto head_indices = findHeadJointIndices(head_coupling_config_, joint_names);
+        joint_names_ = joint_names;
+        head_joint_indices_ = head_indices;
+
+        // Update joint limits manager if it exists
+        if (joint_limits_manager_)
+        {
+            joint_limits_manager_->setJointNames(joint_names_);
+        }
+
+        RCLCPP_INFO(node_->get_logger(), "Set %zu joint names", joint_names_.size());
+    }
+
+    void StateMoveJ::updateJointMask(const std::string& prefix)
+    {
+        joint_mask_.clear();
+        joint_mask_.resize(joint_names_.size(), false);
+
+        size_t matching_count = 0;
+        for (size_t i = 0; i < joint_names_.size(); ++i)
+        {
+            if (isJointInPrefixGroup(joint_names_[i], prefix))
+            {
+                joint_mask_[i] = true;
+                matching_count++;
+            }
+            else
+            {
+                joint_mask_[i] = false;
+            }
+        }
+
+        RCLCPP_DEBUG(node_->get_logger(),
+                    "Updated joint mask for prefix '%s': %zu joints will be controlled, %zu will be held",
+                    prefix.c_str(), matching_count, joint_names_.size() - matching_count);
+    }
+
+    void StateMoveJ::setupSubscriptions(const std::string& topic_base_name,
+                                        bool enable_prefix_topics)
+    {
+        topic_base_name_ = topic_base_name;
+
+        // Use the same approach as the joint instances of RobotController (mpc_task: none): node_name + "/" + topic_base_name
+        std::string base_topic = node_->get_name() + std::string("/") + topic_base_name_;
+
+        // Subscribe to default target position topic (always created)
+        target_position_subscription_ = node_->create_subscription<std_msgs::msg::Float64MultiArray>(
+            base_topic, 10,
+            [this](const std_msgs::msg::Float64MultiArray::SharedPtr msg)
+            {
+                std::vector<double> target_pos;
+                for (const auto& val : msg->data)
+                {
+                    target_pos.push_back(val);
+                }
+                if (!target_pos.empty())
+                {
+                    setTargetPosition(target_pos);
+                }
+            });
+        RCLCPP_DEBUG(node_->get_logger(), "Subscribed to %s for all joints", base_topic.c_str());
+
+        // Only create prefix-based topics if enabled
+        if (!enable_prefix_topics)
+        {
+            return;
+        }
+
+        // Check which prefixes exist in joint names
+        bool has_left = false;
+        bool has_right = false;
+        bool has_body = false;
+        bool has_head = false;
+
+        for (const auto& joint_name : joint_names_)
+        {
+            if (isJointInPrefixGroup(joint_name, "left"))
+            {
+                has_left = true;
+            }
+            if (isJointInPrefixGroup(joint_name, "right"))
+            {
+                has_right = true;
+            }
+            if (isJointInPrefixGroup(joint_name, "body"))
+            {
+                has_body = true;
+            }
+            if (isJointInPrefixGroup(joint_name, "head"))
+            {
+                has_head = true;
+            }
+        }
+
+        // Subscribe to left prefix topic if left joints exist
+        if (has_left)
+        {
+            left_target_position_subscription_ = node_->create_subscription<std_msgs::msg::Float64MultiArray>(
+                base_topic + "/left", 10,
+                [this](const std_msgs::msg::Float64MultiArray::SharedPtr msg)
+                {
+                    std::vector<double> target_pos;
+                    for (const auto& val : msg->data)
+                    {
+                        target_pos.push_back(val);
+                    }
+                    if (!target_pos.empty())
+                    {
+                        setTargetPosition("left", target_pos);
+                    }
+                });
+            RCLCPP_DEBUG(node_->get_logger(), "Subscribed to %s/left for left-prefixed joints", base_topic.c_str());
+        }
+
+        // Subscribe to right prefix topic if right joints exist
+        if (has_right)
+        {
+            right_target_position_subscription_ = node_->create_subscription<std_msgs::msg::Float64MultiArray>(
+                base_topic + "/right", 10,
+                [this](const std_msgs::msg::Float64MultiArray::SharedPtr msg)
+                {
+                    std::vector<double> target_pos;
+                    for (const auto& val : msg->data)
+                    {
+                        target_pos.push_back(val);
+                    }
+                    if (!target_pos.empty())
+                    {
+                        setTargetPosition("right", target_pos);
+                    }
+                });
+            RCLCPP_DEBUG(node_->get_logger(), "Subscribed to %s/right for right-prefixed joints", base_topic.c_str());
+        }
+
+        // Subscribe to body prefix topic if body joints exist
+        if (has_body)
+        {
+            body_target_position_subscription_ = node_->create_subscription<std_msgs::msg::Float64MultiArray>(
+                base_topic + "/body", 10,
+                [this](const std_msgs::msg::Float64MultiArray::SharedPtr msg)
+                {
+                    std::vector<double> target_pos;
+                    for (const auto& val : msg->data)
+                    {
+                        target_pos.push_back(val);
+                    }
+                    if (!target_pos.empty())
+                    {
+                        setTargetPosition("body", target_pos);
+                    }
+                });
+            RCLCPP_DEBUG(node_->get_logger(), "Subscribed to %s/body for body-prefixed joints", base_topic.c_str());
+        }
+
+        // Subscribe to head prefix topic if head joints exist
+        if (has_head)
+        {
+            head_target_position_subscription_ = node_->create_subscription<std_msgs::msg::Float64MultiArray>(
+                base_topic + "/head", 10,
+                [this](const std_msgs::msg::Float64MultiArray::SharedPtr msg)
+                {
+                    std::vector<double> target_pos;
+                    for (const auto& val : msg->data)
+                    {
+                        target_pos.push_back(val);
+                    }
+                    if (!target_pos.empty())
+                    {
+                        setTargetPosition("head", target_pos);
+                    }
+                });
+            RCLCPP_DEBUG(node_->get_logger(), "Subscribed to %s/head for head-prefixed joints", base_topic.c_str());
+        }
+
+        // Log summary
+        if (!has_left && !has_right && !has_body && !has_head)
+        {
+            RCLCPP_DEBUG(node_->get_logger(),
+                         "No left/right/body prefixed joints found, only using default joint_target_position topic");
+        }
+    }
+
+    void StateMoveJ::updateJointLimitsFromURDF(const std::string& robot_description)
+    {
+        std::lock_guard lock(target_mutex_);
+        if (robot_description.empty())
+        {
+            return;
+        }
+
+        size_t parsed_count = joint_limits_manager_->parseFromURDF(robot_description, joint_names_);
+        if (parsed_count > 0)
+        {
+            joint_limit_checker_ = joint_limits_manager_->createLimitChecker();
+            RCLCPP_INFO(node_->get_logger(),
+                        "Joint limits updated from URDF: %zu joints with limits", parsed_count);
+        }
+    }
+
+    void StateMoveJ::setJointLimitChecker(std::function<std::vector<double>(const std::vector<double>&)> limit_checker)
+    {
+        joint_limit_checker_ = limit_checker;
+        if (limit_checker)
+        {
+            RCLCPP_INFO(node_->get_logger(), "Joint limit checker enabled (custom)");
+        }
+        else
+        {
+            RCLCPP_DEBUG(node_->get_logger(), "Joint limit checker disabled");
+        }
+    }
+
+
+    std::vector<double> StateMoveJ::applyJointLimits(const std::vector<double>& target_pos,
+                                                     const std::string& log_message)
+    {
+        std::vector<double> clamped_target_pos = target_pos;
+
+        if (joint_limit_checker_)
+        {
+            clamped_target_pos = joint_limit_checker_(target_pos);
+
+            // Check if any values were clamped
+            bool was_clamped = false;
+            for (size_t i = 0; i < target_pos.size() && i < clamped_target_pos.size(); ++i)
+            {
+                if (std::abs(target_pos[i] - clamped_target_pos[i]) > TARGET_EPSILON)
+                {
+                    was_clamped = true;
+                    break;
+                }
+            }
+
+            // Log warning if limits were applied and log message is provided
+            if (was_clamped && !log_message.empty())
+            {
+                std::string full_message = "Joint limits applied to " + log_message;
+                RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000, "%s", full_message.c_str());
+            }
+        }
+
+        return clamped_target_pos;
+    }
+
+    void StateMoveJ::setTrajectory(const trajectory_msgs::msg::JointTrajectory& trajectory)
+    {
+        std::lock_guard lock(target_mutex_);
+        if (!trajectory.points.empty()) ctrl_interfaces_.recordTarget(trajectory.points.back().positions, 0);   // where it ends
+        updateParam();
+
+        if (interpolation_type_ == InterpolationType::SERVO)
+        {
+            RCLCPP_WARN(node_->get_logger(), "servo accepts joint_target_position, not timed trajectories");
+            return;
+        }
+        if (!validateTrajectory(trajectory))
+        {
+            return;
+        }
+
+        const trajectory_msgs::msg::JointTrajectory captured_trajectory = trajectory;
+        requestMotionOrDefer([this, captured_trajectory]()
+        {
+            setTrajectoryImpl(captured_trajectory);
+        });
+    }
+
+    void StateMoveJ::setTrajectoryImpl(const trajectory_msgs::msg::JointTrajectory& trajectory)
+    {
+        if (interpolation_type_ == InterpolationType::SERVO) return;
+        // 2. Map joint names
+        std::vector<size_t> joint_indices = mapJointNames(trajectory.joint_names);
+        if (joint_indices.empty())
+        {
+            RCLCPP_ERROR(node_->get_logger(), "Cannot map trajectory joint names to controller joints");
+            return;
+        }
+
+        // 2.5. Setup joint mask based on trajectory joint names (only control specified joints)
+        // This allows controlling only left arm, right arm, or any subset of joints
+        use_prefix_filter_ = true; // Enable joint filtering for multi-node trajectory
+        joint_mask_.clear();
+        joint_mask_.resize(joint_names_.size(), false); // Default: hold all joints
+        refreshHoldPositions();
+
+        size_t controlled_joints = 0;
+        for (size_t idx : joint_indices)
+        {
+            if (idx < joint_mask_.size())
+            {
+                joint_mask_[idx] = true; // Mark joints in trajectory for control
+                controlled_joints++;
+            }
+        }
+
+        RCLCPP_INFO(node_->get_logger(),
+                    "Multi-node trajectory joint mask set: %zu joints will be controlled, %zu will be held",
+                    controlled_joints, joint_names_.size() - controlled_joints);
+
+        // 3. Get current positions as starting point (first waypoint)
+        std::vector<double> current_positions;
+        current_positions.reserve(joint_names_.size());
+        for (auto i : ctrl_interfaces_.joint_position_state_interface_)
+        {
+            auto value = i.get().get_optional();
+            current_positions.push_back(value.value_or(0.0));
+        }
+
+        // Apply joint limits to current position
+        current_positions = applyJointLimits(current_positions, "current position");
+
+        // 4. Extract input trajectory positions (mapped to controller joint order)
+        std::vector<std::vector<double>> waypoints;
+        waypoints.reserve(trajectory.points.size() + 1); // +1 for current position
+
+        // Add current position as first waypoint
+        waypoints.push_back(current_positions);
+
+        // Add input trajectory points
+        for (const auto& point : trajectory.points)
+        {
+            if (point.positions.size() != trajectory.joint_names.size())
+            {
+                RCLCPP_ERROR(node_->get_logger(), "Position size mismatch in trajectory point");
+                return;
+            }
+
+            std::vector<double> mapped_positions(joint_names_.size());
+            // Initialize: use current positions (for unmatched joints)
+            for (size_t i = 0; i < joint_names_.size(); ++i)
+            {
+                if (i < current_positions.size())
+                {
+                    mapped_positions[i] = current_positions[i];
+                }
+            }
+
+            // Map trajectory positions
+            for (size_t i = 0; i < joint_indices.size(); ++i)
+            {
+                size_t controller_idx = joint_indices[i];
+                if (controller_idx < mapped_positions.size() && i < point.positions.size())
+                {
+                    mapped_positions[controller_idx] = point.positions[i];
+                }
+            }
+
+            // Apply joint limits
+            mapped_positions = applyJointLimits(mapped_positions, "trajectory waypoint");
+
+            waypoints.push_back(mapped_positions);
+        }
+
+        // 5. Calculate segment durations (only for basic mode)
+        // Note: For DOUBLES mode, motion planning will auto-calculate
+        std::vector<double> durations;
+        double trajectory_duration = trajectory_manager_.getTrajectoryDuration();
+
+        if (interpolation_type_ != InterpolationType::DOUBLES ||
+            !JointTrajectoryManager::isDoublesAvailable())
+        {
+            // Basic mode: manually calculate segment durations
+            durations = calculateSegmentDurations(waypoints, trajectory_duration);
+        }
+        // DOUBLES mode: durations stays empty, motion planning will auto-calculate
+
+        //temporarily using the common blend ratio
+        std::vector<double> joint_blend_ratios;
+        // 6. Initialize multi-node trajectory
+        // waypoints now contains: current position + input trajectory points (at least 2) = at least 3 points
+        // This satisfies motion planning's SmoothCurveOfMultiJointsUsingBlending requirement (>= 3 points)
+        if (waypoints.size() >= 3)
+        {
+            size_t num_segments = waypoints.size() - 1;
+
+            if (!trajectory_manager_.initMultiNode(
+                waypoints,
+                joint_blend_ratios,
+                durations, // Basic mode: contains calculated segment durations; DOUBLES mode: empty, auto-calculated
+                interpolation_type_,
+                ctrl_interfaces_.frequency_,
+                tanh_scale_))
+            {
+                RCLCPP_ERROR(node_->get_logger(), "Failed to initialize multi-node trajectory");
+                return;
+            }
+
+            has_target_ = true;
+            interpolation_active_ = false; // Will be activated in run()
+            if (!waypoints.empty())
+            {
+                publishCurrentTargetJoint(waypoints.back());
+            }
+
+            RCLCPP_INFO(node_->get_logger(),
+                        "Trajectory loaded: %zu waypoints (1 current + %zu input), %zu segments. "
+                        "Compatible with motion planning multi-node planner.",
+                        waypoints.size(), trajectory.points.size(), num_segments);
+        }
+        else
+        {
+            RCLCPP_ERROR(node_->get_logger(),
+                         "Invalid trajectory: need at least 2 input points (total >= 3 with current position), got %zu",
+                         trajectory.points.size());
+        }
+    }
+
+    bool StateMoveJ::validateTrajectory(const trajectory_msgs::msg::JointTrajectory& trajectory)
+    {
+        // Check input trajectory point count (at least 2 points, with current position total >= 3 points)
+        if (trajectory.points.size() < 2)
+        {
+            RCLCPP_ERROR(node_->get_logger(),
+                         "Trajectory must have at least 2 input points (current position will be added as first point), got %zu",
+                         trajectory.points.size());
+            return false;
+        }
+
+        // Check joint names
+        if (trajectory.joint_names.empty())
+        {
+            RCLCPP_ERROR(node_->get_logger(), "Trajectory joint_names is empty");
+            return false;
+        }
+
+        double previous_time = 0.0;
+        // Check position count for each point
+        for (size_t i = 0; i < trajectory.points.size(); ++i)
+        {
+            const auto& point = trajectory.points[i];
+            const double t = rclcpp::Duration(point.time_from_start).seconds();
+            if (!validatePositionRequest(trajectory.joint_names, point.positions) ||
+                !std::isfinite(t) || t <= previous_time) return false;
+            previous_time = t;
+            if (trajectory.points[i].positions.size() != trajectory.joint_names.size())
+            {
+                RCLCPP_ERROR(node_->get_logger(),
+                             "Point %zu: position size (%zu) != joint_names size (%zu)",
+                             i, trajectory.points[i].positions.size(), trajectory.joint_names.size());
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    std::vector<size_t> StateMoveJ::mapJointNames(const std::vector<std::string>& trajectory_joint_names)
+    {
+        std::vector<size_t> indices;
+        indices.reserve(trajectory_joint_names.size());
+
+        for (const auto& traj_joint_name : trajectory_joint_names)
+        {
+            bool found = false;
+            for (size_t i = 0; i < joint_names_.size(); ++i)
+            {
+                if (joint_names_[i] == traj_joint_name)
+                {
+                    indices.push_back(i);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                RCLCPP_WARN(node_->get_logger(),
+                            "Trajectory joint '%s' not found in controller joints",
+                            traj_joint_name.c_str());
+                // Return empty for strict matching
+                return {};
+            }
+        }
+
+        return indices;
+    }
+
+    std::vector<double> StateMoveJ::calculateSegmentDurations(
+        const std::vector<std::vector<double>>& waypoints,
+        double total_duration)
+    {
+        std::vector<double> durations;
+
+        if (waypoints.size() < 2)
+        {
+            return durations; // Empty vector, will use default duration
+        }
+
+        size_t num_segments = waypoints.size() - 1;
+        durations.reserve(num_segments);
+
+        // Calculate path length (Euclidean distance) for each segment
+        std::vector<double> segment_lengths;
+        segment_lengths.reserve(num_segments);
+
+        for (size_t i = 0; i < num_segments; ++i)
+        {
+            double length = 0.0;
+            const auto& start = waypoints[i];
+            const auto& end = waypoints[i + 1];
+
+            if (start.size() != end.size())
+            {
+                RCLCPP_ERROR(node_->get_logger(),
+                             "Waypoint size mismatch: waypoint %zu has %zu joints, waypoint %zu has %zu joints",
+                             i, start.size(), i + 1, end.size());
+                durations.clear();
+                return durations;
+            }
+
+            for (size_t j = 0; j < start.size(); ++j)
+            {
+                double diff = end[j] - start[j];
+                length += diff * diff; // Euclidean distance squared
+            }
+            segment_lengths.push_back(std::sqrt(length));
+        }
+
+        // Calculate total length
+        double total_length = 0.0;
+        for (double len : segment_lengths)
+        {
+            total_length += len;
+        }
+
+        // Allocate time proportionally to path length
+        if (total_length > 1e-6) // Avoid division by zero
+        {
+            for (double len : segment_lengths)
+            {
+                double segment_duration = total_duration * (len / total_length);
+                durations.push_back(segment_duration);
+            }
+        }
+        else
+        {
+            // If all segments have zero length (all points identical), evenly distribute
+            double avg_duration = total_duration / num_segments;
+            durations.assign(num_segments, avg_duration);
+            RCLCPP_WARN(node_->get_logger(),
+                        "All waypoints are identical, evenly distributing duration %.3f across %zu segments",
+                        total_duration, num_segments);
+        }
+
+        return durations;
+    }
+
+    void StateMoveJ::setupTrajectorySubscription(const std::string& topic_name)
+    {
+        // Use the same approach as setupSubscriptions: node_name + "/" + topic_name
+        std::string full_topic = node_->get_name() + std::string("/") + topic_name;
+
+        // Subscribe to trajectory topic
+        trajectory_subscription_ = node_->create_subscription<trajectory_msgs::msg::JointTrajectory>(
+            full_topic, 10,
+            [this](const trajectory_msgs::msg::JointTrajectory::SharedPtr msg)
+            {
+                if (msg)
+                {
+                    setTrajectory(*msg);
+                }
+            });
+
+        RCLCPP_DEBUG(node_->get_logger(), "Subscribed to trajectory topic: %s", full_topic.c_str());
+    }
+
+    void StateMoveJ::updateWaistParam()
+    {
+        waist_lifting_duration_ = node_->get_parameter("waist_lifting_duration").as_double();
+    }
+
+    void StateMoveJ::setupWaistAbsoluteTransform(
+        const std::shared_ptr<tf2_ros::Buffer>& tf_buffer,
+        const std::string& source_frame,
+        const std::string& target_frame)
+    {
+        waist_absolute_tf_buffer_ = tf_buffer;
+        waist_absolute_source_frame_ = source_frame.empty() ? "base_footprint" : source_frame;
+        waist_absolute_target_frame_ = target_frame.empty() ? "body_base" : target_frame;
+        RCLCPP_INFO(node_->get_logger(),
+                    "Waist absolute transform configured: %s -> %s",
+                    waist_absolute_source_frame_.c_str(),
+                    waist_absolute_target_frame_.c_str());
+    }
+
+    bool StateMoveJ::getCurrentWaistPoseForCommand(
+        const Eigen::VectorXd& current_angles,
+        Eigen::Vector3d& current_pose,
+        std::string& error_message) const
+    {
+        if (!waist_lifting_planner_)
+        {
+            error_message = "waist lifting planner is not available";
+            return false;
+        }
+
+        if (waist_lifting_planner_->isBodyThreeJoint())
+        {
+            if (current_angles.size() < 3)
+            {
+                error_message = "cannot compute current THREE_JOINT waist pose: expected at least 3 waist joints";
+                return false;
+            }
+
+            Eigen::Vector3d angles3d(current_angles(0), current_angles(1), current_angles(2));
+            if (!waist_lifting_planner_->calculateThreeJointEndpointXzPhi(angles3d, current_pose))
+            {
+                error_message = "failed to compute current THREE_JOINT waist pose";
+                return false;
+            }
+            return true;
+        }
+
+        if (current_angles.size() < 1)
+        {
+            error_message = "cannot compute current SINGLE_JOINT waist pose: expected at least 1 waist joint";
+            return false;
+        }
+
+        double height = 0.0;
+        if (!waist_lifting_planner_->calculateSingleJointHeight(current_angles(0), height))
+        {
+            error_message = "failed to compute current SINGLE_JOINT waist height";
+            return false;
+        }
+
+        double phi = 0.0;
+        if (current_angles.size() >= 2)
+        {
+            if (!waist_lifting_planner_->calculateSingleJointPhi(current_angles(1), phi))
+            {
+                error_message = "failed to compute current SINGLE_JOINT waist phi";
+                return false;
+            }
+        }
+
+        current_pose = Eigen::Vector3d(0.0, height, phi);
+        return true;
+    }
+
+    bool StateMoveJ::resolveWaistAbsoluteTargetToBodyBase(
+        const Eigen::Vector3d& source_xz_phi,
+        Eigen::Vector3d& body_base_xz_phi,
+        std::string& error_message) const
+    {
+        if (!waist_absolute_tf_buffer_)
+        {
+            error_message = "waist absolute TF buffer is not configured";
+            return false;
+        }
+
+        geometry_msgs::msg::PointStamped target_source;
+        target_source.header.frame_id = waist_absolute_source_frame_;
+        target_source.header.stamp = rclcpp::Time(0);
+        target_source.point.x = source_xz_phi.x();
+        target_source.point.y = 0.0;
+        target_source.point.z = source_xz_phi.y();
+
+        try
+        {
+            const auto transform = waist_absolute_tf_buffer_->lookupTransform(
+                waist_absolute_target_frame_,
+                waist_absolute_source_frame_,
+                tf2::TimePointZero);
+
+            geometry_msgs::msg::PointStamped target_body;
+            tf2::doTransform(target_source, target_body, transform);
+            if (std::abs(target_body.point.y) > 1.0e-4)
+            {
+                RCLCPP_WARN(node_->get_logger(),
+                            "Transformed waist absolute target has non-zero y in %s: %.6f; using x/z only",
+                            waist_absolute_target_frame_.c_str(), target_body.point.y);
+            }
+
+            body_base_xz_phi = Eigen::Vector3d(target_body.point.x, target_body.point.z, source_xz_phi.z());
+            return true;
+        }
+        catch (const tf2::TransformException& ex)
+        {
+            error_message = std::string("failed to transform waist absolute target from ") +
+                waist_absolute_source_frame_ + " to " + waist_absolute_target_frame_ + ": " + ex.what();
+            return false;
+        }
+    }
+
+    bool StateMoveJ::resolveWaistPoseGoalToDelta(
+        uint8_t mode,
+        const Eigen::Vector3d& input_xz_phi,
+        const Eigen::VectorXd& current_angles,
+        Eigen::Vector3d& lifting_delta,
+        Eigen::Vector3d& requested_target,
+        std::string& error_message) const
+    {
+        Eigen::Vector3d current_pose(0.0, 0.0, 0.0);
+        if (!getCurrentWaistPoseForCommand(current_angles, current_pose, error_message))
+        {
+            return false;
+        }
+
+        const bool three_joint = waist_lifting_planner_ && waist_lifting_planner_->isBodyThreeJoint();
+        if (mode == WaistLiftingPoseAction::Goal::MODE_RELATIVE)
+        {
+            if (three_joint)
+            {
+                lifting_delta = input_xz_phi;
+                requested_target = current_pose + lifting_delta;
+            }
+            else
+            {
+                lifting_delta = Eigen::Vector3d(0.0, input_xz_phi.y(), input_xz_phi.z());
+                requested_target = Eigen::Vector3d(
+                    0.0,
+                    current_pose.y() + input_xz_phi.y(),
+                    current_pose.z() + input_xz_phi.z());
+            }
+            return true;
+        }
+
+        if (mode == WaistLiftingPoseAction::Goal::MODE_ABSOLUTE)
+        {
+            if (three_joint)
+            {
+                Eigen::Vector3d body_target(0.0, 0.0, 0.0);
+                if (!resolveWaistAbsoluteTargetToBodyBase(input_xz_phi, body_target, error_message))
+                {
+                    return false;
+                }
+                lifting_delta = body_target - current_pose;
+                requested_target = body_target;
+            }
+            else
+            {
+                const Eigen::Vector3d single_input(0.0, input_xz_phi.y(), input_xz_phi.z());
+                Eigen::Vector3d body_target(0.0, 0.0, 0.0);
+                if (!resolveWaistAbsoluteTargetToBodyBase(single_input, body_target, error_message))
+                {
+                    return false;
+                }
+                lifting_delta = Eigen::Vector3d(
+                    0.0,
+                    body_target.y() - current_pose.y(),
+                    input_xz_phi.z() - current_pose.z());
+                requested_target = Eigen::Vector3d(0.0, body_target.y(), input_xz_phi.z());
+            }
+            return true;
+        }
+
+        error_message = "invalid waist lifting pose mode";
+        return false;
+    }
+
+    bool StateMoveJ::moveWaistLifting(const Eigen::Vector3d& lifting_delta)
+    {
+        if (!waist_lifting_planner_)
+        {
+            setWaistLiftingPlanner();
+        }
+
+        std::lock_guard lock(target_mutex_);
+
+        const Eigen::Vector3d captured_delta = lifting_delta;
+        if (!isNonWaistMotionBusy() && !stop_to_zero_active_)
+        {
+            requestWaistOnlyMotionOrDefer(
+                [this, captured_delta]() { moveWaistLiftingImpl(captured_delta); });
+            return true;
+        }
+
+        requestWaistMotionOrDefer([this, captured_delta]() { moveWaistLiftingImpl(captured_delta); });
+        return true;
+    }
+
+    bool StateMoveJ::moveWaistLiftingToBodyBaseXz(const Eigen::Vector3d& target_xz_phi)
+    {
+        if (!waist_lifting_planner_)
+        {
+            setWaistLiftingPlanner();
+        }
+
+        std::lock_guard lock(target_mutex_);
+
+        const Eigen::Vector3d captured_target = target_xz_phi;
+        if (!isNonWaistMotionBusy() && !stop_to_zero_active_)
+        {
+            requestWaistOnlyMotionOrDefer(
+                [this, captured_target]() { moveWaistLiftingToBodyBaseXzImpl(captured_target); });
+            return true;
+        }
+
+        requestWaistMotionOrDefer(
+            [this, captured_target]() { moveWaistLiftingToBodyBaseXzImpl(captured_target); });
+        return true;
+    }
+
+    bool StateMoveJ::moveWaistLiftingToBodyBaseXzImpl(const Eigen::Vector3d& target_xz_phi)
+    {
+        if (!waist_lifting_planner_)
+        {
+            RCLCPP_WARN(node_->get_logger(), "Waist lifting planner not initialized");
+            return false;
+        }
+
+        Eigen::VectorXd current_angles = getCurrentWaistAngles();
+        Eigen::Vector3d current_pose(0.0, 0.0, 0.0);
+        std::string error_message;
+        if (!getCurrentWaistPoseForCommand(current_angles, current_pose, error_message))
+        {
+            RCLCPP_WARN(node_->get_logger(), "%s", error_message.c_str());
+            return false;
+        }
+
+        Eigen::Vector3d lifting_delta(0.0, 0.0, 0.0);
+        if (waist_lifting_planner_->isBodyThreeJoint())
+        {
+            lifting_delta = target_xz_phi - current_pose;
+        }
+        else
+        {
+            lifting_delta = Eigen::Vector3d(0.0, target_xz_phi.y() - current_pose.y(), 0.0);
+        }
+
+        RCLCPP_INFO(node_->get_logger(),
+                    "Waist absolute target in %s: type=%s, target=(%.4f, %.4f, %.4f), current=(%.4f, %.4f, %.4f), delta=(%.4f, %.4f, %.4f)",
+                    waist_absolute_target_frame_.c_str(),
+                    waist_lifting_planner_->isBodyThreeJoint() ? "THREE_JOINT" : "SINGLE_JOINT",
+                    target_xz_phi(0), target_xz_phi(1), target_xz_phi(2),
+                    current_pose(0), current_pose(1), current_pose(2),
+                    lifting_delta(0), lifting_delta(1), lifting_delta(2));
+
+        return moveWaistLiftingImpl(lifting_delta);
+    }
+
+    bool StateMoveJ::moveWaistLiftingImpl(const Eigen::Vector3d& lifting_delta)
+    {
+        if (!waist_lifting_planner_)
+        {
+            RCLCPP_WARN(node_->get_logger(), "Waist lifting planner not initialized");
+            return false;
+        }
+        StateMoveJ::updateWaistParam();
+        updateWaistLiftingLimits();
+
+        Eigen::VectorXd current_angles = getCurrentWaistAngles();
+        const double waist_control_period = 1.0 / ctrl_interfaces_.frequency_;
+        double planned_lifting_distance = 0.0;
+
+        if (waist_lifting_planner_->isBodyThreeJoint() && current_angles.size() >= 3)
+        {
+            Eigen::Vector3d angles3d(current_angles(0), current_angles(1), current_angles(2));
+
+            // initTargetLiftingLength 内部关键判断：
+            // 1) 模式分支：按 three_joint / single_joint 走不同规划路径；
+            // 2) 可达性与限位：three_joint 会先尝试终点 IK，不可达则二分裁剪到可达终点；
+            //    single_joint 会对目标角做上下限 clamp；
+            // 3) 轨迹初始化：初始化 moveJ（或 fallback 轨迹状态），初始化失败则返回 false。
+            if (!waist_lifting_planner_->initTargetLiftingLength(
+                angles3d, lifting_delta, waist_lifting_duration_, waist_control_period))
+            {
+                RCLCPP_WARN(node_->get_logger(),
+                            "Failed to initialize THREE_JOINT waist lifting plan for delta (%.3f, %.3f, %.3f)",
+                            lifting_delta(0), lifting_delta(1), lifting_delta(2));
+                return false;
+            }
+            planned_lifting_distance = waist_lifting_planner_->getLastPlannedLiftingLength();
+        }
+        else if (!waist_lifting_planner_->isBodyThreeJoint() && current_angles.size() >= 1)
+        {
+            const double current_pitch_angle = current_angles.size() >= 2 ? current_angles(1) : 0.0;
+            Eigen::Vector3d angles3d(current_angles(0), current_pitch_angle, 0.0);
+
+            if (!waist_lifting_planner_->initTargetLiftingLength(
+                angles3d, lifting_delta, waist_lifting_duration_, waist_control_period))
+            {
+                RCLCPP_WARN(node_->get_logger(),
+                            "Failed to initialize SINGLE_JOINT waist lifting plan for delta dz (%.3f)",
+                            lifting_delta(1));
+                return false;
+            }
+            planned_lifting_distance = waist_lifting_planner_->getLastPlannedLiftingLength();
+        }
+        else
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "Invalid waist lifting type or insufficient joint angles");
+            return false;
+        }
+
+        // 对比“请求位移大小”和“实际规划位移大小”：
+        // 若二者差异明显，说明请求被 IK/关节限位裁剪；否则记录正常规划结果。
+        const double requested_norm = waist_lifting_planner_->isBodyThreeJoint()
+            ? lifting_delta.norm()
+            : std::abs(lifting_delta(1));
+        constexpr double kPlannedDistanceEpsilon = 1.0e-4;
+        if (std::abs(planned_lifting_distance - requested_norm) > kPlannedDistanceEpsilon)
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "Waist lifting distance clamped by end-point IK/limits: requested=(%.4f, %.4f, %.4f), planned_norm=%.4f",
+                        lifting_delta(0), lifting_delta(1), lifting_delta(2), planned_lifting_distance);
+        }
+        else
+        {
+            RCLCPP_INFO(node_->get_logger(),
+                        "Waist lifting planned delta: requested=(%.4f, %.4f, %.4f), planned_norm=%.4f",
+                        lifting_delta(0), lifting_delta(1), lifting_delta(2), planned_lifting_distance);
+        }
+
+        if (std::abs(planned_lifting_distance) <= kPlannedDistanceEpsilon &&
+            requested_norm > kPlannedDistanceEpsilon)
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "Waist lifting already at limit, no motion planned (requested=(%.4f, %.4f, %.4f))",
+                        lifting_delta(0), lifting_delta(1), lifting_delta(2));
+            return false;
+        }
+        // Entering waist lifting should cancel any stale MOVEJ trajectory state,
+        // otherwise previous targets may be replayed after waist motion ends.
+        trajectory_manager_.reset();
+        interpolation_active_ = false;
+        has_target_ = false;
+        target_pos_.clear();
+        // Controller-side mutual exclusion: lifting preempts turning.
+        waist_turning_active_ = false;
+        last_waist_turning_factor_ = 0.0;
+        if (waist_turning_planner_)
+        {
+            waist_turning_planner_->setCurrentVelToZero();
+        }
+        waist_lifting_active_ = true;
+        motion_mode_ = MotionMode::WAIST_CONTROL;
+        RCLCPP_INFO(node_->get_logger(),
+                    "Waist lifting started: type=%s, requested=(%.4f, %.4f), planned_norm=%.4f, duration=%.3f, using %zu joints",
+                    (waist_lifting_planner_->isBodyThreeJoint()? "THREE_JOINT" : "SINGLE_JOINT"),
+                    lifting_delta(0), lifting_delta(1), planned_lifting_distance,
+                    waist_lifting_duration_, waist_joint_count_);
+
+        return true;
+    };
+
+    bool StateMoveJ::setWaistLiftingCommand(int command)
+    {
+        if (command == 0)
+        {
+            return setWaistLiftingFactor(0.0);
+        }
+        if (command == 1)
+        {
+            return setWaistLiftingFactor(1.0);
+        }
+        if (command == 2)
+        {
+            return setWaistLiftingFactor(-1.0);
+        }
+
+        RCLCPP_WARN(node_->get_logger(),
+                    "Invalid target_command value: %d (expected 0 or 1 or 2)", command);
+        if (waist_lifting_planner_)
+        {
+            waist_lifting_planner_->setCurrentVelToZero();
+        }
+        return false;
+    };
+
+    bool StateMoveJ::setWaistLiftingFactor(double factor)
+    {
+        if (!std::isfinite(factor)) return false;
+        factor = std::clamp(factor, -1.0, 1.0);
+        std::lock_guard lock(target_mutex_);
+        if (!state_active_) return false;
+        if (!waist_lifting_planner_) setWaistLiftingPlanner();
+        if (!waist_lifting_planner_) return false;
+        const bool continuing = waist_lifting_active_ && waist_lifting_planner_ && waist_lifting_planner_->isSpeedMode() && !waist_lifting_planner_->isPhiSpeedMode();
+        if (std::abs(factor) < waist_factor_epsilon_)
+        {
+            cancelPendingWaist(PendingWaistKind::LIFTING);
+            if (!continuing || last_waist_factor_ == 0.0) return true;
+            return setWaistLiftingFactorImpl(0.0);
+        }
+        if (continuing && !pending_waist_motion_ && !stop_to_zero_active_)
+        {
+            if (std::abs(factor - last_waist_factor_) < waist_factor_epsilon_) return true;
+            return setWaistLiftingFactorImpl(factor);
+        }
+        requestWaistMotionOrDefer([this, factor]() { setWaistLiftingFactorImpl(factor); });
+        if (pending_waist_motion_) pending_waist_kind_ = PendingWaistKind::LIFTING;
+        if (pending_motion_) pending_motion_waist_kind_ = PendingWaistKind::LIFTING;
+        return true;
+    }
+
+    bool StateMoveJ::setWaistLiftingFactorImpl(double factor)
+    {
+        if (waist_lifting_planner_ && waist_lifting_planner_->isPhiSpeedMode() &&
+            std::abs(factor) < waist_factor_epsilon_) return true;
+        last_waist_phi_factor_ = 0.0;
+        if (!waist_lifting_planner_)
+        {
+            RCLCPP_WARN(node_->get_logger(), "Waist lifting planner not initialized");
+            return false;
+        }
+
+        const bool continuing = waist_lifting_active_ && waist_lifting_planner_->isSpeedMode() &&
+            !waist_lifting_planner_->isPhiSpeedMode();
+        // 获取当前腰部关节角度
+        Eigen::VectorXd current_angles = getCurrentWaistAngles();
+        Eigen::Vector3d angles3d;
+        if (waist_lifting_planner_->isBodyThreeJoint() && current_angles.size() >= 3)
+        {
+            angles3d << current_angles(0), current_angles(1), current_angles(2);
+        }
+        else if (!waist_lifting_planner_->isBodyThreeJoint() && current_angles.size() >= 1)
+        {
+            const double current_pitch_angle = current_angles.size() >= 2 ? current_angles(1) : 0.0;
+            angles3d << current_angles(0), current_pitch_angle, 0.0;
+        }
+        else
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "Invalid waist lifting type or insufficient joint angles");
+            return false;
+        }
+        if (!continuing)
+        {
+            updateWaistLiftingLimits();
+            const auto& sent = ctrl_interfaces_.last_sent_joint_positions_;
+            if (waist_lifting_planner_->isBodyThreeJoint())
+            {
+                for (size_t i = 0; i < 3 && i < sent.size(); ++i) angles3d(i) = sent[i];
+            }
+            else
+            {
+                if (waist_lift_joint_index_ < sent.size()) angles3d(0) = sent[waist_lift_joint_index_];
+                if (waist_pitch_joint_index_ < sent.size()) angles3d(1) = sent[waist_pitch_joint_index_];
+            }
+            waist_lifting_planner_->setCurrentVelToZero();
+        }
+        double clamped_factor = std::clamp(factor, -1.0, 1.0);
+        double speedj_time = 100000000.0;
+        double target_speed = clamped_factor * default_waist_lifting_para_(0);
+        bool start_debug_print = false;
+        if (std::fabs(clamped_factor) < waist_factor_epsilon_)
+        {
+            speedj_time = 0.0;
+            target_speed = 0.0;
+            start_debug_print = true;
+            RCLCPP_INFO(node_->get_logger(),
+                        "Waist lifting speedj stop requested from actual angles3d: [%.6f, %.6f, %.6f], using cached planned start",
+                        angles3d(0), angles3d(1), angles3d(2));
+        }
+        const bool speed_plan_initialized = continuing
+            ? waist_lifting_planner_->initTargetLiftingSpeedFromCache(
+                target_speed, default_waist_lifting_para_(1),
+                default_waist_lifting_para_(2), speedj_time,
+                1.0 / ctrl_interfaces_.frequency_)
+            : waist_lifting_planner_->initTargetLiftingSpeed(
+                angles3d, target_speed, default_waist_lifting_para_(1),
+                default_waist_lifting_para_(2), speedj_time,
+                1.0 / ctrl_interfaces_.frequency_);
+        if (!speed_plan_initialized)
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "Failed to initialize SINGLE_JOINT waist lifting speed plan for velocity %.3f",
+                        target_speed);
+            waist_lifting_planner_->setCurrentVelToZero();
+            waist_lifting_debug_print_active_ = false;
+            waist_lifting_active_ = false;
+            last_waist_factor_ = 0.0;
+            motion_mode_ = MotionMode::MOVEJ;
+            return false;
+        }
+        waist_lifting_debug_print_active_ = start_debug_print;
+
+        trajectory_manager_.reset();
+        interpolation_active_ = false;
+        has_target_ = false;
+        target_pos_.clear();
+        waist_turning_active_ = false;
+        last_waist_turning_factor_ = 0.0;
+        if (waist_turning_planner_)
+        {
+            waist_turning_planner_->setCurrentVelToZero();
+        }
+
+        if (std::fabs(clamped_factor) < waist_factor_epsilon_)
+        {
+            // Keep waist branch active until planner reports isMotionOver (speedj decel to zero).
+            waist_lifting_active_ = true;
+            motion_mode_ = MotionMode::WAIST_CONTROL;
+            last_waist_factor_ = 0.0;
+            refreshHoldPositions();
+            return true;
+        }
+
+        refreshHoldPositions();
+        waist_lifting_active_ = true;
+        motion_mode_ = MotionMode::WAIST_CONTROL;
+        RCLCPP_INFO(node_->get_logger(),
+                    "Waist lifting started: type=%s, factor=%.3f, target_speed=%.3f, using %zu joints",
+                    (waist_lifting_planner_->isBodyThreeJoint()? "THREE_JOINT" : "SINGLE_JOINT"),
+                    clamped_factor, target_speed, waist_joint_count_);
+
+        last_waist_factor_ = clamped_factor;
+        return true;
+    };
+
+    bool StateMoveJ::setWaistPhiFactor(double factor)
+    {
+        if (!std::isfinite(factor)) return false;
+        factor = std::clamp(factor, -1.0, 1.0);
+        std::lock_guard lock(target_mutex_);
+        if (!state_active_) return false;
+        if (!waist_lifting_planner_) setWaistLiftingPlanner();
+        if (!waist_lifting_planner_ ||
+            (!waist_lifting_planner_->isBodyThreeJoint() && !waist_single_joint_has_pitch_))
+            return false;
+
+        if (std::abs(factor) < waist_factor_epsilon_)
+        {
+            // Only cancel a queued phi start; leave other callers' requests intact.
+            cancelPendingWaist(PendingWaistKind::PHI);
+            if (!waist_lifting_active_ || !waist_lifting_planner_->isPhiSpeedMode())
+                return true;
+            if (last_waist_phi_factor_ == 0.0) return true;
+            return setWaistPhiFactorImpl(0.0);
+        }
+        if (waist_lifting_active_ && waist_lifting_planner_->isPhiSpeedMode() &&
+            !pending_waist_motion_ && !stop_to_zero_active_)
+        {
+            if (std::abs(factor - last_waist_phi_factor_) < waist_factor_epsilon_)
+                return true;
+            return setWaistPhiFactorImpl(factor);
+        }
+        requestWaistMotionOrDefer([this, factor]() { setWaistPhiFactorImpl(factor); });
+        if (pending_waist_motion_) pending_waist_kind_ = PendingWaistKind::PHI;
+        if (pending_motion_) pending_motion_waist_kind_ = PendingWaistKind::PHI;
+        return true;
+    }
+
+    bool StateMoveJ::setWaistPhiFactorImpl(double factor)
+    {
+        if (!waist_lifting_planner_) return false;
+        const bool continuing = waist_lifting_active_ && waist_lifting_planner_->isPhiSpeedMode();
+        if (!continuing)
+        {
+            const std::vector<size_t> indices = waist_lifting_planner_->isBodyThreeJoint()
+                ? std::vector<size_t>{0, 1, 2}
+                : std::vector<size_t>{waist_lift_joint_index_, waist_pitch_joint_index_};
+            for (const size_t index : indices)
+            {
+                if (!joint_limits_manager_ || index >= joint_names_.size() ||
+                    !joint_limits_manager_->hasLimits(joint_names_[index]))
+                {
+                    RCLCPP_WARN(node_->get_logger(), "Waist phi requires configured joint position limits");
+                    return false;
+                }
+            }
+            const auto parameters = node_->get_parameter("waist_phi_default_parameter").as_double_array();
+            if (parameters.size() != 3 ||
+                !std::all_of(parameters.begin(), parameters.end(),
+                             [](double v) { return std::isfinite(v) && v > 0.0; }))
+            {
+                RCLCPP_WARN(node_->get_logger(), "waist_phi_default_parameter requires positive velocity/acceleration/jerk");
+                return false;
+            }
+            default_waist_phi_para_ << parameters[0], parameters[1], parameters[2];
+        }
+        const double duration = std::abs(factor) < waist_factor_epsilon_ ? 0.0 : 100000000.0;
+        double yaw_sign = 1.0;
+        if (waist_lifting_planner_->isBodyThreeJoint() &&
+            std::abs(factor) >= waist_factor_epsilon_)
+        {
+            double yaw = 0.0;
+            if (waist_turning_joint_index_ < ctrl_interfaces_.last_sent_joint_positions_.size())
+                yaw = ctrl_interfaces_.last_sent_joint_positions_[waist_turning_joint_index_];
+            else if (waist_turning_joint_index_ < ctrl_interfaces_.joint_position_state_interface_.size())
+            {
+                const auto value = ctrl_interfaces_.joint_position_state_interface_[waist_turning_joint_index_]
+                                       .get().get_optional();
+                if (!value) return false;
+                yaw = *value;
+            }
+            else
+                return false;
+            if (!std::isfinite(yaw)) return false;
+            // Match OCS2 WaistPhiPositiveBiasCost (W2 yawOffset = 0).
+            yaw_sign = std::cos(yaw) >= 0.0 ? 1.0 : -1.0;
+        }
+        const double speed = factor * yaw_sign * default_waist_phi_para_(0);
+        bool initialized = false;
+        if (continuing)
+        {
+            initialized = waist_lifting_planner_->initTargetLiftingSpeedFromCache(
+                speed, default_waist_phi_para_(1), default_waist_phi_para_(2),
+                duration, 1.0 / ctrl_interfaces_.frequency_);
+        }
+        else
+        {
+            updateWaistLiftingLimits();
+            Eigen::Vector3d angles = Eigen::Vector3d::Zero();
+            const auto current = getCurrentWaistAngles();
+            for (Eigen::Index i = 0; i < std::min<Eigen::Index>(3, current.size()); ++i)
+                angles(i) = current(i);
+            // Continue from the held command, avoiding delayed feedback jumps.
+            if (waist_lifting_planner_->isBodyThreeJoint())
+            {
+                for (size_t i = 0; i < 3 && i < ctrl_interfaces_.last_sent_joint_positions_.size(); ++i)
+                    angles(i) = ctrl_interfaces_.last_sent_joint_positions_[i];
+            }
+            else
+            {
+                if (waist_lift_joint_index_ < ctrl_interfaces_.last_sent_joint_positions_.size())
+                    angles(0) = ctrl_interfaces_.last_sent_joint_positions_[waist_lift_joint_index_];
+                if (waist_pitch_joint_index_ < ctrl_interfaces_.last_sent_joint_positions_.size())
+                    angles(1) = ctrl_interfaces_.last_sent_joint_positions_[waist_pitch_joint_index_];
+            }
+            waist_lifting_planner_->setCurrentVelToZero();
+            initialized = waist_lifting_planner_->initTargetPhiSpeed(
+                angles, speed, default_waist_phi_para_(1), default_waist_phi_para_(2),
+                duration, 1.0 / ctrl_interfaces_.frequency_);
+        }
+        if (!initialized)
+        {
+            waist_lifting_planner_->setCurrentVelToZero();
+            waist_lifting_active_ = false;
+            last_waist_phi_factor_ = 0.0;
+            motion_mode_ = MotionMode::MOVEJ;
+            return false;
+        }
+        trajectory_manager_.reset();
+        interpolation_active_ = false;
+        has_target_ = false;
+        target_pos_.clear();
+        waist_turning_active_ = false;
+        last_waist_turning_factor_ = 0.0;
+        last_waist_factor_ = 0.0;
+        if (waist_turning_planner_) waist_turning_planner_->setCurrentVelToZero();
+        waist_lifting_active_ = true;
+        waist_lifting_debug_print_active_ = false;
+        last_waist_phi_factor_ = factor;
+        motion_mode_ = MotionMode::WAIST_CONTROL;
+        return true;
+    }
+
+    bool StateMoveJ::setWaistTurningFactor(double factor)
+    {
+        if (!std::isfinite(factor)) return false;
+        factor = std::clamp(factor, -1.0, 1.0);
+        std::lock_guard lock(target_mutex_);
+        if (!state_active_) return false;
+        if (!waist_lifting_planner_) setWaistLiftingPlanner();
+        if (!waist_lifting_planner_) return false;
+        const bool continuing = waist_turning_active_ && waist_turning_planner_ && waist_turning_planner_->isSpeedMode();
+        if (std::abs(factor) < waist_factor_epsilon_)
+        {
+            cancelPendingWaist(PendingWaistKind::TURNING);
+            if (!continuing || last_waist_turning_factor_ == 0.0) return true;
+            return setWaistTurningFactorImpl(0.0);
+        }
+        if (continuing && !pending_waist_motion_ && !stop_to_zero_active_)
+        {
+            if (std::abs(factor - last_waist_turning_factor_) < waist_factor_epsilon_) return true;
+            return setWaistTurningFactorImpl(factor);
+        }
+        requestWaistMotionOrDefer([this, factor]() { setWaistTurningFactorImpl(factor); });
+        if (pending_waist_motion_) pending_waist_kind_ = PendingWaistKind::TURNING;
+        if (pending_motion_) pending_motion_waist_kind_ = PendingWaistKind::TURNING;
+        return true;
+    }
+
+    bool StateMoveJ::setWaistTurningFactorImpl(double factor)
+    {
+        if (waist_joint_names_.empty())
+        {
+            setWaistLiftingPlanner();
+        }
+        if (waist_joint_names_.empty())
+        {
+            RCLCPP_WARN(node_->get_logger(), "Waist turning planner not initialized");
+            return false;
+        }
+
+        if (!waist_turning_planner_)
+        {
+            waist_turning_planner_ = std::make_shared<robot_controller_core::WaistLiftingPlanner>();
+            waist_turning_planner_->setBodyJointThreeJointType(false);
+        }
+
+        if (joint_limits_manager_ && waist_turning_joint_index_ < joint_names_.size())
+        {
+            const std::string& turning_joint_name = joint_names_[waist_turning_joint_index_];
+            if (joint_limits_manager_->hasLimits(turning_joint_name))
+            {
+                JointLimits limits = joint_limits_manager_->getJointLimits(turning_joint_name);
+                waist_turning_planner_->setSingleJointLimit(limits.lower, limits.upper);
+            }
+        }
+
+        const bool continuing = waist_turning_active_ && waist_turning_planner_->isSpeedMode();
+        Eigen::Vector3d angles3d = Eigen::Vector3d::Zero();
+        if (waist_turning_joint_index_ < ctrl_interfaces_.last_sent_joint_positions_.size())
+        {
+            // A speed change, especially a stop command, must continue from the
+            // last commanded position. Starting from delayed hardware feedback
+            // would introduce a position target jump during replanning.
+            angles3d(0) = ctrl_interfaces_.last_sent_joint_positions_[waist_turning_joint_index_];
+        }
+        else if (waist_turning_joint_index_ < ctrl_interfaces_.joint_position_state_interface_.size())
+        {
+            auto value = ctrl_interfaces_.joint_position_state_interface_[waist_turning_joint_index_].get().
+                get_optional();
+            angles3d(0) = value.value_or(0.0);
+        }
+
+        double clamped_factor = std::clamp(factor, -1.0, 1.0);
+        double speedj_time = 100000000.0;
+        double target_speed = clamped_factor * waist_turning_direction_ * default_waist_turning_para_(0);
+        if (std::fabs(clamped_factor) < waist_factor_epsilon_)
+        {
+            speedj_time = 0.0;
+            target_speed = 0.0;
+        }
+
+        if (!continuing) waist_turning_planner_->setCurrentVelToZero();
+        const bool initialized = continuing
+            ? waist_turning_planner_->initTargetLiftingSpeedFromCache(
+                target_speed, default_waist_turning_para_(1), default_waist_turning_para_(2),
+                speedj_time, 1.0 / ctrl_interfaces_.frequency_)
+            : waist_turning_planner_->initTargetLiftingSpeed(
+                angles3d, target_speed, default_waist_turning_para_(1), default_waist_turning_para_(2),
+                speedj_time, 1.0 / ctrl_interfaces_.frequency_);
+        if (!initialized)
+        {
+            waist_turning_planner_->setCurrentVelToZero();
+            waist_turning_active_ = false;
+            last_waist_turning_factor_ = 0.0;
+            motion_mode_ = MotionMode::MOVEJ;
+            return false;
+        }
+
+        trajectory_manager_.reset();
+        interpolation_active_ = false;
+        has_target_ = false;
+        target_pos_.clear();
+        // Controller-side mutual exclusion: turning preempts lifting.
+        waist_lifting_active_ = false;
+        last_waist_phi_factor_ = 0.0;
+        last_waist_factor_ = 0.0;
+        if (waist_lifting_planner_)
+        {
+            waist_lifting_planner_->setCurrentVelToZero();
+        }
+        waist_turning_active_ = true;
+        motion_mode_ = MotionMode::WAIST_CONTROL;
+        last_waist_turning_factor_ = clamped_factor;
+        return true;
+    }
+
+    void StateMoveJ::setWaistLiftingPlanner()
+    {
+        waist_lifting_planner_ = std::make_shared<robot_controller_core::WaistLiftingPlanner>();
+
+        try
+        {
+            std::string waist_lifting_type_ = node_->get_parameter("waist_lifting_type").as_string();
+            waist_lifting_duration_ = node_->get_parameter("waist_lifting_duration").as_double();
+            std::vector<double> waist_lifting_para =
+                node_->get_parameter("waist_lifting_default_parameter").as_double_array();
+            std::vector<double> waist_turning_para =
+                node_->get_parameter("waist_turning_default_parameter").as_double_array();
+            default_waist_lifting_para_ << waist_lifting_para[0], waist_lifting_para[1], waist_lifting_para[2];
+            default_waist_turning_para_ << waist_turning_para[0], waist_turning_para[1], waist_turning_para[2];
+            waist_turning_direction_ = node_->get_parameter("waist_turning_direction").as_double();
+            RCLCPP_INFO(node_->get_logger(), "Waist lifting type: %s", waist_lifting_type_.c_str());
+            if (waist_lifting_type_ == "three_joint")
+            {
+                waist_joint_count_ = 3;
+                double l1 = node_->get_parameter("waist_l1").as_double();
+                double l2 = node_->get_parameter("waist_l2").as_double();
+
+                std::vector<double> rot_dir_vec =
+                    node_->get_parameter("waist_rotation_direction").as_double_array();
+                std::vector<double> offset_vec =
+                    node_->get_parameter("waist_angle_offset").as_double_array();
+
+                Eigen::Vector3d rotation_dir = Eigen::Vector3d::Ones();
+                Eigen::Vector3d angle_offset = Eigen::Vector3d::Zero();
+
+                if (rot_dir_vec.size() >= 3)
+                {
+                    rotation_dir << rot_dir_vec[0], rot_dir_vec[1], rot_dir_vec[2];
+                }
+                if (offset_vec.size() >= 3)
+                {
+                    angle_offset << offset_vec[0], offset_vec[1], offset_vec[2];
+                }
+                waist_lifting_planner_->setBodyJointThreeJointType(true);
+                waist_lifting_planner_->setThreeJointParameter(
+                    l1, l2, rotation_dir, angle_offset);
+
+                RCLCPP_INFO(node_->get_logger(),
+                            "Waist lifting planner set: THREE_JOINT type, %zu waist joints, l1=%.3f, l2=%.3f",
+                            waist_joint_count_, l1, l2);
+            }
+            else
+            {
+                waist_joint_count_ = 2;
+                waist_lifting_planner_->setBodyJointThreeJointType(false);
+
+                const double single_joint_direction =
+                    node_->get_parameter("waist_single_joint_direction").as_double();
+                const double single_joint_offset =
+                    node_->get_parameter("waist_single_joint_offset").as_double();
+                waist_lifting_planner_->setSingleJointParameter(
+                    single_joint_direction, single_joint_offset);
+
+                waist_single_joint_pitch_joint_name_ =
+                    node_->get_parameter("waist_single_joint_pitch_joint").as_string();
+                const double single_joint_pitch_direction =
+                    node_->get_parameter("waist_single_joint_pitch_direction").as_double();
+                const double single_joint_pitch_offset =
+                    node_->get_parameter("waist_single_joint_pitch_offset").as_double();
+                waist_lifting_planner_->setSingleJointPitchParameter(
+                    single_joint_pitch_direction, single_joint_pitch_offset);
+
+                RCLCPP_INFO(node_->get_logger(),
+                            "Waist lifting planner set: SINGLE_JOINT type, lift_direction=%.3f, lift_offset=%.3f, pitch_joint=%s, pitch_direction=%.3f, pitch_offset=%.3f",
+                            single_joint_direction, single_joint_offset,
+                            waist_single_joint_pitch_joint_name_.c_str(),
+                            single_joint_pitch_direction, single_joint_pitch_offset);
+            }
+        }
+        catch (const std::exception& e)
+        {
+            RCLCPP_ERROR(node_->get_logger(),
+                         "Failed to read waist geometric parameters: %s", e.what());
+        }
+        // 存储腰部关节名称
+        waist_joint_names_.clear();
+        for (size_t i = 0; i < waist_joint_count_ && i < joint_names_.size(); i++)
+        {
+            waist_joint_names_.push_back(joint_names_[i]);
+        }
+        waist_lift_joint_index_ = 0;
+        waist_pitch_joint_index_ = 0;
+        waist_single_joint_has_pitch_ = false;
+
+        if (!waist_lifting_planner_->isBodyThreeJoint())
+        {
+            auto find_joint_index = [this](const std::string& joint_name, size_t& index) {
+                const auto it = std::find(joint_names_.begin(), joint_names_.end(), joint_name);
+                if (it == joint_names_.end())
+                {
+                    return false;
+                }
+                index = static_cast<size_t>(std::distance(joint_names_.begin(), it));
+                return true;
+            };
+
+            if (!joint_names_.empty())
+            {
+                waist_lift_joint_index_ = 0;
+            }
+
+            if (find_joint_index(waist_single_joint_pitch_joint_name_, waist_pitch_joint_index_))
+            {
+                waist_single_joint_has_pitch_ = true;
+            }
+            else
+            {
+                RCLCPP_WARN(node_->get_logger(),
+                            "waist_single_joint_pitch_joint '%s' not found; single_joint phi will be disabled",
+                            waist_single_joint_pitch_joint_name_.c_str());
+            }
+        }
+
+        if (waist_lifting_planner_ && !waist_lifting_planner_->isBodyThreeJoint())
+        {
+            waist_turning_joint_index_ = (joint_names_.size() > 1) ? 1 : 0;
+        }
+        else if (joint_names_.size() > waist_joint_count_)
+        {
+            waist_turning_joint_index_ = waist_joint_count_;
+        }
+        else
+        {
+            waist_turning_joint_index_ = 0;
+        }
+        // 如果有joint_limits_manager，立即更新限制
+        updateWaistLiftingLimits();
+    }
+
+    void StateMoveJ::updateWaistLiftingLimits()
+    {
+        if (!waist_lifting_planner_ || !joint_limits_manager_ || waist_joint_names_.empty())
+        {
+            return;
+        }
+
+        if (waist_lifting_planner_->isBodyThreeJoint() && waist_joint_names_.size() >= 3)
+        {
+            // 从joint_limits_manager获取三关节限制
+            Eigen::Vector3d lower, upper;
+            bool has_all_limits = true;
+
+            for (size_t i = 0; i < 3; i++)
+            {
+                const std::string& joint_name = waist_joint_names_[i];
+                if (joint_limits_manager_->hasLimits(joint_name))
+                {
+                    JointLimits limits = joint_limits_manager_->getJointLimits(joint_name);
+                    lower(i) = limits.lower;
+                    upper(i) = limits.upper;
+                }
+                else
+                {
+                    has_all_limits = false;
+                    RCLCPP_WARN(node_->get_logger(),
+                                "No limits found for waist joint %s, using default limits",
+                                joint_name.c_str());
+                }
+            }
+
+            if (has_all_limits)
+            {
+                waist_lifting_planner_->setThreeJointLimit(lower, upper);
+                RCLCPP_INFO(node_->get_logger(),
+                            "Waist lifting limits updated from joint limits manager (THREE_JOINT)");
+            }
+        }
+        else if (!waist_lifting_planner_->isBodyThreeJoint() && !joint_names_.empty())
+        {
+            const std::string& lift_joint_name = joint_names_[waist_lift_joint_index_];
+            if (joint_limits_manager_->hasLimits(lift_joint_name))
+            {
+                JointLimits limits = joint_limits_manager_->getJointLimits(lift_joint_name);
+                waist_lifting_planner_->setSingleJointLimit(limits.lower, limits.upper);
+                RCLCPP_INFO(node_->get_logger(),
+                            "Waist lifting limits updated from joint limits manager (SINGLE_JOINT lift)");
+            }
+
+            if (waist_single_joint_has_pitch_ &&
+                waist_pitch_joint_index_ < joint_names_.size())
+            {
+                const std::string& pitch_joint_name = joint_names_[waist_pitch_joint_index_];
+                if (joint_limits_manager_->hasLimits(pitch_joint_name))
+                {
+                    JointLimits limits = joint_limits_manager_->getJointLimits(pitch_joint_name);
+                    waist_lifting_planner_->setSingleJointPitchLimit(limits.lower, limits.upper);
+                    RCLCPP_INFO(node_->get_logger(),
+                                "Waist pitch limits updated from joint limits manager (SINGLE_JOINT pitch)");
+                }
+            }
+        }
+    }
+
+    Eigen::VectorXd StateMoveJ::getCurrentWaistAngles()
+    {
+        if (waist_lifting_planner_ && !waist_lifting_planner_->isBodyThreeJoint())
+        {
+            Eigen::VectorXd angles = Eigen::VectorXd::Zero(2);
+            if (waist_lift_joint_index_ < ctrl_interfaces_.joint_position_state_interface_.size())
+            {
+                auto value = ctrl_interfaces_.joint_position_state_interface_[waist_lift_joint_index_].get().get_optional();
+                angles(0) = value.value_or(0.0);
+            }
+            if (waist_single_joint_has_pitch_ &&
+                waist_pitch_joint_index_ < ctrl_interfaces_.joint_position_state_interface_.size())
+            {
+                auto value = ctrl_interfaces_.joint_position_state_interface_[waist_pitch_joint_index_].get().get_optional();
+                angles(1) = value.value_or(0.0);
+            }
+            return angles;
+        }
+
+        Eigen::VectorXd angles = Eigen::VectorXd::Zero(waist_joint_count_);
+
+        for (size_t i = 0; i < waist_joint_count_ &&
+             i < ctrl_interfaces_.joint_position_state_interface_.size(); i++)
+        {
+            auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
+            angles(i) = value.value_or(0.0);
+        }
+
+        return angles;
+    }
+
+    std::vector<double> StateMoveJ::applyWaistJointLimits(const std::vector<double>& waist_positions)
+    {
+        if (!joint_limits_manager_ || waist_positions.size() != waist_joint_count_)
+        {
+            return waist_positions;
+        }
+
+        if (waist_lifting_planner_ && !waist_lifting_planner_->isBodyThreeJoint())
+        {
+            std::vector<double> clamped_positions = waist_positions;
+
+            if (waist_lift_joint_index_ < joint_names_.size())
+            {
+                const std::string& lift_joint_name = joint_names_[waist_lift_joint_index_];
+                if (joint_limits_manager_->hasLimits(lift_joint_name))
+                {
+                    JointLimits limits = joint_limits_manager_->getJointLimits(lift_joint_name);
+                    if (clamped_positions[0] < limits.lower)
+                    {
+                        RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                             "Waist joint %s: clamping from %.3f to lower limit %.3f",
+                                             lift_joint_name.c_str(), clamped_positions[0], limits.lower);
+                        clamped_positions[0] = limits.lower;
+                    }
+                    else if (clamped_positions[0] > limits.upper)
+                    {
+                        RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                             "Waist joint %s: clamping from %.3f to upper limit %.3f",
+                                             lift_joint_name.c_str(), clamped_positions[0], limits.upper);
+                        clamped_positions[0] = limits.upper;
+                    }
+                }
+            }
+
+            if (waist_single_joint_has_pitch_ && clamped_positions.size() >= 2 &&
+                waist_pitch_joint_index_ < joint_names_.size())
+            {
+                const std::string& pitch_joint_name = joint_names_[waist_pitch_joint_index_];
+                if (joint_limits_manager_->hasLimits(pitch_joint_name))
+                {
+                    JointLimits limits = joint_limits_manager_->getJointLimits(pitch_joint_name);
+                    if (clamped_positions[1] < limits.lower)
+                    {
+                        RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                             "Waist joint %s: clamping from %.3f to lower limit %.3f",
+                                             pitch_joint_name.c_str(), clamped_positions[1], limits.lower);
+                        clamped_positions[1] = limits.lower;
+                    }
+                    else if (clamped_positions[1] > limits.upper)
+                    {
+                        RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                             "Waist joint %s: clamping from %.3f to upper limit %.3f",
+                                             pitch_joint_name.c_str(), clamped_positions[1], limits.upper);
+                        clamped_positions[1] = limits.upper;
+                    }
+                }
+            }
+            else if (!waist_single_joint_has_pitch_ && clamped_positions.size() >= 2)
+            {
+                RCLCPP_DEBUG(node_->get_logger(),
+                             "single_joint phi disabled; skipping pitch joint limit check");
+            }
+
+            return clamped_positions;
+        }
+
+        std::vector<double> clamped_positions = waist_positions;
+
+        for (size_t i = 0; i < waist_joint_count_ && i < waist_joint_names_.size(); i++)
+        {
+            const std::string& joint_name = waist_joint_names_[i];
+
+            if (joint_limits_manager_->hasLimits(joint_name))
+            {
+                JointLimits limits = joint_limits_manager_->getJointLimits(joint_name);
+
+                if (clamped_positions[i] < limits.lower)
+                {
+                    RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                         "Waist joint %s: clamping from %.3f to lower limit %.3f",
+                                         joint_name.c_str(), clamped_positions[i], limits.lower);
+                    clamped_positions[i] = limits.lower;
+                }
+                else if (clamped_positions[i] > limits.upper)
+                {
+                    RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                         "Waist joint %s: clamping from %.3f to upper limit %.3f",
+                                         joint_name.c_str(), clamped_positions[i], limits.upper);
+                    clamped_positions[i] = limits.upper;
+                }
+            }
+        }
+
+        return clamped_positions;
+    }
+
+    void StateMoveJ::setupJointTrajectoryService(const std::string& service_name)
+    {
+        std::string full_service_name = node_->get_name() + std::string("/") + service_name;
+
+        joint_trajectory_service_ = node_->create_service<robot_control_msgs::srv::JointTrajectory>(
+            full_service_name,
+            std::bind(&StateMoveJ::handleJointTrajectory, this,
+                      std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+
+        RCLCPP_DEBUG(node_->get_logger(), "Created joint trajectory service at %s",
+                     full_service_name.c_str());
+    }
+
+    void StateMoveJ::setupJointTrajectoryAction(const std::string& action_name)
+    {
+        std::string full_action_name = node_->get_name() + std::string("/") + action_name;
+
+        joint_trajectory_action_server_ = rclcpp_action::create_server<JointTrajectoryAction>(
+            node_,
+            full_action_name,
+            std::bind(&StateMoveJ::handleJointTrajectoryGoal, this, std::placeholders::_1, std::placeholders::_2),
+            std::bind(&StateMoveJ::handleJointTrajectoryCancel, this, std::placeholders::_1),
+            std::bind(&StateMoveJ::handleJointTrajectoryAccepted, this, std::placeholders::_1));
+
+        RCLCPP_DEBUG(node_->get_logger(), "Created joint trajectory action at %s",
+                     full_action_name.c_str());
+    }
+
+    void StateMoveJ::setupWaistLiftingPoseAction(const std::string& action_name)
+    {
+        std::string full_action_name = node_->get_name() + std::string("/") + action_name;
+        waist_lifting_pose_action_server_ = rclcpp_action::create_server<WaistLiftingPoseAction>(
+            node_,
+            full_action_name,
+            std::bind(&StateMoveJ::handleWaistLiftingPoseGoal, this, std::placeholders::_1, std::placeholders::_2),
+            std::bind(&StateMoveJ::handleWaistLiftingPoseCancel, this, std::placeholders::_1),
+            std::bind(&StateMoveJ::handleWaistLiftingPoseAccepted, this, std::placeholders::_1));
+        RCLCPP_DEBUG(node_->get_logger(), "Created waist lifting pose action at %s",
+                     full_action_name.c_str());
+    }
+
+    rclcpp_action::GoalResponse StateMoveJ::handleWaistLiftingPoseGoal(
+        const rclcpp_action::GoalUUID& uuid,
+        std::shared_ptr<const WaistLiftingPoseAction::Goal> goal)
+    {
+        (void)uuid;
+        std::lock_guard lock(target_mutex_);
+        if (!state_active_)
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "Rejecting waist lifting pose goal: StateMoveJ is not active");
+            return rclcpp_action::GoalResponse::REJECT;
+        }
+        if (goal->mode != WaistLiftingPoseAction::Goal::MODE_ABSOLUTE &&
+            goal->mode != WaistLiftingPoseAction::Goal::MODE_RELATIVE)
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "Rejecting waist lifting pose goal: invalid mode %u", goal->mode);
+            return rclcpp_action::GoalResponse::REJECT;
+        }
+        if (waist_lifting_pose_action_active_)
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "Rejecting waist lifting pose goal: another goal is active");
+            return rclcpp_action::GoalResponse::REJECT;
+        }
+        return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+    }
+
+    rclcpp_action::CancelResponse StateMoveJ::handleWaistLiftingPoseCancel(
+        const std::shared_ptr<WaistLiftingPoseGoalHandle> goal_handle)
+    {
+        (void)goal_handle;
+        return rclcpp_action::CancelResponse::ACCEPT;
+    }
+
+    void StateMoveJ::handleWaistLiftingPoseAccepted(
+        const std::shared_ptr<WaistLiftingPoseGoalHandle> goal_handle)
+    {
+        std::lock_guard lock(target_mutex_);
+        const auto goal = goal_handle->get_goal();
+        auto result = std::make_shared<WaistLiftingPoseAction::Result>();
+
+        if (!waist_lifting_planner_)
+        {
+            setWaistLiftingPlanner();
+        }
+        if (!waist_lifting_planner_)
+        {
+            result->reachable = false;
+            result->success = false;
+            result->error_code = WaistLiftingPoseAction::Result::ERROR_CONTROLLER_NOT_READY;
+            result->message = "waist lifting planner is not available";
+            goal_handle->abort(result);
+            return;
+        }
+
+        Eigen::VectorXd current_angles = getCurrentWaistAngles();
+        const bool three_joint =
+            waist_lifting_planner_->isBodyThreeJoint() && current_angles.size() >= 3;
+
+        Eigen::Vector3d lifting_delta(0.0, 0.0, 0.0);
+        Eigen::Vector3d requested_target(0.0, 0.0, 0.0);
+        std::string error_message;
+        const Eigen::Vector3d input_xz_phi(goal->x, goal->z, goal->phi);
+        if (!resolveWaistPoseGoalToDelta(
+                goal->mode,
+                input_xz_phi,
+                current_angles,
+                lifting_delta,
+                requested_target,
+                error_message))
+        {
+            result->reachable = false;
+            result->success = false;
+            result->error_code = WaistLiftingPoseAction::Result::ERROR_CONTROLLER_NOT_READY;
+            result->message = error_message;
+            goal_handle->abort(result);
+            return;
+        }
+        const double requested_norm = three_joint ? lifting_delta.norm() : std::abs(lifting_delta(1));
+
+        if (!moveWaistLiftingImpl(lifting_delta))
+        {
+            result->reachable = false;
+            result->success = false;
+            Eigen::Vector3d cur(0.0, 0.0, 0.0);
+            std::string current_pose_error;
+            if (getCurrentWaistPoseForCommand(current_angles, cur, current_pose_error))
+            {
+                result->planned_x = cur.x();
+                result->planned_z = cur.y();
+                result->planned_phi = cur.z();
+            }
+            result->error_code = WaistLiftingPoseAction::Result::ERROR_UNREACHABLE;
+            result->message = "no executable waist motion (already at limit or unreachable)";
+            goal_handle->abort(result);
+            return;
+        }
+
+        const double planned_norm = waist_lifting_planner_->getLastPlannedLiftingLength();
+        constexpr double kPlannedDistanceEpsilon = 1.0e-4;
+        const bool reachable = std::abs(planned_norm - requested_norm) <= kPlannedDistanceEpsilon;
+
+        const Eigen::Vector3d planned_target = waist_lifting_planner_->getPlannedTargetPose();
+
+        waist_lifting_pose_reachable_ = reachable;
+        waist_lifting_pose_planned_target_ = planned_target;
+        active_waist_lifting_pose_goal_ = goal_handle;
+        waist_lifting_pose_action_start_time_ = node_->now();
+        waist_lifting_pose_action_active_ = true;
+        publishWaistLiftingPoseFeedback();
+        RCLCPP_INFO(node_->get_logger(),
+                    "Waist lifting pose action started: mode=%u, type=%s, reachable=%d, requested_target=(%.4f, %.4f, %.4f), planned=(%.4f, %.4f, %.4f)",
+                    goal->mode,
+                    three_joint ? "THREE_JOINT" : "SINGLE_JOINT",
+                    reachable ? 1 : 0,
+                    requested_target.x(), requested_target.y(), requested_target.z(),
+                    planned_target.x(), planned_target.y(), planned_target.z());
+    }
+
+    rclcpp_action::GoalResponse StateMoveJ::handleJointTrajectoryGoal(
+        const rclcpp_action::GoalUUID& uuid,
+        std::shared_ptr<const JointTrajectoryAction::Goal> goal)
+    {
+        (void)uuid;
+        (void)goal;
+
+        std::lock_guard lock(target_mutex_);
+        if (parseInterpolationType(node_->get_parameter("movej_interpolation_type").as_string()) ==
+            InterpolationType::SERVO)
+        {
+            RCLCPP_WARN(node_->get_logger(), "Joint trajectory actions do not support servo");
+            return rclcpp_action::GoalResponse::REJECT;
+        }
+        if (!state_active_ || !validateWaypointRequest(goal->joint_names, goal->waypoints))
+        {
+            RCLCPP_WARN(node_->get_logger(), "Rejecting joint trajectory action goal: StateMoveJ is not active");
+            return rclcpp_action::GoalResponse::REJECT;
+        }
+        return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+    }
+
+    rclcpp_action::CancelResponse StateMoveJ::handleJointTrajectoryCancel(
+        const std::shared_ptr<JointTrajectoryGoalHandle> goal_handle)
+    {
+        (void)goal_handle;
+        return rclcpp_action::CancelResponse::ACCEPT;
+    }
+
+    void StateMoveJ::handleJointTrajectoryAccepted(
+        const std::shared_ptr<JointTrajectoryGoalHandle> goal_handle)
+    {
+        std::lock_guard lock(target_mutex_);
+        const auto goal = goal_handle->get_goal();
+        const std::vector<std::string> joint_names = goal->joint_names;
+        const std::vector<robot_control_msgs::msg::JointWaypoint> waypoints = goal->waypoints;
+
+        const bool accepted = requestMotionOrDefer([this, goal_handle, joint_names, waypoints]()
+        {
+            if (goal_handle->is_canceling())
+            {
+                auto result = std::make_shared<JointTrajectoryAction::Result>();
+                result->success = false;
+                result->message = "Canceled before execution";
+                goal_handle->canceled(result);
+                return;
+            }
+            std::string message;
+            double planned_duration = 0.0;
+            if (!startJointTrajectoryRequestImpl(joint_names, waypoints, message, planned_duration))
+            {
+                auto result = std::make_shared<JointTrajectoryAction::Result>();
+                result->success = false;
+                result->message = message;
+                result->planned_duration = 0.0;
+                result->actual_duration = 0.0;
+                goal_handle->abort(result);
+                return;
+            }
+
+            active_joint_trajectory_goal_ = goal_handle;
+            joint_trajectory_action_start_time_ = node_->now();
+            joint_trajectory_planned_duration_ = planned_duration;
+            joint_trajectory_action_active_ = true;
+            publishJointTrajectoryFeedback();
+            RCLCPP_INFO(node_->get_logger(), "Joint trajectory action started: duration=%.3f", planned_duration);
+        }, [goal_handle]()
+        {
+            if (!goal_handle->is_active()) return;
+            auto result = std::make_shared<JointTrajectoryAction::Result>();
+            result->success = false;
+            result->message = "Pending motion superseded or cleared before execution";
+            if (goal_handle->is_canceling()) goal_handle->canceled(result);
+            else goal_handle->abort(result);
+        });
+        if (!accepted)
+        {
+            auto result = std::make_shared<JointTrajectoryAction::Result>();
+            result->success = false;
+            result->message = "No feasible stop; current motion retained";
+            goal_handle->abort(result);
+        }
+    }
+
+    bool StateMoveJ::validateJointNames(
+        const std::vector<std::string>& request_joint_names,
+        std::string& error_msg)
+    {
+        if (request_joint_names.empty())
+        {
+            error_msg = "Joint names list is empty";
+            return false;
+        }
+
+        // 检查请求的关节名称是否都在控制器的关节列表中
+        for (const auto& req_joint : request_joint_names)
+        {
+            bool found = false;
+            for (const auto& ctrl_joint : joint_names_)
+            {
+                if (req_joint == ctrl_joint)
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                error_msg = "Joint '" + req_joint + "' not found in controller joints";
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    std::vector<double> StateMoveJ::getCurrentJointPositions(
+        const std::vector<std::string>& joint_names)
+    {
+        std::vector<double> positions;
+        positions.reserve(joint_names.size());
+
+        for (const auto& req_joint : joint_names)
+        {
+            // 找到对应关节的索引
+            for (size_t i = 0; i < joint_names_.size() &&
+                 i < ctrl_interfaces_.joint_position_state_interface_.size(); i++)
+            {
+                if (joint_names_[i] == req_joint)
+                {
+                    auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
+                    positions.push_back(value.value_or(0.0));
+                    break;
+                }
+            }
+        }
+
+        return positions;
+    }
+
+    std::vector<double> StateMoveJ::mapToFullJointPositions(
+        const std::vector<std::string>& request_joint_names,
+        const std::vector<double>& request_positions)
+    {
+        std::vector<double> full_positions(joint_names_.size(), 0.0);
+
+        // 先用当前值填充
+        for (size_t i = 0; i < joint_names_.size() &&
+             i < ctrl_interfaces_.joint_position_state_interface_.size(); i++)
+        {
+            auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
+            full_positions[i] = value.value_or(0.0);
+        }
+
+        // 更新请求中指定的关节
+        for (size_t i = 0; i < request_joint_names.size() && i < request_positions.size(); i++)
+        {
+            for (size_t j = 0; j < joint_names_.size(); j++)
+            {
+                if (joint_names_[j] == request_joint_names[i])
+                {
+                    full_positions[j] = request_positions[i];
+                    break;
+                }
+            }
+        }
+
+        return full_positions;
+    }
+
+    void StateMoveJ::handleJointTrajectory(
+        const std::shared_ptr<rmw_request_id_t> request_header,
+        const std::shared_ptr<robot_control_msgs::srv::JointTrajectory::Request> request,
+        const std::shared_ptr<robot_control_msgs::srv::JointTrajectory::Response> response)
+    {
+        (void)request_header;
+
+        std::lock_guard lock(target_mutex_);
+        std::string message;
+        double planned_duration = 0.0;
+        if (!startJointTrajectoryRequest(request->joint_names, request->waypoints, message, planned_duration))
+        {
+            response->success = false;
+            response->message = message;
+            response->planned_duration = 0.0;
+            return;
+        }
+
+        response->success = true;
+        response->message = message;
+        response->planned_duration = planned_duration;
+    }
+
+    bool StateMoveJ::startJointTrajectoryRequest(
+        const std::vector<std::string>& request_joint_names,
+        const std::vector<robot_control_msgs::msg::JointWaypoint>& request_waypoints,
+        std::string& message,
+        double& planned_duration)
+    {
+        if (!state_active_ || !validateWaypointRequest(request_joint_names, request_waypoints))
+        {
+            message = "Invalid joint trajectory request"; planned_duration = 0.0; return false;
+        }
+        updateParam();
+        if (interpolation_type_ == InterpolationType::SERVO)
+        {
+            message = "servo accepts joint_target_position, not timed trajectories";
+            planned_duration = 0.0;
+            return false;
+        }
+        if (!isMotionBusy() && !stop_to_zero_active_)
+        {
+            return startJointTrajectoryRequestImpl(
+                request_joint_names, request_waypoints, message, planned_duration);
+        }
+
+        const std::vector<std::string> captured_joint_names = request_joint_names;
+        const std::vector<robot_control_msgs::msg::JointWaypoint> captured_waypoints = request_waypoints;
+        const bool accepted = requestMotionOrDefer([this, captured_joint_names, captured_waypoints]()
+        {
+            std::string deferred_message;
+            double deferred_duration = 0.0;
+            startJointTrajectoryRequestImpl(
+                captured_joint_names, captured_waypoints, deferred_message, deferred_duration);
+        });
+
+        if (!accepted) { message = "No feasible stop; current motion retained"; planned_duration = 0; return false; }
+        message = "Joint trajectory deferred until stop-to-zero completes";
+        planned_duration = 0.0;
+        return true;
+    }
+
+    bool StateMoveJ::startJointTrajectoryRequestImpl(
+        const std::vector<std::string>& request_joint_names,
+        const std::vector<robot_control_msgs::msg::JointWaypoint>& request_waypoints,
+        std::string& message,
+        double& planned_duration)
+    {
+        if (!state_active_)
+        {
+            message = "StateMoveJ is not active";
+            planned_duration = 0.0;
+            return false;
+        }
+
+        updateParam();
+
+        if (interpolation_type_ == InterpolationType::SERVO)
+        {
+            message = "servo accepts joint_target_position, not timed trajectories";
+            planned_duration = 0.0;
+            return false;
+        }
+
+        // 2. 验证关节名称
+        std::string error_msg;
+        if (!validateJointNames(request_joint_names, error_msg))
+        {
+            message = error_msg;
+            planned_duration = 0.0;
+            return false;
+        }
+
+        // 3. 检查waypoints
+        if (request_waypoints.empty())
+        {
+            message = "No waypoints provided";
+            planned_duration = 0.0;
+            return false;
+        }
+
+        size_t num_joints = request_joint_names.size();
+        size_t num_waypoints = request_waypoints.size();
+
+        // 4. 验证每个waypoint
+        for (size_t i = 0; i < num_waypoints; i++)
+        {
+            const auto& wp = request_waypoints[i];
+
+            if (wp.position.size() != num_joints)
+            {
+                message = "Waypoint " + std::to_string(i) +
+                    " position size mismatch: expected " +
+                    std::to_string(num_joints) + ", got " +
+                    std::to_string(wp.position.size());
+                planned_duration = 0.0;
+                return false;
+            }
+
+            if (!wp.velocity.empty() && wp.velocity.size() != num_joints)
+            {
+                message = "Waypoint " + std::to_string(i) + " velocity size mismatch";
+                planned_duration = 0.0;
+                return false;
+            }
+        }
+
+        // All planners use controller joint order and full command dimension.
+        // Keep a single snapshot for all unspecified joints across every waypoint.
+        const bool use_doubles = trajectory_manager_.isDoublesAvailable() &&
+                                 interpolation_type_ == InterpolationType::DOUBLES;
+        std::vector<double> current_positions;
+        std::vector<robot_control_msgs::msg::JointWaypoint> full_waypoints;
+        const auto joint_indices = mapJointNames(request_joint_names);
+        current_positions = getCurrentJointPositions(joint_names_);
+        if (joint_indices.size() != num_joints ||
+            current_positions.size() != ctrl_interfaces_.joint_position_command_interface_.size())
+        {
+            message = "Cannot map trajectory to controller joint interfaces";
+            planned_duration = 0.0;
+            return false;
+        }
+
+        // Validate the real start for every planner; never replace it with a
+        // clamped position, which would introduce a discontinuity at execution.
+        for (size_t i = 0; i < current_positions.size(); ++i)
+        {
+            const auto feedback = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
+            if (!feedback || !std::isfinite(current_positions[i]))
+            {
+                message = "Invalid start position for joint '" + joint_names_[i] + "'";
+                planned_duration = 0.0;
+                return false;
+            }
+        }
+        if (joint_limit_checker_)
+        {
+            const auto limited_positions = joint_limit_checker_(current_positions);
+            if (limited_positions.size() != current_positions.size())
+            {
+                message = "Invalid start position limit check result";
+                planned_duration = 0.0;
+                return false;
+            }
+            for (size_t i = 0; i < current_positions.size(); ++i)
+            {
+                if (!std::isfinite(limited_positions[i]) ||
+                    std::abs(current_positions[i] - limited_positions[i]) > TARGET_EPSILON)
+                {
+                    message = "Start position outside joint limits for '" + joint_names_[i] +
+                        "': position=" + std::to_string(current_positions[i]) +
+                        ", limit boundary=" + std::to_string(limited_positions[i]);
+                    planned_duration = 0.0;
+                    return false;
+                }
+            }
+        }
+
+        full_waypoints = request_waypoints;
+        const auto map_array = [&](const std::vector<double>& values, double default_value)
+        {
+            if (values.empty())
+                return std::vector<double>{};
+            std::vector<double> full(joint_names_.size(), default_value);
+            for (size_t i = 0; i < joint_indices.size(); ++i)
+                full[joint_indices[i]] = values[i];
+            return full;
+        };
+        for (auto& wp : full_waypoints)
+        {
+            // Match the planner's existing fallback for absent/malformed limits.
+            const auto map_limit = [&](const std::vector<double>& values, double default_value)
+            {
+                return values.size() == num_joints
+                    ? map_array(values, default_value) : std::vector<double>{};
+            };
+            auto full_positions = current_positions;
+            for (size_t i = 0; i < joint_indices.size(); ++i)
+                full_positions[joint_indices[i]] = wp.position[i];
+            wp.position = applyJointLimits(full_positions, "joint trajectory waypoint");
+            wp.velocity = map_array(wp.velocity, 0.0);
+            wp.max_velocity = map_limit(wp.max_velocity, movej_max_velocity_);
+            wp.max_acceleration = map_limit(wp.max_acceleration, movej_max_acceleration_);
+            wp.max_jerk = map_limit(wp.max_jerk, movej_max_jerk_);
+        }
+
+        refreshHoldPositions();
+        use_prefix_filter_ = true;
+        joint_mask_.assign(joint_names_.size(), false);
+        for (size_t idx : joint_indices)
+            joint_mask_[idx] = true;
+        start_pos_ = current_positions;
+
+        // 6. 根据waypoints数量处理
+        if (num_waypoints == 1)
+        {
+            // ========== 单点目标运动 ==========
+            if (use_doubles)
+            {
+                if (!trajectory_manager_.planSingleTarget(current_positions, full_waypoints[0]))
+                {
+                    message = "Failed to plan single target trajectory";
+                    planned_duration = 0.0;
+                    return false;
+                }
+            }
+            else
+            {
+                double requested_duration = duration_;
+                if (request_waypoints[0].time_mode && request_waypoints[0].total_time > 1.0e-6)
+                {
+                    requested_duration = request_waypoints[0].total_time;
+                }
+
+                if (!trajectory_manager_.initSingleNode(
+                    start_pos_,
+                    full_waypoints[0].position,
+                    requested_duration,
+                    interpolation_type_,
+                    ctrl_interfaces_.frequency_,
+                    tanh_scale_))
+                {
+                    message = "Failed to initialize single target trajectory";
+                    planned_duration = 0.0;
+                    return false;
+                }
+            }
+            target_pos_ = full_waypoints[0].position;
+            has_target_ = true;
+            interpolation_active_ = true;
+            publishCurrentTargetJoint(target_pos_);
+
+            message = "Single target motion accepted";
+            planned_duration = trajectory_manager_.getPlanningTime();
+            RCLCPP_INFO(node_->get_logger(),
+                        "Joint trajectory service (single): %zu joints to target, duration=%.3f",
+                        num_joints, planned_duration);
+        }
+        else if (num_waypoints >= 2)
+        {
+            // ========== 多点轨迹规划 ==========
+            if (use_doubles)
+            {
+                if (!trajectory_manager_.planMultiTrajectory(current_positions, full_waypoints))
+                {
+                    message = "Failed to plan multi-point trajectory";
+                    planned_duration = 0.0;
+                    return false;
+                }
+            }
+            else
+            {
+                // Positions are already mapped; do not re-enter setTrajectory(),
+                // which would remap joints and replace the subset hold mask.
+                std::vector<std::vector<double>> positions;
+                positions.reserve(full_waypoints.size() + 1);
+                positions.push_back(current_positions);
+                for (const auto& wp : full_waypoints)
+                    positions.push_back(wp.position);
+                const auto durations = calculateSegmentDurations(
+                    positions, trajectory_manager_.getTrajectoryDuration());
+                if (!trajectory_manager_.initMultiNode(
+                    positions, {}, durations, interpolation_type_,
+                    ctrl_interfaces_.frequency_, tanh_scale_))
+                {
+                    message = "Failed to initialize multi-point trajectory";
+                    planned_duration = 0.0;
+                    return false;
+                }
+            }
+            target_pos_ = full_waypoints.back().position;
+            has_target_ = true;
+            interpolation_active_ = true;
+            publishCurrentTargetJoint(target_pos_);
+            message = "Multi-point trajectory accepted";
+            planned_duration = trajectory_manager_.getPlanningTime();
+
+
+            RCLCPP_INFO(node_->get_logger(),
+                        "Joint trajectory service (multi): %zu waypoints, %zu joints, total_time=%.3f",
+                        num_waypoints, num_joints, planned_duration);
+
+            // 打印轨迹信息（调试用）
+            RCLCPP_DEBUG(node_->get_logger(), "Trajectory with %zu waypoints", num_waypoints);
+        }
+        return true;
+    }
+
+    void StateMoveJ::publishJointTrajectoryFeedback()
+    {
+        if (!active_joint_trajectory_goal_ || !joint_trajectory_action_active_)
+        {
+            return;
+        }
+
+        const double elapsed = std::max(0.0, (node_->now() - joint_trajectory_action_start_time_).seconds());
+        const double remaining = std::max(0.0, joint_trajectory_planned_duration_ - elapsed);
+        double progress = std::clamp(trajectory_manager_.getProgress(), 0.0, 1.0);
+
+        auto feedback = std::make_shared<JointTrajectoryAction::Feedback>();
+        feedback->progress = progress;
+        feedback->elapsed_time = elapsed;
+        feedback->remaining_time = remaining;
+        active_joint_trajectory_goal_->publish_feedback(feedback);
+    }
+
+    void StateMoveJ::publishWaistLiftingPoseFeedback()
+    {
+        if (!active_waist_lifting_pose_goal_ || !waist_lifting_pose_action_active_)
+        {
+            return;
+        }
+        const double elapsed =
+            std::max(0.0, (node_->now() - waist_lifting_pose_action_start_time_).seconds());
+        const double duration = std::max(waist_lifting_duration_, 1.0e-3);
+        auto feedback = std::make_shared<WaistLiftingPoseAction::Feedback>();
+        feedback->progress = std::clamp(elapsed / duration, 0.0, 1.0);
+        active_waist_lifting_pose_goal_->publish_feedback(feedback);
+    }
+
+    void StateMoveJ::finishWaistLiftingPoseAction(
+        bool success, int32_t error_code, const std::string& message)
+    {
+        if (!active_waist_lifting_pose_goal_ || !waist_lifting_pose_action_active_)
+        {
+            return;
+        }
+        auto result = std::make_shared<WaistLiftingPoseAction::Result>();
+        result->reachable = waist_lifting_pose_reachable_;
+        result->success = success;
+        result->planned_x = waist_lifting_pose_planned_target_.x();
+        result->planned_z = waist_lifting_pose_planned_target_.y();
+        result->planned_phi = waist_lifting_pose_planned_target_.z();
+        result->error_code = error_code;
+        result->message = message;
+
+        if (error_code == WaistLiftingPoseAction::Result::ERROR_CANCELED)
+        {
+            active_waist_lifting_pose_goal_->canceled(result);
+        }
+        else if (success)
+        {
+            active_waist_lifting_pose_goal_->succeed(result);
+        }
+        else
+        {
+            active_waist_lifting_pose_goal_->abort(result);
+        }
+        active_waist_lifting_pose_goal_.reset();
+        waist_lifting_pose_action_active_ = false;
+    }
+
+    void StateMoveJ::finishJointTrajectoryAction(bool success, bool canceled, const std::string& message)
+    {
+        if (!active_joint_trajectory_goal_ || !joint_trajectory_action_active_)
+        {
+            return;
+        }
+
+        auto result = std::make_shared<JointTrajectoryAction::Result>();
+        result->success = success;
+        result->message = message;
+        result->planned_duration = joint_trajectory_planned_duration_;
+        result->actual_duration = std::max(0.0, (node_->now() - joint_trajectory_action_start_time_).seconds());
+
+        if (canceled)
+        {
+            active_joint_trajectory_goal_->canceled(result);
+        }
+        else if (success)
+        {
+            active_joint_trajectory_goal_->succeed(result);
+        }
+        else
+        {
+            active_joint_trajectory_goal_->abort(result);
+        }
+
+        active_joint_trajectory_goal_.reset();
+        joint_trajectory_action_active_ = false;
+        joint_trajectory_planned_duration_ = 0.0;
+    }
+
+    void StateMoveJ::setKinematicsSolver(const std::shared_ptr<ArmKinematics>& kinematics)
+    {
+        cartesian_manager_.setKinematicsSolver(kinematics);
+    }
+
+    void StateMoveJ::setupLinearTrajectoryService(const std::string& service_name)
+    {
+        std::string full_service_name = node_->get_name() + std::string("/") + service_name;
+
+        linear_trajectory_service_ = node_->create_service<robot_control_msgs::srv::ExecuteLinear>(
+            full_service_name,
+            std::bind(&StateMoveJ::handleLinearTrajectory, this,
+                      std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+
+        RCLCPP_DEBUG(node_->get_logger(), "Created linear trajectory service at %s",
+                     full_service_name.c_str());
+    }
+
+    void StateMoveJ::setupLinearTrajectoryAction(const std::string& action_name)
+    {
+        std::string full_action_name = node_->get_name() + std::string("/") + action_name;
+
+        linear_trajectory_action_server_ = rclcpp_action::create_server<ExecuteLinearAction>(
+            node_,
+            full_action_name,
+            std::bind(&StateMoveJ::handleLinearGoal, this, std::placeholders::_1, std::placeholders::_2),
+            std::bind(&StateMoveJ::handleLinearCancel, this, std::placeholders::_1),
+            std::bind(&StateMoveJ::handleLinearAccepted, this, std::placeholders::_1));
+
+        RCLCPP_DEBUG(node_->get_logger(), "Created linear trajectory action at %s",
+                     full_action_name.c_str());
+    }
+
+    void StateMoveJ::setCartesianTfBuffer(std::shared_ptr<tf2_ros::Buffer> buffer)
+    {
+#ifdef HAS_MOTION_PLANNING
+        cartesian_tf_buffer_ = std::move(buffer);
+#else
+        (void)buffer;
+#endif
+    }
+
+#ifdef HAS_MOTION_PLANNING
+    bool StateMoveJ::transformCartesianPoseStamped(
+        const geometry_msgs::msg::PoseStamped& in,
+        geometry_msgs::msg::PoseStamped& out)
+    {
+        const std::string target_frame = cartesian_defaults_.frame_id;
+        if (in.header.frame_id.empty() || in.header.frame_id == target_frame)
+        {
+            out = in;
+            if (out.header.frame_id.empty())
+            {
+                out.header.frame_id = target_frame;
+            }
+            return true;
+        }
+
+        if (!cartesian_tf_buffer_)
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "Cannot transform MOVEJ cartesian pose from %s: TF buffer unavailable",
+                        in.header.frame_id.c_str());
+            return false;
+        }
+
+        try
+        {
+            const geometry_msgs::msg::TransformStamped transform =
+                cartesian_tf_buffer_->lookupTransform(
+                    target_frame, in.header.frame_id, tf2::TimePointZero);
+            tf2::doTransform(in, out, transform);
+            out.header.frame_id = target_frame;
+            return true;
+        }
+        catch (const tf2::TransformException& ex)
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "Cannot transform MOVEJ cartesian pose from %s to %s: %s",
+                        in.header.frame_id.c_str(), target_frame.c_str(), ex.what());
+            return false;
+        }
+    }
+
+    void StateMoveJ::handleCartesianStampedTarget(
+        const std::string& arm_name,
+        const geometry_msgs::msg::PoseStamped& pose_stamped)
+    {
+        if (!state_active_)
+        {
+            return;
+        }
+
+        geometry_msgs::msg::PoseStamped transformed;
+        if (!transformCartesianPoseStamped(pose_stamped, transformed))
+        {
+            return;
+        }
+
+        robot_control_msgs::msg::LinearMessage linear_params;
+        linear_params.arm_name = arm_name;
+        linear_params.endpoint = transformed.pose;
+        linear_params.frame_id = transformed.header.frame_id;
+        linear_params.time_mode = false;
+        linear_params.ik_type = "DLS";
+
+        std::lock_guard lock(target_mutex_);
+        std::string message;
+        double estimated_duration = 0.0;
+        if (!startLinearTrajectory(linear_params, message, estimated_duration))
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "MOVEJ stamped MoveL rejected (%s): %s",
+                        arm_name.c_str(), message.c_str());
+            return;
+        }
+        RCLCPP_DEBUG(node_->get_logger(),
+                     "MOVEJ stamped MoveL accepted (%s), estimated_duration=%.3f",
+                     arm_name.c_str(), estimated_duration);
+    }
+
+    void StateMoveJ::handleDualCartesianStampedTarget(const nav_msgs::msg::Path& path)
+    {
+        if (!state_active_)
+        {
+            return;
+        }
+
+        if (path.poses.size() != 2 && path.poses.size() != 3)
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "dual_target/stamped must contain 2 or 3 poses, got %zu",
+                        path.poses.size());
+            return;
+        }
+
+        if (path.poses.size() == 3)
+        {
+            RCLCPP_DEBUG(node_->get_logger(),
+                         "dual_target/stamped includes a body pose; MOVEJ IK MoveL uses left/right only");
+        }
+
+        geometry_msgs::msg::PoseStamped left_in = path.poses[0];
+        geometry_msgs::msg::PoseStamped right_in = path.poses[1];
+        if (left_in.header.frame_id.empty())
+        {
+            left_in.header.frame_id = path.header.frame_id;
+        }
+        if (right_in.header.frame_id.empty())
+        {
+            right_in.header.frame_id = path.header.frame_id;
+        }
+
+        geometry_msgs::msg::PoseStamped left_out;
+        geometry_msgs::msg::PoseStamped right_out;
+        if (!transformCartesianPoseStamped(left_in, left_out) ||
+            !transformCartesianPoseStamped(right_in, right_out))
+        {
+            return;
+        }
+
+        robot_control_msgs::msg::LinearMessage linear_params;
+        linear_params.arm_name = "both";
+        linear_params.endpoint = left_out.pose;
+        linear_params.right_endpoint = right_out.pose;
+        linear_params.frame_id = left_out.header.frame_id;
+        linear_params.time_mode = false;
+        linear_params.ik_type = "DLS";
+
+        std::lock_guard lock(target_mutex_);
+        std::string message;
+        double estimated_duration = 0.0;
+        if (!startLinearTrajectory(linear_params, message, estimated_duration))
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "MOVEJ dual stamped MoveL rejected: %s", message.c_str());
+            return;
+        }
+        RCLCPP_DEBUG(node_->get_logger(),
+                     "MOVEJ dual stamped MoveL accepted, estimated_duration=%.3f",
+                     estimated_duration);
+    }
+#else
+    void StateMoveJ::handleCartesianStampedTarget(
+        const std::string& /*arm_name*/,
+        const geometry_msgs::msg::PoseStamped& /*pose_stamped*/)
+    {
+    }
+
+    void StateMoveJ::handleDualCartesianStampedTarget(const nav_msgs::msg::Path& /*path*/)
+    {
+    }
+#endif
+
+    rclcpp_action::GoalResponse StateMoveJ::handleLinearGoal(
+        const rclcpp_action::GoalUUID& uuid,
+        std::shared_ptr<const ExecuteLinearAction::Goal> goal)
+    {
+        (void)uuid;
+        (void)goal;
+
+        std::lock_guard lock(target_mutex_);
+        if (!state_active_)
+        {
+            RCLCPP_WARN(node_->get_logger(), "Rejecting MoveL action goal: StateMoveJ is not active");
+            return rclcpp_action::GoalResponse::REJECT;
+        }
+        return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+    }
+
+    rclcpp_action::CancelResponse StateMoveJ::handleLinearCancel(
+        const std::shared_ptr<ExecuteLinearGoalHandle> goal_handle)
+    {
+        (void)goal_handle;
+        return rclcpp_action::CancelResponse::ACCEPT;
+    }
+
+    void StateMoveJ::handleLinearAccepted(
+        const std::shared_ptr<ExecuteLinearGoalHandle> goal_handle)
+    {
+        std::lock_guard lock(target_mutex_);
+        const robot_control_msgs::msg::LinearMessage linear_params =
+            goal_handle->get_goal()->linear_params;
+
+        const bool accepted = requestMotionOrDefer([this, goal_handle, linear_params]()
+        {
+            if (goal_handle->is_canceling())
+            {
+                auto result = std::make_shared<ExecuteLinearAction::Result>();
+                result->success = false;
+                result->message = "Canceled before execution";
+                goal_handle->canceled(result);
+                return;
+            }
+            std::string message;
+            double estimated_duration = 0.0;
+            if (!startLinearTrajectoryImpl(linear_params, message, estimated_duration))
+            {
+                auto result = std::make_shared<ExecuteLinearAction::Result>();
+                result->success = false;
+                result->message = message;
+                result->estimated_duration = 0.0;
+                result->actual_duration = 0.0;
+                goal_handle->abort(result);
+                return;
+            }
+
+            active_linear_goal_ = goal_handle;
+            linear_action_start_time_ = node_->now();
+            linear_action_estimated_duration_ = estimated_duration;
+            linear_action_active_ = true;
+            publishLinearFeedback();
+            RCLCPP_INFO(node_->get_logger(), "MoveL action started: duration=%.3f", estimated_duration);
+        }, [goal_handle]()
+        {
+            if (!goal_handle->is_active()) return;
+            auto result = std::make_shared<ExecuteLinearAction::Result>();
+            result->success = false;
+            result->message = "Pending motion superseded or cleared before execution";
+            if (goal_handle->is_canceling()) goal_handle->canceled(result);
+            else goal_handle->abort(result);
+        });
+        if (!accepted)
+        {
+            auto result = std::make_shared<ExecuteLinearAction::Result>();
+            result->success = false;
+            result->message = "No feasible stop; current motion retained";
+            goal_handle->abort(result);
+        }
+    }
+
+    void StateMoveJ::handleLinearTrajectory(
+        const std::shared_ptr<rmw_request_id_t> request_header,
+        const std::shared_ptr<robot_control_msgs::srv::ExecuteLinear::Request> request,
+        const std::shared_ptr<robot_control_msgs::srv::ExecuteLinear::Response> response)
+    {
+        (void)request_header;
+
+        std::lock_guard lock(target_mutex_);
+        std::string message;
+        double estimated_duration = 0.0;
+        if (!startLinearTrajectory(request->linear_params, message, estimated_duration))
+        {
+            response->success = false;
+            response->message = message;
+            response->estimated_duration = 0.0;
+            return;
+        }
+
+        response->success = true;
+        response->message = message;
+        response->estimated_duration = estimated_duration;
+    }
+
+    bool StateMoveJ::startLinearTrajectory(
+        const robot_control_msgs::msg::LinearMessage& linear_params,
+        std::string& message,
+        double& estimated_duration)
+    {
+        if (!isMotionBusy() && !stop_to_zero_active_)
+        {
+            return startLinearTrajectoryImpl(linear_params, message, estimated_duration);
+        }
+
+        const robot_control_msgs::msg::LinearMessage captured_params = linear_params;
+        const bool accepted = requestMotionOrDefer([this, captured_params]()
+        {
+            std::string deferred_message;
+            double deferred_duration = 0.0;
+            startLinearTrajectoryImpl(captured_params, deferred_message, deferred_duration);
+        });
+        if (!accepted)
+        {
+            message = "No feasible stop; current motion retained";
+            estimated_duration = 0.0;
+            return false;
+        }
+
+
+        message = "MoveL deferred until stop-to-zero completes";
+        estimated_duration = 0.0;
+        return true;
+    }
+
+    bool StateMoveJ::startLinearTrajectoryImpl(
+        const robot_control_msgs::msg::LinearMessage& linear_params,
+        std::string& message,
+        double& estimated_duration)
+    {
+        if (!state_active_)
+        {
+            message = "StateMoveJ is not active";
+            estimated_duration = 0.0;
+            return false;
+        }
+
+        updateParam();
+        const auto resolved_linear_params = applyCartesianDefaults(linear_params);
+
+        // 2. 验证请求参数
+        std::string error_msg;
+        if (!validateLinearRequest(resolved_linear_params, error_msg))
+        {
+            message = error_msg;
+            estimated_duration = 0.0;
+            return false;
+        }
+
+        if (move_cartesian_joint_names_.empty())
+        {
+            message = "MoveL joint names not initialized";
+            estimated_duration = 0.0;
+            return false;
+        }
+
+        // 3. 获取当前关节位置
+        std::vector<double> current_joint_positions = getCurrentJointPositions(move_cartesian_joint_names_);
+        if (current_joint_positions.empty())
+        {
+            message = "Failed to get current joint positions for " + resolved_linear_params.arm_name + " arm";
+            estimated_duration = 0.0;
+            return false;
+        }
+
+        // 4. 规划 MoveL 轨迹
+        double period = 1.0 / ctrl_interfaces_.frequency_;
+
+        const bool dual_arm = (resolved_linear_params.arm_name == "both");
+        const bool plan_success = dual_arm
+                                      ? cartesian_manager_.planDualArmMoveL(
+                                          current_joint_positions, resolved_linear_params, period)
+                                      : cartesian_manager_.planSingleArmMoveL(
+                                          current_joint_positions, resolved_linear_params, period);
+        if (!plan_success)
+        {
+            message = cartesian_manager_.getLastError();
+            if (message.empty())
+            {
+                message = "Failed to plan MoveL trajectory";
+            }
+            estimated_duration = 0.0;
+            return false;
+        }
+
+        // 5. 设置成功响应
+        trajectory_manager_.reset();
+        interpolation_active_ = false;
+        has_target_ = false;
+
+        motion_mode_ = MotionMode::MOVECARTESIAN;
+        move_cartesian_active_ = true;
+
+        message = "MoveL trajectory accepted";
+        estimated_duration = cartesian_manager_.getPlanningTime();
+        RCLCPP_INFO(node_->get_logger(),
+                    "Linear trajectory service: planned MoveL for arm '%s', duration=%.3f",
+                    resolved_linear_params.arm_name.c_str(),
+                    estimated_duration);
+        return true;
+    }
+
+    void StateMoveJ::publishLinearFeedback()
+    {
+        if (!active_linear_goal_ || !linear_action_active_)
+        {
+            return;
+        }
+
+        const double elapsed = std::max(0.0, (node_->now() - linear_action_start_time_).seconds());
+        const double remaining = std::max(0.0, linear_action_estimated_duration_ - elapsed);
+        double progress = 0.0;
+        if (linear_action_estimated_duration_ > 1.0e-9)
+        {
+            progress = std::clamp(elapsed / linear_action_estimated_duration_, 0.0, 1.0);
+        }
+
+        auto feedback = std::make_shared<ExecuteLinearAction::Feedback>();
+        feedback->progress = progress;
+        feedback->elapsed_time = elapsed;
+        feedback->remaining_time = remaining;
+        active_linear_goal_->publish_feedback(feedback);
+    }
+
+    void StateMoveJ::finishLinearAction(bool success, bool canceled, const std::string& message)
+    {
+        if (!active_linear_goal_ || !linear_action_active_)
+        {
+            return;
+        }
+
+        auto result = std::make_shared<ExecuteLinearAction::Result>();
+        result->success = success;
+        result->message = message;
+        result->estimated_duration = linear_action_estimated_duration_;
+        result->actual_duration = std::max(0.0, (node_->now() - linear_action_start_time_).seconds());
+
+        if (canceled)
+        {
+            active_linear_goal_->canceled(result);
+        }
+        else if (success)
+        {
+            active_linear_goal_->succeed(result);
+        }
+        else
+        {
+            active_linear_goal_->abort(result);
+        }
+
+        active_linear_goal_.reset();
+        linear_action_active_ = false;
+        linear_action_estimated_duration_ = 0.0;
+    }
+
+    bool StateMoveJ::validateLinearRequest(
+        const robot_control_msgs::msg::LinearMessage& linear_params,
+        std::string& error_msg)
+    {
+        // 验证手臂名称
+        if (linear_params.arm_name.empty())
+        {
+            error_msg = "arm_name is empty";
+            return false;
+        }
+
+        if (linear_params.arm_name != "left" &&
+            linear_params.arm_name != "right" &&
+            linear_params.arm_name != "both")
+        {
+            error_msg = "arm_name must be 'left', 'right' or 'both', got: " + linear_params.arm_name;
+            return false;
+        }
+
+        // 验证坐标系
+        if (linear_params.frame_id.empty())
+        {
+            error_msg = "frame_id is empty";
+            return false;
+        }
+
+        // 验证运动参数
+        if (linear_params.time_mode)
+        {
+            // 时间模式：需要有效的 duration
+            if (linear_params.duration <= 0.001)
+            {
+                error_msg = "Invalid duration in time mode: " + std::to_string(linear_params.duration);
+                return false;
+            }
+        }
+        else
+        {
+            // 参数约束模式：验证速度、加速度等参数
+            if (linear_params.max_linear_velocity <= 0.0)
+            {
+                error_msg = "max_linear_velocity must be > 0 in constraint mode";
+                return false;
+            }
+
+            if (linear_params.max_linear_acceleration <= 0.0)
+            {
+                error_msg = "max_linear_acceleration must be > 0 in constraint mode";
+                return false;
+            }
+
+            if (linear_params.max_linear_jerk <= 0.0)
+            {
+                error_msg = "max_linear_jerk must be > 0 in constraint mode";
+                return false;
+            }
+
+            if (linear_params.max_angular_velocity <= 0.0)
+            {
+                error_msg = "max_angular_velocity must be > 0 in constraint mode";
+                return false;
+            }
+
+            if (linear_params.max_angular_acceleration <= 0.0)
+            {
+                error_msg = "max_angular_acceleration must be > 0 in constraint mode";
+                return false;
+            }
+
+            if (linear_params.max_angular_jerk <= 0.0)
+            {
+                error_msg = "max_angular_jerk must be > 0 in constraint mode";
+                return false;
+            }
+        }
+
+        // 验证终点位姿
+        // 检查位置是否有效（非 NaN）
+        if (std::isnan(linear_params.endpoint.position.x) ||
+            std::isnan(linear_params.endpoint.position.y) ||
+            std::isnan(linear_params.endpoint.position.z))
+        {
+            error_msg = "Endpoint position contains NaN values";
+            return false;
+        }
+
+        // 检查四元数是否有效（非 NaN 且模长接近 1）
+        double qx = linear_params.endpoint.orientation.x;
+        double qy = linear_params.endpoint.orientation.y;
+        double qz = linear_params.endpoint.orientation.z;
+        double qw = linear_params.endpoint.orientation.w;
+
+        if (std::isnan(qx) || std::isnan(qy) || std::isnan(qz) || std::isnan(qw))
+        {
+            error_msg = "Endpoint orientation contains NaN values";
+            return false;
+        }
+
+        double norm = std::sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+        if (std::abs(norm - 1.0) > 0.01)
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "Quaternion norm is %.3f (should be 1.0), auto-normalizing", norm);
+            // 可以选择自动归一化，这里只是警告
+        }
+
+        if (linear_params.arm_name == "both")
+        {
+            if (std::isnan(linear_params.right_endpoint.position.x) ||
+                std::isnan(linear_params.right_endpoint.position.y) ||
+                std::isnan(linear_params.right_endpoint.position.z))
+            {
+                error_msg = "Right endpoint position contains NaN values";
+                return false;
+            }
+
+            qx = linear_params.right_endpoint.orientation.x;
+            qy = linear_params.right_endpoint.orientation.y;
+            qz = linear_params.right_endpoint.orientation.z;
+            qw = linear_params.right_endpoint.orientation.w;
+            if (std::isnan(qx) || std::isnan(qy) || std::isnan(qz) || std::isnan(qw))
+            {
+                error_msg = "Right endpoint orientation contains NaN values";
+                return false;
+            }
+
+            norm = std::sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+            if (std::abs(norm - 1.0) > 0.01)
+            {
+                RCLCPP_WARN(node_->get_logger(),
+                            "Right quaternion norm is %.3f (should be 1.0), auto-normalizing", norm);
+            }
+        }
+
+        // 添加 kinematics 检查cartesian_manager_
+        if (!cartesian_manager_.hasKinematics()) // 需要添加这个方法
+        {
+            error_msg = "Kinematics solver not set for MoveL planning";
+            return false;
+        }
+
+        //更新movel要用的关节名称列表
+        move_cartesian_joint_names_ = cartesian_manager_.getMovelJointNames(linear_params.arm_name);
+
+        return true;
+    }
+
+
+    void StateMoveJ::setupCircleTrajectoryService(const std::string& service_name)
+    {
+        std::string full_service_name = node_->get_name() + std::string("/") + service_name;
+
+        circle_trajectory_service_ = node_->create_service<robot_control_msgs::srv::MovecUseIK>(
+            full_service_name,
+            std::bind(&StateMoveJ::handleCircleTrajectory, this,
+                      std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+
+        RCLCPP_DEBUG(node_->get_logger(), "Created circle trajectory service at %s",
+                     full_service_name.c_str());
+    }
+
+    void StateMoveJ::setupCircleTrajectoryAction(const std::string& action_name)
+    {
+        std::string full_action_name = node_->get_name() + std::string("/") + action_name;
+
+        circle_trajectory_action_server_ = rclcpp_action::create_server<MovecUseIKAction>(
+            node_,
+            full_action_name,
+            std::bind(&StateMoveJ::handleCircleGoal, this, std::placeholders::_1, std::placeholders::_2),
+            std::bind(&StateMoveJ::handleCircleCancel, this, std::placeholders::_1),
+            std::bind(&StateMoveJ::handleCircleAccepted, this, std::placeholders::_1));
+
+        RCLCPP_DEBUG(node_->get_logger(), "Created circle trajectory action at %s",
+                     full_action_name.c_str());
+    }
+
+    rclcpp_action::GoalResponse StateMoveJ::handleCircleGoal(
+        const rclcpp_action::GoalUUID& uuid,
+        std::shared_ptr<const MovecUseIKAction::Goal> goal)
+    {
+        (void)uuid;
+        (void)goal;
+
+        std::lock_guard lock(target_mutex_);
+        if (!state_active_)
+        {
+            RCLCPP_WARN(node_->get_logger(), "Rejecting MoveC action goal: StateMoveJ is not active");
+            return rclcpp_action::GoalResponse::REJECT;
+        }
+        return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+    }
+
+    rclcpp_action::CancelResponse StateMoveJ::handleCircleCancel(
+        const std::shared_ptr<MovecUseIKGoalHandle> goal_handle)
+    {
+        (void)goal_handle;
+        return rclcpp_action::CancelResponse::ACCEPT;
+    }
+
+    void StateMoveJ::handleCircleAccepted(
+        const std::shared_ptr<MovecUseIKGoalHandle> goal_handle)
+    {
+        std::lock_guard lock(target_mutex_);
+        const robot_control_msgs::msg::CircleMessage circle_params =
+            goal_handle->get_goal()->circle_params;
+
+        const bool accepted = requestMotionOrDefer([this, goal_handle, circle_params]()
+        {
+            if (goal_handle->is_canceling())
+            {
+                auto result = std::make_shared<MovecUseIKAction::Result>();
+                result->success = false;
+                result->message = "Canceled before execution";
+                goal_handle->canceled(result);
+                return;
+            }
+            std::string message;
+            double estimated_duration = 0.0;
+            if (!startCircleTrajectoryImpl(circle_params, message, estimated_duration))
+            {
+                auto result = std::make_shared<MovecUseIKAction::Result>();
+                result->success = false;
+                result->message = message;
+                result->estimated_duration = 0.0;
+                result->actual_duration = 0.0;
+                goal_handle->abort(result);
+                return;
+            }
+
+            active_circle_goal_ = goal_handle;
+            circle_action_start_time_ = node_->now();
+            circle_action_estimated_duration_ = estimated_duration;
+            circle_action_active_ = true;
+            publishCircleFeedback();
+            RCLCPP_INFO(node_->get_logger(), "MoveC action started: duration=%.3f", estimated_duration);
+        }, [goal_handle]()
+        {
+            if (!goal_handle->is_active()) return;
+            auto result = std::make_shared<MovecUseIKAction::Result>();
+            result->success = false;
+            result->message = "Pending motion superseded or cleared before execution";
+            if (goal_handle->is_canceling()) goal_handle->canceled(result);
+            else goal_handle->abort(result);
+        });
+        if (!accepted)
+        {
+            auto result = std::make_shared<MovecUseIKAction::Result>();
+            result->success = false;
+            result->message = "No feasible stop; current motion retained";
+            goal_handle->abort(result);
+        }
+    }
+
+    // Service handler for Movec
+    void StateMoveJ::handleCircleTrajectory(
+        const std::shared_ptr<rmw_request_id_t> request_header,
+        const std::shared_ptr<robot_control_msgs::srv::MovecUseIK::Request> request,
+        const std::shared_ptr<robot_control_msgs::srv::MovecUseIK::Response> response)
+    {
+        (void)request_header;
+
+        std::lock_guard lock(target_mutex_);
+        std::string message;
+        double estimated_duration = 0.0;
+        if (!startCircleTrajectory(request->circle_params, message, estimated_duration))
+        {
+            response->success = false;
+            response->message = message;
+            response->estimated_duration = 0.0;
+            return;
+        }
+
+        response->success = true;
+        response->message = message;
+        response->estimated_duration = estimated_duration;
+    }
+
+    bool StateMoveJ::startCircleTrajectory(
+        const robot_control_msgs::msg::CircleMessage& circle_params,
+        std::string& message,
+        double& estimated_duration)
+    {
+        if (!isMotionBusy() && !stop_to_zero_active_)
+        {
+            return startCircleTrajectoryImpl(circle_params, message, estimated_duration);
+        }
+
+        const robot_control_msgs::msg::CircleMessage captured_params = circle_params;
+        const bool accepted = requestMotionOrDefer([this, captured_params]()
+        {
+            std::string deferred_message;
+            double deferred_duration = 0.0;
+            startCircleTrajectoryImpl(captured_params, deferred_message, deferred_duration);
+        });
+        if (!accepted)
+        {
+            message = "No feasible stop; current motion retained";
+            estimated_duration = 0.0;
+            return false;
+        }
+
+
+        message = "MoveC deferred until stop-to-zero completes";
+        estimated_duration = 0.0;
+        return true;
+    }
+
+    bool StateMoveJ::startCircleTrajectoryImpl(
+        const robot_control_msgs::msg::CircleMessage& circle_params,
+        std::string& message,
+        double& estimated_duration)
+    {
+        if (!state_active_)
+        {
+            message = "StateMoveJ is not active";
+            estimated_duration = 0.0;
+            return false;
+        }
+
+        updateParam();
+        const auto resolved_circle_params = applyCartesianDefaults(circle_params);
+
+        // 2. 验证请求参数
+        std::string error_msg;
+        if (!validateCircleRequest(resolved_circle_params, error_msg))
+        {
+            message = error_msg;
+            estimated_duration = 0.0;
+            return false;
+        }
+
+        if (move_cartesian_joint_names_.empty())
+        {
+            message = "Move cartesian joint names not initialized";
+            estimated_duration = 0.0;
+            return false;
+        }
+
+        // 3. 获取当前关节位置
+        std::vector<double> current_joint_positions = getCurrentJointPositions(move_cartesian_joint_names_);
+        if (current_joint_positions.empty())
+        {
+            message = "Failed to get current joint positions for " + resolved_circle_params.arm_name + " arm";
+            estimated_duration = 0.0;
+            return false;
+        }
+
+        // 4. 规划 MoveC 轨迹
+        double period = 1.0 / ctrl_interfaces_.frequency_;
+
+        const bool dual_arm = (resolved_circle_params.arm_name == "both");
+        const bool plan_success = dual_arm
+                                      ? cartesian_manager_.planDualArmMoveC(
+                                          current_joint_positions, resolved_circle_params, period)
+                                      : cartesian_manager_.planSingleArmMoveC(
+                                          current_joint_positions, resolved_circle_params, period);
+        if (!plan_success)
+        {
+            message = cartesian_manager_.getLastError();
+            if (message.empty())
+            {
+                message = "Failed to plan MoveC trajectory";
+            }
+            estimated_duration = 0.0;
+            return false;
+        }
+
+        // 5. 设置成功响应
+        trajectory_manager_.reset();
+        interpolation_active_ = false;
+        has_target_ = false;
+
+        motion_mode_ = MotionMode::MOVECARTESIAN;
+        move_cartesian_active_ = true;
+
+        message = "MoveC trajectory accepted";
+        estimated_duration = cartesian_manager_.getPlanningTime();
+        RCLCPP_INFO(node_->get_logger(),
+                    "Circle trajectory service: planned MoveC for arm '%s', duration=%.3f",
+                    resolved_circle_params.arm_name.c_str(),
+                    estimated_duration);
+        return true;
+    }
+
+    void StateMoveJ::publishCircleFeedback()
+    {
+        if (!active_circle_goal_ || !circle_action_active_)
+        {
+            return;
+        }
+
+        const double elapsed = std::max(0.0, (node_->now() - circle_action_start_time_).seconds());
+        const double remaining = std::max(0.0, circle_action_estimated_duration_ - elapsed);
+        double progress = 0.0;
+        if (circle_action_estimated_duration_ > 1.0e-9)
+        {
+            progress = std::clamp(elapsed / circle_action_estimated_duration_, 0.0, 1.0);
+        }
+
+        auto feedback = std::make_shared<MovecUseIKAction::Feedback>();
+        feedback->progress = progress;
+        feedback->elapsed_time = elapsed;
+        feedback->remaining_time = remaining;
+        active_circle_goal_->publish_feedback(feedback);
+    }
+
+    void StateMoveJ::finishCircleAction(bool success, bool canceled, const std::string& message)
+    {
+        if (!active_circle_goal_ || !circle_action_active_)
+        {
+            return;
+        }
+
+        auto result = std::make_shared<MovecUseIKAction::Result>();
+        result->success = success;
+        result->message = message;
+        result->estimated_duration = circle_action_estimated_duration_;
+        result->actual_duration = std::max(0.0, (node_->now() - circle_action_start_time_).seconds());
+
+        if (canceled)
+        {
+            active_circle_goal_->canceled(result);
+        }
+        else if (success)
+        {
+            active_circle_goal_->succeed(result);
+        }
+        else
+        {
+            active_circle_goal_->abort(result);
+        }
+
+        active_circle_goal_.reset();
+        circle_action_active_ = false;
+        circle_action_estimated_duration_ = 0.0;
+    }
+
+    // 添加 MoveL 相关的辅助方法
+    bool StateMoveJ::validateCircleRequest(const robot_control_msgs::msg::CircleMessage& circle_params,
+                                           std::string& error_msg)
+    {
+        // 验证手臂名称
+        if (circle_params.arm_name.empty())
+        {
+            error_msg = "arm_name is empty";
+            return false;
+        }
+
+        if (circle_params.arm_name != "left" &&
+            circle_params.arm_name != "right" &&
+            circle_params.arm_name != "both")
+        {
+            error_msg = "arm_name must be 'left', 'right' or 'both', got: " + circle_params.arm_name;
+            return false;
+        }
+
+        // 验证坐标系
+        if (circle_params.frame_id.empty())
+        {
+            error_msg = "frame_id is empty";
+            return false;
+        }
+
+        // 验证运动参数
+        if (circle_params.time_mode)
+        {
+            // 时间模式：需要有效的 duration
+            if (circle_params.duration <= 0.001)
+            {
+                error_msg = "Invalid duration in time mode: " + std::to_string(circle_params.duration);
+                return false;
+            }
+        }
+        else
+        {
+            // 参数约束模式：验证速度、加速度等参数
+            if (circle_params.max_linear_velocity <= 0.0)
+            {
+                error_msg = "max_linear_velocity must be > 0 in constraint mode";
+                return false;
+            }
+
+            if (circle_params.max_linear_acceleration <= 0.0)
+            {
+                error_msg = "max_linear_acceleration must be > 0 in constraint mode";
+                return false;
+            }
+
+            if (circle_params.max_linear_jerk <= 0.0)
+            {
+                error_msg = "max_linear_jerk must be > 0 in constraint mode";
+                return false;
+            }
+
+            if (circle_params.max_angular_velocity <= 0.0)
+            {
+                error_msg = "max_angular_velocity must be > 0 in constraint mode";
+                return false;
+            }
+
+            if (circle_params.max_angular_acceleration <= 0.0)
+            {
+                error_msg = "max_angular_acceleration must be > 0 in constraint mode";
+                return false;
+            }
+
+            if (circle_params.max_angular_jerk <= 0.0)
+            {
+                error_msg = "max_angular_jerk must be > 0 in constraint mode";
+                return false;
+            }
+        }
+
+        // 验证终点位姿
+        // 检查位置是否有效（非 NaN）
+        if (std::isnan(circle_params.endpoint.position.x) ||
+            std::isnan(circle_params.endpoint.position.y) ||
+            std::isnan(circle_params.endpoint.position.z))
+        {
+            error_msg = "Endpoint position contains NaN values";
+            return false;
+        }
+
+        // 检查四元数是否有效（非 NaN 且模长接近 1）
+        double qx = circle_params.endpoint.orientation.x;
+        double qy = circle_params.endpoint.orientation.y;
+        double qz = circle_params.endpoint.orientation.z;
+        double qw = circle_params.endpoint.orientation.w;
+
+        if (std::isnan(qx) || std::isnan(qy) || std::isnan(qz) || std::isnan(qw))
+        {
+            error_msg = "Endpoint orientation contains NaN values";
+            return false;
+        }
+
+        double norm = std::sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+        if (std::abs(norm - 1.0) > 0.01)
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "Quaternion norm is %.3f (should be 1.0), auto-normalizing", norm);
+            // 可以选择自动归一化，这里只是警告
+        }
+
+        if (circle_params.arm_name == "both")
+        {
+            if (std::isnan(circle_params.right_endpoint.position.x) ||
+                std::isnan(circle_params.right_endpoint.position.y) ||
+                std::isnan(circle_params.right_endpoint.position.z))
+            {
+                error_msg = "Right endpoint position contains NaN values";
+                return false;
+            }
+
+            qx = circle_params.right_endpoint.orientation.x;
+            qy = circle_params.right_endpoint.orientation.y;
+            qz = circle_params.right_endpoint.orientation.z;
+            qw = circle_params.right_endpoint.orientation.w;
+            if (std::isnan(qx) || std::isnan(qy) || std::isnan(qz) || std::isnan(qw))
+            {
+                error_msg = "Right endpoint orientation contains NaN values";
+                return false;
+            }
+
+            norm = std::sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+            if (std::abs(norm - 1.0) > 0.01)
+            {
+                RCLCPP_WARN(node_->get_logger(),
+                            "Right quaternion norm is %.3f (should be 1.0), auto-normalizing", norm);
+            }
+
+            if (circle_params.use_three_point_method)
+            {
+                if (std::isnan(circle_params.right_midpoint.position.x) ||
+                    std::isnan(circle_params.right_midpoint.position.y) ||
+                    std::isnan(circle_params.right_midpoint.position.z))
+                {
+                    error_msg = "Right midpoint position contains NaN values";
+                    return false;
+                }
+            }
+        }
+
+        // 添加 kinematics 检查
+        if (!cartesian_manager_.hasKinematics()) // 需要添加这个方法
+        {
+            error_msg = "Kinematics solver not set for MoveL planning";
+            return false;
+        }
+
+        //更新movel要用的关节名称列表
+        move_cartesian_joint_names_ = cartesian_manager_.getMovelJointNames(circle_params.arm_name);
+
+        return true;
+    }
+
+    Eigen::VectorXd StateMoveJ::getCurrentJointAngles() const
+    {
+        size_t num_joints = ctrl_interfaces_.joint_position_state_interface_.size();
+        Eigen::VectorXd angles(num_joints);
+
+        for (size_t i = 0; i < num_joints; ++i)
+        {
+            auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
+            angles(i) = value.value_or(0.0);
+        }
+        return angles;
+    }
+
+    bool StateMoveJ::checkAndHandleCollision()
+    {
+        if (!collision_detection_enabled_ || !collision_check_callback_)
+        {
+            return false;
+        }
+
+        if (collision_check_callback_(collision_threshold_))
+        {
+            auto logger = node_ ? node_->get_logger() : rclcpp::get_logger("StateMoveJ");
+            RCLCPP_WARN(logger, "Collision detected! Stopping motion.");
+
+            refreshHoldPositions();
+            for (size_t i = 0; i < ctrl_interfaces_.joint_position_command_interface_.size() && i < hold_positions_.
+                 size(); ++i)
+            {
+                ctrl_interfaces_.setJointPositionCommand(i, hold_positions_[i]);
+            }
+
+            clearHeadExecution();
+            interpolation_active_ = false;
+            has_target_ = false;
+            move_cartesian_active_ = false;
+            waist_lifting_active_ = false;
+            last_waist_phi_factor_ = 0.0;
+            waist_turning_active_ = false;
+            motion_mode_ = MotionMode::MOVEJ;
+            ctrl_interfaces_.fsm_command_ = 2;
+            publishFsmCommand(2);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    void StateMoveJ::setCollisionCheckCallback(CollisionCheckCallback callback)
+    {
+        collision_check_callback_ = std::move(callback);
+    }
+
+    void StateMoveJ::setCollisionEnabled(bool enabled)
+    {
+        collision_detection_enabled_ = enabled;
+    }
+
+    void StateMoveJ::setCollisionThreshold(double threshold)
+    {
+        collision_threshold_ = threshold;
+        RCLCPP_INFO_STREAM(rclcpp::get_logger("StateMoveJ"), "collision threshold set to [" << threshold << "]");
+    }
+} // namespace robot_controller_core

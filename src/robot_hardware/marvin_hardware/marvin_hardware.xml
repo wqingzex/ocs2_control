@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<library path="marvin_hardware">
+    <class name="marvin_hardware/MarvinHardware"
+           type="marvin_hardware::MarvinHardware"
+           base_class_type="hardware_interface::SystemInterface">
+        <description>
+            Marvin ROS2 Control Hardware Interface for single-arm control (7 DOF)
+        </description>
+    </class>
+</library>

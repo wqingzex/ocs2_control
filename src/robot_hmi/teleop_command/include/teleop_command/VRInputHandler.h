@@ -1,0 +1,454 @@
+//
+// Created for Arms ROS2 Control - VRInputHandler
+//
+#pragma once
+
+#include <memory>
+#include <string>
+#include <vector>
+#include <map>
+#include <atomic>
+#include <chrono>
+#include <rclcpp/rclcpp.hpp>
+#include <robot_log/flight.hpp>
+#include <robot_log/flight_types.hpp>
+#include <robot_log/health.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/pose.hpp>
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/twist.hpp>
+#include <Eigen/Core>
+#include <Eigen/Geometry>
+#include <std_msgs/msg/float64.hpp>
+#include <std_msgs/msg/int32.hpp>
+#include <nav_msgs/msg/path.hpp>
+#include <tf2_ros/buffer.hpp>
+#include <tf2_ros/transform_listener.hpp>
+#include "teleop_command/TeleopCommand.h"
+#include "teleop_command/vr_alignment.h"
+#include "robot_controller_core/FSMCommandPublisher.h"
+
+namespace teleop_command
+{
+    /**
+     * VRInputHandler - VR输入处理器Wrapper
+     * 
+     * 基于VRMarkerWrapper功能，适配teleop_command
+     * 实现VR pose订阅、状态切换机制和marker更新功能
+     * 
+     * 功能特性:
+     * - 支持存储模式和更新模式切换
+     * - 基于left_thumbstick的状态切换
+     * - VR pose变化检测和频闪优化
+     * - 与TeleopCommand的集成
+     */
+    class VRInputHandler
+    {
+    public:
+        /**
+         * 构造函数
+         * @param node ROS节点指针
+         * @param teleopCommand TeleopCommand指针
+         * @param pub_left_target 外部传入的左臂目标位姿发布器（统一管理）
+         * @param pub_right_target 外部传入的右臂目标位姿发布器（统一管理）
+         * @param handControllers 手部/夹爪控制器名称列表（用于映射夹爪命令）
+         * @param vr_thumbstick_linear_scale VR摇杆线性缩放因子（单位 m/step）
+         * @param vr_thumbstick_angular_scale VR摇杆角度缩放因子（单位 rad/step）
+         * @param vr_pose_scale 手柄位姿位置缩放因子（左右共用，可由组合键动态校准）
+         * @param reference_link 参考link名称（例如 head_link2），用于VR/头显关联
+         */
+        VRInputHandler(
+            rclcpp::Node::SharedPtr node,
+            TeleopCommand* teleopCommand,
+            rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pub_left_target,
+            rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pub_right_target,
+            const std::vector<std::string>& handControllers,
+            double vr_thumbstick_linear_scale,
+            double vr_thumbstick_angular_scale,
+            double vr_pose_scale,
+            const std::string& reference_link);
+
+        ~VRInputHandler() = default;
+
+        /**
+         * 启用VR控制
+         */
+        void enable();
+
+        /**
+         * 禁用VR控制
+         */
+        void disable();
+
+        /**
+         * 检查VR控制是否启用
+         * @return true如果启用，false否则
+         */
+        bool isEnabled() const { return enabled_.load(); }
+
+        /**
+         * 检查是否处于镜像模式
+         * @return true如果启用镜像模式，false否则
+         */
+        bool isMirrorMode() const { return mirror_mode_.load(); }
+
+        /// 头显 yaw 对齐（vr_align_head_yaw）：true 时位移按头显水平朝向解释（操作员正前方 = 机器人 +X），
+        /// 不受房间原点和手柄倾角影响；false 沿用手柄基准姿态（旧行为）。
+        void setAlignHeadYaw(bool enable);
+
+        /// 按键方案（vr_control_scheme）："legacy" | "simple"（握把按住跟随、松开停止，旧单键事件 2-7/9/10 忽略，
+        /// 镜像关闭；按键表见 docs/VR遥操作.md 第 5 节）。方案名未知时返回 false 并保持原方案。
+        bool setControlScheme(const std::string& scheme);
+
+        /**
+         * 检查节点是否存在
+         * @param node ROS节点指针
+         * @param targetNodeName 目标节点名称
+         * @return true如果节点存在，false否则
+         */
+        bool checkNodeExists(const std::shared_ptr<rclcpp::Node>& node, const std::string& targetNodeName);
+
+        /**
+         * FSM命令回调函数（用于跟踪FSM状态）
+         * 由外部统一订阅后调用，避免重复订阅
+         * @param msg FSM命令消息
+         */
+        void fsmCommandCallback(std_msgs::msg::Int32::SharedPtr msg);
+
+        /**
+         * 机器人左臂当前pose回调函数
+         * 由外部统一订阅后调用，避免重复订阅
+         * @param msg 机器人pose消息
+         */
+        void robotLeftPoseCallback(geometry_msgs::msg::PoseStamped::SharedPtr msg);
+
+        /**
+         * 机器人右臂当前pose回调函数
+         * 由外部统一订阅后调用，避免重复订阅
+         * @param msg 机器人pose消息
+         */
+        void robotRightPoseCallback(geometry_msgs::msg::PoseStamped::SharedPtr msg);
+
+    private:
+        /**
+         * VR左臂pose回调函数
+         * @param msg VR pose消息
+         */
+        void vrLeftCallback(geometry_msgs::msg::Pose::SharedPtr msg);
+        
+        /**
+         * VR右臂pose回调函数
+         * @param msg VR pose消息
+         */
+        void vrRightCallback(geometry_msgs::msg::Pose::SharedPtr msg);
+
+        /**
+         * VR头显pose回调函数
+         * @param msg VR 头显 pose 消息
+         */
+        void vrHeadCallback(geometry_msgs::msg::Pose::SharedPtr msg);
+
+        /**
+         * 摇杆轴值回调函数（合并处理左右摇杆）
+         * @param msg Twist消息，linear.x/y 表示左摇杆，angular.x/y 表示右摇杆
+         */
+        void thumbstickAxesCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
+
+        /**
+         * 扳机模拟量回调函数（合并处理左右扳机）
+         * @param msg Twist消息，linear.x 表示左扳机拉动比例，angular.x 表示右扳机拉动比例
+         */
+        void triggerValuesCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
+        
+        /**
+         * 处理左摇杆轴值（内部辅助函数）
+         */
+        void processLeftThumbstickAxes();
+        
+        /**
+         * 处理右摇杆轴值（内部辅助函数）
+         */
+        void processRightThumbstickAxes();
+
+        /**
+         * 按钮事件回调函数（处理按钮事件数字）
+         * @param msg Int32消息，包含按钮事件数字 (0=无事件, 1-6=按钮按下, 7=镜像模式切换, 9=左扳机, 10=右扳机)
+         */
+        void processButtonEvent(const std_msgs::msg::Int32::SharedPtr msg);
+
+        /**
+         * 从hand_controllers参数中提取左右控制器名称
+         * @param hand_controllers 控制器名称列表
+         */
+        void detectGripperControllers(const std::vector<std::string>& hand_controllers);
+
+        /**
+         * 发布夹爪命令到对应的控制器
+         * @param controller_name 控制器名称
+         * @param command 命令值 (0=close, 1=open)
+         */
+        void publishGripperCommand(const std::string& controller_name, int32_t command);
+
+        /**
+         * 发布夹爪/灵巧手百分比目标到对应的控制器
+         * @param controller_name 控制器名称
+         * @param percent 百分比目标 (0.0=完全闭合, 1.0=完全张开)
+         */
+        void publishGripperPercent(const std::string& controller_name, double percent);
+
+        /**
+         * 模式切换后先把左右手同步到张开状态，避免旧模式目标和新模式目标冲突
+         * @param percent_mode true=用target_percent张开, false=用target_command张开
+         */
+        void openGrippersAfterModeSwitch(bool percent_mode);
+
+        /**
+         * 按镜像模式解析左右扳机对应的手控制器
+         * @param is_left_trigger true=左扳机, false=右扳机
+         * @param controller_name 输出控制器名称
+         * @param is_left_arm_target 输出是否对应左手/左臂
+         */
+        void resolveTriggerTarget(bool is_left_trigger, std::string& controller_name, bool& is_left_arm_target) const;
+
+        /**
+         * 处理旧式扳机开关控制：每按一次在开/关之间切换
+         * @param is_left_trigger true=左扳机, false=右扳机
+         */
+        void toggleGripperByTrigger(bool is_left_trigger);
+
+        /**
+         * 左夹爪状态回调函数（同步夹爪状态）
+         * @param msg 夹爪命令消息 (0=close, 1=open)
+         */
+        void leftGripperStateCallback(const std_msgs::msg::Int32::SharedPtr msg);
+
+        /**
+         * 右夹爪状态回调函数（同步夹爪状态）
+         * @param msg 夹爪命令消息 (0=close, 1=open)
+         */
+        void rightGripperStateCallback(const std_msgs::msg::Int32::SharedPtr msg);
+
+        /**
+         * 发送FSM状态切换命令
+         * @param command FSM命令值 (1=HOME, 2=HOLD, 3=OCS2, 100=切换姿态(REST), 0=重置)
+         */
+        void sendFsmCommand(int32_t command);
+
+        /**
+         * 直接发布目标位姿到left_target/right_target话题（解耦模式，无坐标转换）
+         * @param armType 手臂类型 ("left" 或 "right")
+         * @param position 位置（已在目标坐标系下）
+         * @param orientation 方向
+         */
+        void publishTargetPoseDirect(const std::string& armType,
+                                     const Eigen::Vector3d& position,
+                                     const Eigen::Quaterniond& orientation);
+
+        /**
+         * 将Pose消息转换为Eigen::Matrix4d
+         * @param msg Pose消息
+         * @return 4x4变换矩阵
+         */
+        Eigen::Matrix4d poseMsgToMatrix(geometry_msgs::msg::Pose::SharedPtr msg);
+
+        /**
+         * 从4x4矩阵提取位置和方向
+         * @param matrix 4x4变换矩阵
+         * @param position 输出位置
+         * @param orientation 输出方向
+         */
+        void matrixToPosOri(const Eigen::Matrix4d& matrix,
+                            Eigen::Vector3d& position,
+                            Eigen::Quaterniond& orientation);
+
+        /**
+         * 检查pose是否发生显著变化
+         * @param currentPos 当前位置
+         * @param currentOri 当前方向
+         * @param prevPos 之前位置
+         * @param prevOri 之前方向
+         * @return true如果pose发生显著变化
+         */
+        bool hasPoseChanged(const Eigen::Vector3d& currentPos,
+                            const Eigen::Quaterniond& currentOri,
+                            const Eigen::Vector3d& prevPos,
+                            const Eigen::Quaterniond& prevOri);
+
+        /**
+         * 基于差值计算pose并应用到机器人base pose
+         * @param vrCurrentPos 当前VR位置
+         * @param vrCurrentOri 当前VR方向
+         * @param vrBasePos VR base位置
+         * @param vrBaseOri VR base方向
+         * @param robotBasePos 机器人base位置
+         * @param robotBaseOri 机器人base方向
+         * @param resultPos 输出计算的位置
+         * @param resultOri 输出计算的方向
+         */
+        void calculatePoseFromDifference(const Eigen::Vector3d& vrCurrentPos,
+                                         const Eigen::Quaterniond& vrCurrentOri,
+                                         const Eigen::Vector3d& vrBasePos,
+                                         const Eigen::Quaterniond& vrBaseOri,
+                                         const Eigen::Quaterniond& vrBaseFrame,
+                                         const Eigen::Vector3d& robotBasePos,
+                                         const Eigen::Quaterniond& robotBaseOri,
+                                         Eigen::Vector3d& resultPos,
+                                         Eigen::Quaterniond& resultOri);
+
+        // ROS组件
+        rclcpp::Node::SharedPtr node_;
+        TeleopCommand* teleop_command_;
+
+        // 发布器（用于直接发布到left_target/right_target）
+        // Health of the xr -> teleop_command -> controller hops: VR poses coming in, targets going out, one line per window.
+        void reportHealth();
+        void recordTarget(std::uint32_t side, const geometry_msgs::msg::Pose& pose);
+        // VR poses received and targets sent, kept in shared memory for the incident recorder (nullptr: not recording).
+        std::shared_ptr<robot_log::FlightRecorder> flight_;
+        robot_log::RateStats vr_input_stats_;
+        robot_log::RateStats target_stats_;
+        double health_window_s_ = 10.0;
+        rclcpp::TimerBase::SharedPtr health_timer_;
+
+        rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pub_left_target_;
+        rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pub_right_target_;
+        rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_dual_target_stamped_;
+        // FSM命令发布器（使用通用工具类，自动处理command=100的特殊情况）
+        std::unique_ptr<robot_controller_core::FSMCommandPublisher> fsm_command_publisher_;
+
+        // 订阅器
+        rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr sub_left_;
+        rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr sub_right_;
+        rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr sub_head_;
+        // 按钮事件订阅器（Int32类型）
+        rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr sub_controller_state_;
+        // 摇杆轴值订阅器（合并订阅左右摇杆，使用 Twist 消息）
+        rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_thumbstick_axes_;
+        // 扳机模拟量订阅器（合并订阅左右扳机，使用 Twist 消息）
+        rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_trigger_values_;
+        // 夹爪状态订阅器（用于同步夹爪状态）
+        rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr sub_left_gripper_state_;
+        rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr sub_right_gripper_state_;
+        // 机器人 current_pose 订阅已移除，改为在 teleop_command_node 中统一处理
+        // FSM命令订阅已移除，改为在 teleop_command_node 中统一处理
+
+        // VR pose参数
+        Eigen::Matrix4d left_ee_pose_ = Eigen::Matrix4d::Identity();
+        Eigen::Matrix4d right_ee_pose_ = Eigen::Matrix4d::Identity();
+
+        // VR位置和方向参数（世界/机器人坐标系下）
+        // *_position_raw_ 表示未应用缩放系数的原始VR位姿
+        Eigen::Vector3d vr_left_position_raw_ = Eigen::Vector3d::Zero();
+        Eigen::Vector3d vr_right_position_raw_ = Eigen::Vector3d::Zero();
+        Eigen::Quaterniond left_orientation_ = Eigen::Quaterniond::Identity();
+        Eigen::Vector3d left_position_ = Eigen::Vector3d::Zero();
+        Eigen::Vector3d right_position_ = Eigen::Vector3d::Zero();
+        Eigen::Quaterniond right_orientation_ = Eigen::Quaterniond::Identity();
+        Eigen::Vector3d vr_head_position_ = Eigen::Vector3d::Zero();
+        Eigen::Quaterniond vr_head_orientation_ = Eigen::Quaterniond::Identity();
+
+        // 用于变化检测的之前pose（更新模式）
+        Eigen::Vector3d prev_calculated_left_position_ = Eigen::Vector3d::Zero();
+        Eigen::Quaterniond prev_calculated_left_orientation_ = Eigen::Quaterniond::Identity();
+        Eigen::Vector3d prev_calculated_right_position_ = Eigen::Vector3d::Zero();
+        Eigen::Quaterniond prev_calculated_right_orientation_ = Eigen::Quaterniond::Identity();
+
+        // 状态管理
+        std::atomic<bool> enabled_;
+        std::atomic<bool> is_update_mode_; // true = 更新模式, false = 存储模式
+        std::atomic<bool> mirror_mode_; // true = 镜像模式, false = 正常模式
+        std::atomic<bool> left_arm_paused_; // 左臂是否暂停更新（Y按键控制）
+        std::atomic<bool> right_arm_paused_; // 右臂是否暂停更新（B按键控制）
+        std::atomic<bool> left_grip_mode_; // 左摇杆控制模式：false=XY平移, true=Z轴+Yaw
+        std::atomic<bool> right_grip_mode_; // 右摇杆控制模式：false=XY平移, true=Z轴+Yaw
+        std::atomic<int32_t> current_fsm_state_; // 当前FSM状态：1=HOME, 2=HOLD, 3=OCS2, 100=REST
+
+        // VR base poses（摇杆按下时存储）
+        Eigen::Vector3d vr_base_left_position_ = Eigen::Vector3d::Zero();
+        Eigen::Quaterniond vr_base_left_orientation_ = Eigen::Quaterniond::Identity();
+        Eigen::Vector3d vr_base_right_position_ = Eigen::Vector3d::Zero();
+        Eigen::Quaterniond vr_base_right_orientation_ = Eigen::Quaterniond::Identity();
+        // 位移坐标系（记录基准时由 motionFrame() 计算：旧行为 = 手柄基准姿态，对齐模式 = 头显 yaw）
+        Eigen::Quaterniond vr_base_left_frame_ = Eigen::Quaterniond::Identity();
+        Eigen::Quaterniond vr_base_right_frame_ = Eigen::Quaterniond::Identity();
+
+        // 头显 yaw 对齐 / 按键方案（见 setAlignHeadYaw / setControlScheme）
+        bool align_head_yaw_ = false;
+        std::atomic<bool> simple_scheme_{false};
+        bool prev_left_grip_held_ = false;   // simple 方案：上一帧握把状态（/teleop/thumbstick_axes linear.z）
+        bool prev_right_grip_held_ = false;  // simple 方案：angular.z
+
+        /// simple 方案：握把离合（按下记录基准并跟随，松开暂停）
+        void processSimpleClutch(bool left_grip_held, bool right_grip_held);
+        /// 记录一侧手臂的 VR / 机器人基准位姿、位移坐标系并清零摇杆偏移
+        void captureLeftBase();
+        void captureRightBase();
+
+        // 机器人base poses（摇杆按下时存储）
+        Eigen::Vector3d left_base_position_ = Eigen::Vector3d::Zero();
+        Eigen::Quaterniond left_base_orientation_ = Eigen::Quaterniond::Identity();
+        Eigen::Vector3d right_base_position_ = Eigen::Vector3d::Zero();
+        Eigen::Quaterniond right_base_orientation_ = Eigen::Quaterniond::Identity();
+
+        // 当前机器人poses
+        Eigen::Vector3d left_current_position_ = Eigen::Vector3d::Zero();
+        Eigen::Quaterniond left_current_orientation_ = Eigen::Quaterniond::Identity();
+        Eigen::Vector3d right_current_position_ = Eigen::Vector3d::Zero();
+        Eigen::Quaterniond right_current_orientation_ = Eigen::Quaterniond::Identity();
+
+        // 摇杆轴值（归一化 -1.0 ~ 1.0）
+        Eigen::Vector2d left_thumbstick_axes_ = Eigen::Vector2d::Zero();
+        Eigen::Vector2d right_thumbstick_axes_ = Eigen::Vector2d::Zero();
+
+        // 摇杆累积偏移量（米）
+        Eigen::Vector3d left_thumbstick_offset_ = Eigen::Vector3d::Zero();
+        Eigen::Vector3d right_thumbstick_offset_ = Eigen::Vector3d::Zero();
+
+        // 摇杆累积Yaw旋转（弧度）
+        double left_thumbstick_yaw_offset_ = 0.0;
+        double right_thumbstick_yaw_offset_ = 0.0;
+
+        // 暂停时刻的VR位姿（用于暂停时继续使用摇杆控制）
+        Eigen::Vector3d paused_left_position_ = Eigen::Vector3d::Zero();
+        Eigen::Quaterniond paused_left_orientation_ = Eigen::Quaterniond::Identity();
+        Eigen::Vector3d paused_right_position_ = Eigen::Vector3d::Zero();
+        Eigen::Quaterniond paused_right_orientation_ = Eigen::Quaterniond::Identity();
+
+        // Hand controllers mapping（类似ControlInputHandler）
+        std::vector<std::string> hand_controllers_;
+        // Publishers for gripper commands (created on demand)
+        std::map<std::string, rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr> gripper_command_publishers_;
+        std::map<std::string, rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr> gripper_percent_publishers_;
+        std::map<std::string, double> last_gripper_percent_;
+        // 检测到的左右控制器名称
+        std::string left_gripper_controller_name_;
+        std::string right_gripper_controller_name_;
+        // 夹爪状态跟踪
+        std::atomic<bool> left_gripper_open_;
+        std::atomic<bool> right_gripper_open_;
+        std::atomic<bool> trigger_percent_mode_;
+        std::chrono::steady_clock::time_point last_trigger_mode_toggle_time_{};
+        std::chrono::steady_clock::time_point trigger_percent_resume_time_{};
+
+        // VR控制缩放参数（从配置文件读取 / 固定配置）
+        double vr_thumbstick_linear_scale_; // 摇杆位置缩放因子（单位 m/step）
+        double vr_thumbstick_angular_scale_; // 摇杆旋转缩放因子（单位 rad/step）
+        double vr_pose_scale_;  // 手柄位姿位置缩放因子（左右共用，可由组合键动态校准）
+
+        // 参考link名称（用于将VR头显/手柄关联到机器人某个link），从teleop_command.yaml读取，默认"base_link"
+        std::string reference_link_;
+
+        // 机器人末端当前使用的参考坐标系（来自 left_current_pose/right_current_pose 的 frame_id）
+        std::string ee_frame_id_;
+        bool ee_frame_id_initialized_ = false;
+
+        // TF组件（用于在不同link/frame之间转换）
+        std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+        std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+
+        // 常量
+        static const std::string XR_NODE_NAME;
+        static const double POSITION_THRESHOLD;
+        static const double ORIENTATION_THRESHOLD;
+    };
+} // namespace teleop_command

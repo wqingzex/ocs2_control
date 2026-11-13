@@ -1,0 +1,9 @@
+<library path="topic_based_hardware">
+  <class
+    name="topic_based_hardware/TopicBasedSystem"
+    type="topic_based_hardware::TopicBasedSystem"
+    base_class_type="hardware_interface::SystemInterface"
+  >
+    <description>A topic based ros2_control hardware interface.</description>
+  </class>
+</library>

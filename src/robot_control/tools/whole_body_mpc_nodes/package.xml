@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>whole_body_mpc_nodes</name>
+  <version>0.1.0</version>
+  <description>
+    ROS2 interface for OCS2 Wheel Humanoid MPC controller.
+  </description>
+  <maintainer email="developer@example.com">Developer</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>urdf</depend>
+  <depend>kdl_parser</depend>
+  <depend>robot_state_publisher</depend>
+  <depend>ocs2_ros_interfaces</depend>
+  <depend>whole_body_mpc</depend>
+  <depend>ocs2_mobile_manipulator_ros</depend>
+  <depend>interactive_markers</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>ocs2_mobile_manipulator</depend>
+  <depend>ocs2_pinocchio_interface</depend>
+  <depend>ocs2_self_collision</depend>
+  <depend>ocs2_self_collision_visualization</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

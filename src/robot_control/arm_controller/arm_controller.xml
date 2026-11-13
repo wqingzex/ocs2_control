@@ -1,0 +1,10 @@
+<library path="arm_controller">
+    <class name="arm_controller/ArmController"
+           type="arm_controller::ArmController"
+           base_class_type="controller_interface::ControllerInterface">
+        <description>
+            FSM controller (HOME / HOLD / MOVEJ / OCS2) driven by the arm MPC task: split-body arms and dual-arm
+            robots, with the kinematics service and Cartesian MOVEJ.
+        </description>
+    </class>
+</library>

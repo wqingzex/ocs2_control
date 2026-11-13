@@ -1,0 +1,528 @@
+#!/bin/bash
+
+# Default values
+DEFAULT_COUNT=2
+DEFAULT_BITRATE=1000000
+DEFAULT_DBITRATE=5000000
+DEFAULT_TEST_COUNT=1000000
+DEFAULT_DLC=8
+DEFAULT_MODE="fd"  # CAN mode: "can" for CAN 2.0, "fd" for CAN FD
+
+# Exit code for cleanup
+exit_code=1
+
+# Check required tools
+REQUIRED_TOOLS=("ip" "ifconfig")
+for cmd in "${REQUIRED_TOOLS[@]}"; do
+    if ! command -v "$cmd" &>/dev/null; then
+        echo "Error: Required command '$cmd' not found. Please install it."
+        case "$cmd" in
+            ip)       echo "  Install: apt install iproute2" ;;
+            ifconfig) echo "  Install: apt install net-tools" ;;
+        esac
+        exit 1
+    fi
+done
+
+# Parse command line options
+show_help() {
+    echo "Usage: $0 [-c channel_count] [-p receiver:sender] [-m mode] [-b bitrate] [-d dbitrate] [-t test_count] [-s dlc]"
+    echo "Options:"
+    echo "  -c NUM    Number of CAN ports for auto pairing (default: $DEFAULT_COUNT)"
+    echo "            Auto pairs: can0<->can1, can2<->can3, ..."
+    echo "  -p PAIR   Specify a test pair in format 'receiver:sender' (e.g., -p can0:can2)"
+    echo "            Can be used multiple times. Overrides -c if specified."
+    echo "  -m MODE   CAN mode: 'can' for CAN 2.0 or 'fd' for CAN FD (default: $DEFAULT_MODE)"
+    echo "  -b BITRATE   CAN bus arbitration bitrate in bit/s (default: $DEFAULT_BITRATE)"
+    echo "  -d DBITRATE   CAN FD data bitrate in bit/s (default: $DEFAULT_DBITRATE)"
+    echo "                Only applicable in CAN FD mode"
+    echo "  -t COUNT  Test packet count per port (default: $DEFAULT_TEST_COUNT)"
+    echo "  -s SIZE   Frame payload size in bytes"
+    echo "            CAN 2.0: valid values 0-8 (default: $DEFAULT_DLC)"
+    echo "            CAN FD: valid values 0-8,12,16,20,24,32,48,64 (default: $DEFAULT_DLC)"
+    echo "  -h        Show this help message"
+    echo
+    echo "Examples:"
+    echo "  $0 -m can -c 4                      # CAN 2.0: Auto pair 4 ports with default bitrate"
+    echo "  $0 -m fd -c 4                       # CAN FD: Auto pair 4 ports with default bitrates"
+    echo "  $0 -m can -p can0:can2 -b 500000    # CAN 2.0: Custom pair with 500K bitrate"
+    echo "  $0 -m fd -p can0:can2 -b 1000000 -d 5000000  # CAN FD: Custom pair with specified bitrates"
+    echo "  $0 -m can -p can0:can2 -t 500000    # CAN 2.0: Custom pair with 500K packets"
+    echo "  $0                                     # Use all defaults (CAN FD, 2 ports auto pair)"
+    exit 0
+}
+
+# Array for custom pairs
+CUSTOM_PAIRS=()
+
+while getopts "c:p:m:b:d:t:s:h" opt; do
+    case $opt in
+        c) NUM_PORTS="$OPTARG" ;;
+        p) CUSTOM_PAIRS+=("$OPTARG") ;;
+        m) MODE="$OPTARG" ;;
+        b) BITRATE="$OPTARG" ;;
+        d) DBITRATE="$OPTARG" ;;
+        t) TEST_COUNT="$OPTARG" ;;
+        s) DLC="$OPTARG" ;;
+        h) show_help ;;
+        *) echo "Invalid option or missing argument" >&2; exit 1 ;;
+    esac
+done
+shift $((OPTIND-1))
+
+# Reload KCAN driver
+echo "Reloading KCAN driver..."
+sudo rmmod kcan peak_usb pcan 2>/dev/null || true
+sleep 0.5
+sudo modprobe kcan
+sleep 1
+echo "KCAN driver reloaded"
+
+echo ""
+for dev in $(ifconfig -a | grep -o '^can[0-9]\+' | sort -u); do
+    ifconfig $dev
+done
+
+# Set defaults if not provided
+: ${NUM_PORTS:=$DEFAULT_COUNT}
+: ${MODE:=$DEFAULT_MODE}
+: ${BITRATE:=$DEFAULT_BITRATE}
+: ${DBITRATE:=$DEFAULT_DBITRATE}
+: ${TEST_COUNT:=$DEFAULT_TEST_COUNT}
+: ${DLC:=$DEFAULT_DLC}
+
+# Validate CAN mode
+if [[ "$MODE" != "can" && "$MODE" != "fd" ]]; then
+    echo "Error: Invalid mode '$MODE'. Must be 'can' or 'fd'"
+    exit 1
+fi
+
+# Get available CAN devices
+get_available_can_devices() {
+    ip link show | grep -o 'can[0-9]\+' | sort -u
+}
+
+# Check if a CAN device exists
+can_device_exists() {
+    ip link show "$1" &>/dev/null
+}
+
+# Validate inputs based on mode
+if [ ${#CUSTOM_PAIRS[@]} -gt 0 ]; then
+    # Custom pair mode: validate each pair
+    declare -A used_devices
+    for pair in "${CUSTOM_PAIRS[@]}"; do
+        if [[ ! "$pair" =~ ^(can[0-9]+):(can[0-9]+)$ ]]; then
+            echo "Error: Invalid pair format '$pair'. Expected format: canX:canY"
+            exit 1
+        fi
+        receiver="${BASH_REMATCH[1]}"
+        sender="${BASH_REMATCH[2]}"
+        
+        # Check devices exist
+        if ! can_device_exists "$receiver"; then
+            echo "Error: Device '$receiver' does not exist"
+            echo "Available devices: $(get_available_can_devices | tr '\n' ' ')"
+            exit 1
+        fi
+        if ! can_device_exists "$sender"; then
+            echo "Error: Device '$sender' does not exist"
+            echo "Available devices: $(get_available_can_devices | tr '\n' ' ')"
+            exit 1
+        fi
+        
+        # Check for duplicate usage
+        if [[ -n "${used_devices[$receiver]}" ]]; then
+            echo "Error: Device '$receiver' is used in multiple pairs"
+            exit 1
+        fi
+        if [[ -n "${used_devices[$sender]}" ]]; then
+            echo "Error: Device '$sender' is used in multiple pairs"
+            exit 1
+        fi
+        used_devices[$receiver]=1
+        used_devices[$sender]=1
+    done
+else
+    # Auto pair mode: validate NUM_PORTS
+    if ! [[ "$NUM_PORTS" =~ ^[0-9]+$ ]] || [[ "$NUM_PORTS" -lt 1 ]]; then
+        echo "Error: Invalid number of ports. Must be a positive integer."
+        exit 1
+    fi
+
+    # Check actual physical CAN device count
+    actual_can_count=$(get_available_can_devices | wc -l)
+    if [[ "$NUM_PORTS" -gt "$actual_can_count" ]]; then
+        echo "Error: Requested $NUM_PORTS ports, but only $actual_can_count CAN devices available."
+        echo "Available CAN devices:"
+        get_available_can_devices | while read dev; do echo "  $dev"; done
+        exit 1
+    fi
+fi
+
+if ! [[ "$BITRATE" =~ ^[0-9]+$ || "$DBITRATE" =~ ^[0-9]+$ || "$TEST_COUNT" =~ ^[0-9]+$ ]]; then
+    echo "Error: Bitrate, dbitrate and test count must be positive integers"
+    exit 1
+fi
+
+if ! [[ "$DLC" =~ ^[0-9]+$ ]]; then
+    echo "Error: Frame size must be a positive integer"
+    exit 1
+fi
+
+# Validate frame size based on CAN mode
+if [[ "$MODE" == "can" ]]; then
+    # CAN 2.0: only support 0-8 bytes
+    if [[ "$DLC" -lt 0 || "$DLC" -gt 8 ]]; then
+        echo "Error: CAN 2.0 frame size must be between 0-8 bytes"
+        echo "Current size: $DLC bytes"
+        exit 1
+    fi
+elif [[ "$MODE" == "fd" ]]; then
+    # CAN FD valid data lengths: 0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64
+    # DLC mapping:
+    #   DLC 0-8:  0-8 bytes (continuous)
+    #   DLC 9:    12 bytes
+    #   DLC 10:   16 bytes
+    #   DLC 11:   20 bytes
+    #   DLC 12:   24 bytes
+    #   DLC 13:   32 bytes
+    #   DLC 14:   48 bytes
+    #   DLC 15:   64 bytes
+    valid_canfd_lengths=(0 1 2 3 4 5 6 7 8 12 16 20 24 32 48 64)
+    is_valid=false
+
+    for valid_len in "${valid_canfd_lengths[@]}"; do
+        if [[ "$DLC" -eq "$valid_len" ]]; then
+            is_valid=true
+            break
+        fi
+    done
+
+    if [[ "$is_valid" == false ]]; then
+        echo "Error: Invalid CAN FD frame size: $DLC bytes"
+        echo "Valid CAN FD frame sizes are: ${valid_canfd_lengths[*]}"
+        echo ""
+        echo "CAN FD DLC mapping:"
+        echo "  DLC 0-8:  0-8 bytes (continuous)"
+        echo "  DLC 9:    12 bytes"
+        echo "  DLC 10:   16 bytes"
+        echo "  DLC 11:   20 bytes"
+        echo "  DLC 12:   24 bytes"
+        echo "  DLC 13:   32 bytes"
+        echo "  DLC 14:   48 bytes"
+        echo "  DLC 15:   64 bytes"
+        exit 1
+    fi
+fi
+
+# Display configuration
+echo "Configuration:"
+echo "  Mode:       $([[ "$MODE" == "can" ]] && echo "CAN 2.0" || echo "CAN FD")"
+if [ ${#CUSTOM_PAIRS[@]} -gt 0 ]; then
+    echo "  Pairing:    Custom pairs"
+    echo "  Pairs:"
+    for pair in "${CUSTOM_PAIRS[@]}"; do
+        receiver="${pair%%:*}"
+        sender="${pair#*:}"
+        echo "    $receiver (receiver) <-> $sender (sender)"
+    done
+else
+    echo "  Pairing:    Auto pair"
+    echo "  Channels:   $NUM_PORTS"
+fi
+echo "  Bitrate:    $BITRATE bit/s"
+if [[ "$MODE" == "fd" ]]; then
+    echo "  Dbitrate:   $DBITRATE bit/s"
+fi
+echo "  Test count: $TEST_COUNT packets"
+echo "  Frame size: $DLC bytes"
+echo
+
+# Collect all interfaces to configure
+declare -A interfaces_to_configure
+
+if [ ${#CUSTOM_PAIRS[@]} -gt 0 ]; then
+    # Custom pair mode: collect interfaces from pairs
+    for pair in "${CUSTOM_PAIRS[@]}"; do
+        receiver="${pair%%:*}"
+        sender="${pair#*:}"
+        interfaces_to_configure[$receiver]=1
+        interfaces_to_configure[$sender]=1
+    done
+else
+    # Auto pair mode: use sequential interfaces
+    for ((i=0; i<NUM_PORTS; i++)); do
+        interfaces_to_configure[can$i]=1
+    done
+fi
+
+# Configure all CAN interfaces
+for iface in "${!interfaces_to_configure[@]}"; do
+    echo "Enabling $iface..."
+
+    sudo ip link set $iface down 2>/dev/null
+
+    # Set CAN parameters based on mode
+    if [[ "$MODE" == "can" ]]; then
+        # CAN 2.0 mode
+        if ! sudo ip link set $iface type can bitrate $BITRATE ; then
+            echo "Configuration failed"
+            exit 1
+        fi
+    else
+        # CAN FD mode
+        if ! sudo ip link set $iface type can bitrate $BITRATE dbitrate $DBITRATE fd on ; then
+            echo "Configuration failed"
+            exit 1
+        fi
+    fi
+
+    sudo ip link set up $iface
+    echo "$iface configured successfully"
+done
+
+if [[ "$MODE" == "can" ]]; then
+    echo "All interfaces configured with bitrate=$BITRATE (CAN 2.0 mode)"
+else
+    echo "All interfaces configured with bitrate=$BITRATE, dbitrate=$DBITRATE (CAN FD mode)"
+fi
+
+cleanup() {
+    pkill -f 'kcanfdtest -[bd]' 2>/dev/null && echo "Terminated all kcanfdtest processes" || true
+    exit $exit_code
+}
+trap cleanup SIGINT
+
+# Create LOG_DIR
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TIMESTAMP="$(date +"%Y%m%d_%H%M%S")"
+LOG_DIR=./kcanfd_test_${TIMESTAMP}
+mkdir -p "$LOG_DIR"
+
+# Generate test device groups based on user input
+groups=()
+declare -A device_groups
+declare -A sender_pids
+declare -A start_times
+
+if [ ${#CUSTOM_PAIRS[@]} -gt 0 ]; then
+    # Use custom pairs
+    for pair in "${CUSTOM_PAIRS[@]}"; do
+        groups+=("$pair")
+    done
+else
+    # Auto create test groups (even ports are receivers, odd are senders)
+    for ((i=0; i<NUM_PORTS; i+=2)); do
+        receiver="can$i"
+        if (( i+1 < NUM_PORTS )); then
+            sender="can$((i+1))"
+            groups+=("$receiver:$sender")
+        fi
+    done
+fi
+
+echo "Configured test groups:"
+for group in "${groups[@]}"; do
+    receiver="${group%%:*}"
+    sender="${group#*:}"
+    echo "  $receiver (receiver) <-> $sender (sender)"
+done
+
+# Start test groups
+for group in "${groups[@]}"; do
+    # Split into receiver/sender
+    receiver="${group%%:*}"
+    sender="${group#*:}"
+    
+    # Build test command based on mode
+    if [[ "$MODE" == "can" ]]; then
+        # CAN 2.0 mode: no -d (CAN FD) and -b (bit rate switch) options
+        receiver_cmd="kcanfdtest -v -s $DLC $receiver"
+        sender_cmd="kcanfdtest -v -g -l $TEST_COUNT -s $DLC $sender"
+    else
+        # CAN FD mode: use -d (CAN FD) and -b (bit rate switch) options
+        receiver_cmd="kcanfdtest -b -d -v -s $DLC $receiver"
+        sender_cmd="kcanfdtest -b -d -v -g -l $TEST_COUNT -s $DLC $sender"
+    fi
+    
+    # Start receiver
+    $receiver_cmd > "${LOG_DIR}/can_${receiver}.log" 2>&1 &
+    
+    # Record start time
+    start_time=$(date +%s.%N)
+    
+    # Start sender
+    $sender_cmd > "${LOG_DIR}/can_${sender}.log" 2>&1 &
+    sender_pid=$!
+    
+    device_groups[$sender_pid]="$receiver:$sender"
+    start_times[$sender_pid]=$start_time
+    
+    echo "Started test group: $receiver (receiver) and $sender (sender) [PID:$sender_pid]"
+    echo "  Mode: $([[ "$MODE" == "can" ]] && echo "CAN 2.0" || echo "CAN FD")"
+    echo "  Sender packets count: $TEST_COUNT"
+    sleep 1
+done
+
+# Get packet counts from interface stats
+get_packets_count() {
+    local device="$1"
+    local mode="$2"  
+    
+    local stats
+    stats=$(ip -s link show "$device" 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        echo 0
+        return
+    fi
+
+    if [ "$mode" = "tx" ]; then
+        echo "$stats" | awk '/TX: / {getline; print $2}'
+    elif [ "$mode" = "rx" ]; then
+        echo "$stats" | awk '/RX: / {getline; print $2}'
+    else
+        echo 0
+    fi
+}
+
+# Calculate and display total frame rate (TX + RX)
+calculate_total_frame_rate() {
+    local pid=$1
+    local receiver=$2
+    local sender=$3
+    
+    # Get start and end times
+    start_time=${start_times[$pid]}
+    end_time=$(date +%s.%N)
+    
+    # Calculate duration (seconds)
+    duration=$(echo "$end_time - $start_time" | bc)
+    
+    # Get actual packet counts
+    tx_packets=$(get_packets_count "$sender" "tx")
+    rx_packets=$(get_packets_count "$receiver" "rx")
+    
+    # Calculate total frame rate
+    total_frames=$((tx_packets + rx_packets))
+    total_rate=$(echo "scale=2; $total_frames / $duration" | bc)
+    
+    # Display results
+    echo "  Frame rate for $sender <-> $receiver: $total_rate frames/sec"
+    echo "    Duration: $duration seconds"
+    echo "    Frames: $total_frames"
+    
+    # Save frame rate to log file
+    echo "Frame rate for $sender <-> $receiver: $total_rate frames/sec" >> "${LOG_DIR}/frame_rates.log"
+    echo "  Duration: $duration seconds" >> "${LOG_DIR}/frame_rates.log"
+    echo "  Frames: $total_frames" >> "${LOG_DIR}/frame_rates.log"
+    echo "" >> "${LOG_DIR}/frame_rates.log"
+}
+
+# Verify packet counts match with +49 requirement
+check_device_packets() {
+    local device="$1"
+    local tx_packets rx_packets
+    local expected_count=$((TEST_COUNT))
+    
+    tx_packets=$(get_packets_count "$device" "tx")
+    rx_packets=$(get_packets_count "$device" "rx")
+    
+    if [[ "$tx_packets" -eq "$expected_count" && "$rx_packets" -eq "$expected_count" ]]; then
+        echo "  $device: TX=$tx_packets, RX=$rx_packets → Test PASSED"
+        return 0
+    elif [[ "$tx_packets" -eq 0 || "$rx_packets" -eq 0 ]]; then
+        echo "  $device: TX=$tx_packets, RX=$rx_packets → Test FAILED (No packets detected)"
+        echo "    - Communication parameter setting problem"
+        return 2
+    else
+        echo "  $device: TX=$tx_packets, RX=$rx_packets, expected $expected_count → Test FAILED"
+        return 1
+    fi
+}
+
+# Monitor test progress
+monitor_senders() {
+    echo "Monitoring sender status..."
+    all_passed=true
+    
+    # Add reference note to frame rates log
+    echo "The following frame rates are calculated by the Script, for reference only:" > "${LOG_DIR}/frame_rates.log"
+    echo "" >> "${LOG_DIR}/frame_rates.log"
+    
+    for pid in "${!device_groups[@]}"; do
+        wait $pid 2>/dev/null
+        
+        pair="${device_groups[$pid]}"
+        receiver="${pair%%:*}"
+        sender="${pair#*:}"
+        SENDER_LOG="${LOG_DIR}/can_${sender}.log"
+        
+        if grep -q "Exiting" "$SENDER_LOG"; then
+            echo "Sender ($sender) finished transmission. Verifying packets..."
+            
+            # Calculate and display total frame rate
+            calculate_total_frame_rate $pid $receiver $sender
+
+            # Check for abnormal receive operations in sender interface
+            if grep -q "recvmsg()" "$SENDER_LOG"; then
+                echo "  ERROR: Sender $sender → TEST FAILED (Abnormal send operation)"
+                echo "  Details in log: $SENDER_LOG"
+                all_passed=false
+                continue
+            fi
+            
+            echo "Checking $receiver:"
+            if ! check_device_packets "$receiver"; then
+                all_passed=false
+            fi
+            
+            echo "Checking $sender:"
+            if ! check_device_packets "$sender"; then
+                all_passed=false
+            fi
+        else
+            echo "WARNING: Sender ($sender) exited abnormally (missing 'Exiting' marker)"
+            all_passed=false
+        fi
+    done
+    
+    # Final test summary
+    if $all_passed; then
+        echo "All tests PASSED successfully!"
+        exit_code=0
+    else
+        echo "Some tests FAILED! Check logs for details"
+        exit_code=1
+    fi
+    
+    # Save network interface information to log files - FILTERED FOR CAN DEVICES
+    echo "Saving filtered network interface information..."
+    
+    # ifconfig -a filtered for CAN devices
+    echo "===== ifconfig -a (CAN devices only) =====" > "${LOG_DIR}/ifconfig_can.log"
+    for dev in $(ifconfig -a | grep -o '^can[0-9]\+' | sort -u); do
+        ifconfig $dev >> "${LOG_DIR}/ifconfig_can.log"
+        echo "" >> "${LOG_DIR}/ifconfig_can.log"
+    done
+    
+    # ip -s link show filtered for CAN devices
+    echo "===== ip -s link show (CAN devices only) =====" > "${LOG_DIR}/ip_link_can.log"
+    for dev in $(ip link show | grep -o 'can[0-9]\+' | sort -u); do
+        ip -s link show $dev >> "${LOG_DIR}/ip_link_can.log"
+        echo "" >> "${LOG_DIR}/ip_link_can.log"
+    done
+    
+    echo "All logs saved to: $LOG_DIR"
+    cleanup
+}
+
+# Handle case with no test groups
+if [ ${#groups[@]} -eq 0 ]; then
+    echo "No valid test groups created. Ensure at least 2 ports are enabled."
+    exit 1
+fi
+
+echo "Test started with $TEST_COUNT packets per sender. Auto-monitoring enabled..."
+echo "The log file will be stored in $LOG_DIR"
+monitor_senders

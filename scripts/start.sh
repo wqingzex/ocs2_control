@@ -1,0 +1,252 @@
+#!/usr/bin/env bash
+# W2 命令行启动入口：读 config/robot.local.yaml，前台启动模块。
+# 用法见 ./scripts/start.sh help。
+set -Eeuo pipefail
+
+usage() {
+  cat <<'EOF_USAGE'
+W2 命令行入口（面向专业人员）
+首次使用：先运行 ./scripts/setup.sh。
+
+启动
+  ./scripts/start.sh                      按配置启动运控、VR 和相机，Ctrl+C 停止
+  ./scripts/start.sh sim | isaac          同上，硬件改为仿真（mock_components）/ Isaac
+  ./scripts/start.sh viz                  只在 RViz 里看机器人模型（带关节滑块，不启动控制）
+  ./scripts/start.sh up|down|restart|status|logs [模块]   按模块管理（status --hz 看话题频率）
+  ./scripts/start.sh diag [--minutes N] [原因]           出问题后用：汇总出错前 N 分钟（默认 10）的各模块日志、故障码、健康情况，
+                                                         和各模块最近收发的数据，指出最先出问题的一环；打成一个包，报告同时打印
+  ./scripts/start.sh nav | dyn-identify   导航 / 负载辨识
+  ./scripts/start.sh console              Web 控制台
+录制与回放
+  ./scripts/start.sh record [名称] [--topics joint|xr|collect|/a,/b]   默认只录关节
+  ./scripts/start.sh play 名称 [--rate 0.5] [--loop] [--paused] [--start 秒] [--xr]
+  ./scripts/start.sh bags [--delete 名称 --yes]                        列出 / 删除录包
+其他
+  ./scripts/start.sh check | build
+
+选项（命令前后都可以）
+  -c 配置文件        --set 字段=值（本次运行有效，可重复，如 --set robot.hardware=isaac）
+  --entry split_body|dual_arm|whole_body   --hand none|linkerhand_l6|xhand1   --hand-drive usb|485
+  --rviz             同时启动 RViz（用于 start / sim / isaac / up）
+EOF_USAGE
+}
+
+WS_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"   # 仓库根目录（脚本在 scripts/ 下）
+DEFAULT_CONFIG="${WS_DIR}/config/robot.local.yaml"
+ROS_DISTRO="${ROS_DISTRO:-jazzy}"
+die() { echo "[ERROR] $*" >&2; exit 1; }
+
+source_ros() {
+  local setup="/opt/ros/${ROS_DISTRO}/setup.bash"
+  [[ -f "${setup}" ]] || die "未找到 ${setup}（请安装 ROS 2 ${ROS_DISTRO} 或设置 ROS_DISTRO）"
+  set +u
+  # shellcheck disable=SC1090
+  source "${setup}"
+  # shellcheck disable=SC1091
+  [[ -f "${WS_DIR}/config/ros_env.sh" ]] && source "${WS_DIR}/config/ros_env.sh"  # RMW / Domain ID / Zenoh (README 2.1)
+  if [[ "${1:-}" == "--workspace" ]]; then
+    [[ -f "${WS_DIR}/install/setup.bash" ]] || die "工作区未编译：先运行 ./scripts/setup.sh"
+    # shellcheck disable=SC1091
+    source "${WS_DIR}/install/setup.bash"
+  fi
+  set -u
+}
+
+resolve_config() {
+  local cfg="${1:-${DEFAULT_CONFIG}}"
+  [[ "${cfg}" = /* ]] || cfg="${PWD}/${cfg}"
+  [[ -f "${cfg}" ]] || die "配置文件不存在: ${cfg}"
+  printf '%s' "${cfg}"
+}
+
+check_config() {
+  python3 -m fa_teleop_runtime.check "$1" "${WS_DIR}" ${SET_ARGS[@]+"${SET_ARGS[@]}"} || die "配置校验失败（见上方提示）"
+}
+
+cmd_build() {
+  exec "${WS_DIR}/scripts/setup.sh" build-workspace "$@"  # 包清单只在 setup.sh 里维护
+}
+
+cmd_check() {
+  source_ros --workspace
+  check_config "$(resolve_config "${1:-}")"
+}
+
+CONFIG_ARG=""
+SET_ARGS=()   # --set 字段=值：只对本次运行生效，不写配置文件
+WITH_ARGS=()  # --rviz：同时启动 RViz
+
+units() {
+  source_ros --workspace
+  local cfg args=("$@")
+  cfg="$(resolve_config "${CONFIG_ARG}")"
+  if [[ "${1:-}" == "up" ]]; then args=(up ${WITH_ARGS[@]+"${WITH_ARGS[@]}"} "${@:2}"); fi
+  exec python3 -m fa_teleop_runtime.units_cli --config "${cfg}" --ws-root "${WS_DIR}" \
+    ${SET_ARGS[@]+"${SET_ARGS[@]}"} "${args[@]}"
+}
+
+cmd_start() {
+  source_ros --workspace
+  local cfg
+  cfg="$(resolve_config "${CONFIG_ARG}")"
+  check_config "${cfg}"
+  exec python3 -m fa_teleop_runtime.units_cli --config "${cfg}" --ws-root "${WS_DIR}" \
+    ${SET_ARGS[@]+"${SET_ARGS[@]}"} up --foreground ${WITH_ARGS[@]+"${WITH_ARGS[@]}"}
+}
+
+# 双击入口与终端共用本脚本；--open 无需终端，错误显示为桌面通知并保留日志。
+console_notify() {
+  printf '%s\n' "$1" >&2
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send "W2 遥操作控制台" "$1" || true
+  elif command -v zenity >/dev/null 2>&1; then
+    zenity --error --title="W2 遥操作控制台" --text="$1" || true
+  fi
+}
+
+console_is_up() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+
+cmd_open_console() {
+  local port="${FA_CONSOLE_PORT:-8080}" host="127.0.0.1"  # 默认只监听本机；其他电脑访问要显式 --host 0.0.0.0
+  while (( $# )); do
+    case "$1" in
+      --port) [[ -n "${2:-}" ]] || die "--port 需要端口号"; port="$2"; shift 2 ;;
+      --host) [[ -n "${2:-}" ]] || die "--host 需要监听地址"; host="$2"; shift 2 ;;
+      -h|--help) usage; return ;;
+      *) die "未知控制台参数: $1" ;;
+    esac
+  done
+  [[ "${port}" =~ ^[0-9]{1,5}$ ]] && (( 10#${port} > 0 && 10#${port} <= 65535 )) \
+    || die "无效端口号: ${port}"
+  local cfg log_dir="${WS_DIR}/logs/console"
+  local page="${XDG_RUNTIME_DIR:-${HOME}}/.w2_console_open.html" logfile="" console_pid=""
+  cfg="$(resolve_config "${CONFIG_ARG}")"
+
+  # 先打开等待页，避免加载 ROS 时双击没有反馈。
+  python3 - "${page}" "${port}" "${log_dir}/latest.log" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+page, port, logfile = sys.argv[1:]
+url = json.dumps(f"http://127.0.0.1:{port}/")
+message = json.dumps(f"控制台没有启动，日志见 {logfile}", ensure_ascii=True)
+os.umask(0o077)
+Path(page).write_text('''<!doctype html><meta charset="utf-8"><title>W2 遥操作控制台</title>
+<body style="font:16px sans-serif;padding:2em"><p id="m">正在启动控制台…</p>
+<script>
+const url = ''' + url + ''', base = url;
+let tries = 0;
+(async function wait() {
+  try { await fetch(base, {mode: 'no-cors', cache: 'no-store'}); location.replace(url); }
+  catch (e) {
+    if (++tries > 120) document.getElementById('m').textContent = ''' + message + ''';
+    else setTimeout(wait, 500);
+  }
+})();
+</script>
+''', encoding="utf-8")
+PY
+  xdg-open "${page}" >/dev/null 2>&1 \
+    || console_notify "无法自动打开浏览器，请手动访问 http://127.0.0.1:${port}/"
+
+  if ! console_is_up "${port}"; then
+    mkdir -p "${log_dir}"
+    logfile="${log_dir}/$(date +%Y%m%d_%H%M%S).log"
+    (umask 077 && : > "${logfile}")
+    ln -sfn "$(basename "${logfile}")" "${log_dir}/latest.log"
+    setsid nohup bash "${WS_DIR}/scripts/start.sh" -c "${cfg}" console --port "${port}" --host "${host}" \
+      > "${logfile}" 2>&1 < /dev/null &
+    console_pid=$!
+  fi
+  local attempt
+  for attempt in {1..60}; do
+    console_is_up "${port}" && break
+    [[ -z "${console_pid}" ]] || kill -0 "${console_pid}" 2>/dev/null || break
+    sleep 0.5
+  done
+  console_is_up "${port}" \
+    || { console_notify "控制台启动失败，日志：${log_dir}/latest.log"; return 1; }
+  console_notify "控制台已打开：http://127.0.0.1:${port}/（其他电脑访问需加 --host 0.0.0.0）"
+}
+
+cmd_console() {
+  local open="" arg args=()
+  for arg in "$@"; do
+    if [[ "${arg}" == "--open" ]]; then open=1; else args+=("${arg}"); fi
+  done
+  if [[ -n "${open}" ]]; then
+    cmd_open_console "${args[@]}"
+  else
+    source_ros --workspace
+    exec python3 -m fa_teleop_runtime.console --config "$(resolve_config "${CONFIG_ARG}")" --ws-root "${WS_DIR}" "${args[@]}"
+  fi
+}
+
+cmd_nav() {
+  source_ros --workspace
+  exec python3 -m fa_teleop_runtime.navigation --config "$(resolve_config "${CONFIG_ARG}")" --ws-root "${WS_DIR}" "$@"
+}
+
+cmd_dyn_identify() {
+  source_ros --workspace
+  [[ -t 0 ]] || die "负载辨识向导是交互式的，请在终端里运行"
+  local reuse="" sdk_root="${WS_DIR}/src/third_party/TJ_FX_ROBOT_CONTRL_SDK"
+  [[ "${1:-}" == "--reuse-noload" ]] && reuse=1
+  if [[ -z "${reuse}" ]]; then  # a finished no-load capture can be reused to go straight to the loaded test
+    read -r -p "复用上次空载数据（NoLoadData.csv）并跳过空载采集？[y/N]: " answer
+    [[ "${answer}" =~ ^[Yy]$ ]] && reuse=1
+  fi
+  if [[ -n "${reuse}" ]]; then export TOOL_DYN_REUSE_NOLOAD=1; else unset TOOL_DYN_REUSE_NOLOAD; fi
+  # The SDK loads libMarvinSDK.so from SDK_PYTHON; link it from contrlSDK100343 when it is missing.
+  if [[ ! -f "${sdk_root}/SDK_PYTHON/libMarvinSDK.so" && -f "${sdk_root}/contrlSDK100343/libMarvinSDK.so" ]]; then
+    ln -sf "${sdk_root}/contrlSDK100343/libMarvinSDK.so" "${sdk_root}/SDK_PYTHON/libMarvinSDK.so"
+  fi
+  cd "${WS_DIR}"  # the wizard writes logs/dyn_identify/ relative to the working directory
+  exec ros2 run marvin_hardware tool_dyn_identify_wizard
+}
+
+# 录制、回放、录包列表：逻辑在 fa_teleop_runtime.recording。
+recording() {
+  source_ros --workspace
+  exec python3 -m fa_teleop_runtime.recording --config "$(resolve_config "${CONFIG_ARG}")" --ws-root "${WS_DIR}" \
+    ${SET_ARGS[@]+"${SET_ARGS[@]}"} "$@"
+}
+
+# 全局选项可以写在命令前后：-c 配置、--set 字段=值、--entry/--hand/--hand-drive、--rviz。
+parse_options() {
+  REST=()
+  local key
+  while (( $# )); do
+    case "$1" in
+      -c) [[ -n "${2:-}" ]] || die "-c 需要配置文件路径"; CONFIG_ARG="$2"; shift 2 ;;
+      --set) [[ "${2:-}" == *=* ]] || die "--set 需要 字段=值，例如 --set robot.hardware=isaac"
+             SET_ARGS+=(--set "$2"); shift 2 ;;
+      --entry|--hand|--hand-drive)
+        [[ -n "${2:-}" ]] || die "$1 需要取值"
+        key="${1#--}"; SET_ARGS+=(--set "robot.${key//-/_}=$2"); shift 2 ;;
+      --rviz) WITH_ARGS+=(--with rviz); shift ;;
+      *) REST+=("$1"); shift ;;
+    esac
+  done
+}
+parse_options "$@"
+set -- ${REST[@]+"${REST[@]}"}
+
+case "${1:-}" in
+  build-workspace|build) shift; cmd_build "$@" ;;
+  check) shift; cmd_check "${1:-${CONFIG_ARG}}" ;;
+  record|play|bags) recording "$@" ;;
+  nav) shift; cmd_nav "$@" ;;
+  dyn-identify) shift; cmd_dyn_identify "$@" ;;
+  sim) SET_ARGS+=(--set robot.hardware=mock_components); cmd_start ;;
+  isaac) SET_ARGS+=(--set robot.hardware=isaac); cmd_start ;;
+  viz) units viz ;;
+  up|down|restart|status|logs|diag) units "$@" ;;
+  console) shift; cmd_console "$@" ;;
+  -h|--help|help) usage ;;
+  "") cmd_start ;;
+  *.yaml|*.yml) CONFIG_ARG="$1"; cmd_start ;;
+  *) die "未知命令: $1（./scripts/start.sh help 查看用法）" ;;
+esac

@@ -1,0 +1,16 @@
+<library path="end_effector_controller">
+    <class name="end_effector_controller/HandController"
+           type="end_effector_controller::HandController"
+           base_class_type="controller_interface::ControllerInterface">
+        <description>
+            Dexterous hand: joint-space FSM controller plus target_command / target_percent (open / close).
+        </description>
+    </class>
+    <class name="end_effector_controller/GripperController"
+           type="end_effector_controller::GripperController"
+           base_class_type="controller_interface::ControllerInterface">
+        <description>
+            One-joint gripper: joint-space FSM controller plus position / percent commands with force feedback.
+        </description>
+    </class>
+</library>

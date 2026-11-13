@@ -1,0 +1,17 @@
+<?xml version="1.0" ?>
+<robot name="W2 torso" xmlns:xacro="http://www.ros.org/wiki/xacro">
+	<xacro:arg name="variant" default=""/>
+	<xacro:arg name="collider" default="simple"/>
+	<xacro:arg name="isaac" default="true"/>
+
+	<link name="stand_link3"/>
+	<xacro:include filename="$(find w2_torso_description)/xacro/torso.xacro"/>
+	<xacro:torso
+			variant="$(arg variant)"
+			collider="$(arg collider)"
+			isaac="$(arg isaac)"
+			parent_link="stand_link3"
+			mount_joint_name="torso_mount_joint"
+			mount_joint_type="fixed"
+			mount_origin_xyz="-0.00076989 0 0.087931"/>
+</robot>

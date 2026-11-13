@@ -1,0 +1,13 @@
+<package format="2">
+  <name>w2_stand_description</name>
+  <version>1.0.0</version>
+  <description>Lifting stand of the FiveAges W2</description>
+  <maintainer email="TODO@email.com"/>
+  <license>BSD</license>
+
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+
+</package>

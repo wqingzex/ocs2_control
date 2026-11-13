@@ -1,0 +1,395 @@
+; OCS2 Wheel Humanoid Configuration
+; ==================================
+
+;=============================================================================
+; Model Information
+;=============================================================================
+
+model_information
+{
+    ; Manipulator model type:
+    ; 0: DefaultManipulator - 固定基座机械臂
+    ; 1: WheelBasedMobileManipulator - 轮式底盘 (XY-Yaw)
+    ; 2: FloatingArmManipulator - 悬浮臂（非驱动6DOF基座）
+    ; 3: FullyActuatedFloatingArmManipulator - 完全驱动浮动臂（6DOF）
+    manipulatorModelType    1
+
+    ; Frame definitions (aligned with MobileManipulatorInterface)
+    baseFrame               "base_link"
+    eeFrame                 "left_gripper_link"
+    eeFrame1                "right_gripper_link"
+    bodyFrame               "body_link"
+
+    ; Joints to remove (fixed joints, mimic joints detected automatically)
+    removeJoints
+    {
+    }
+}
+
+;=============================================================================
+; Model Settings
+;=============================================================================
+
+model_settings
+{
+    usePreComputation       true
+    recompileLibraries      true
+}
+
+;=============================================================================
+; Initial State
+;=============================================================================
+
+initialState
+{
+    ; Base state for WheelBasedMobileManipulator (3 DOF: x, y, yaw)
+    base
+    {
+        WheelBasedMobileManipulator
+        {
+            (0,0) 0.0   ; x
+            (1,0) 0.0   ; y
+            (2,0) 0.0   ; yaw
+        }
+    }
+
+    ; Arm joint angles (all joints)
+    arm
+    {
+        ; Left arm (7 DOF) + Right arm (7 DOF) = 14 DOF
+        (0,0)   0.0     ; left_shoulder_1
+        (1,0)   0.3     ; left_shoulder_2
+        (2,0)   0.0     ; left_shoulder_3
+        (3,0)  -1.5     ; left_elbow
+        (4,0)   0.0     ; left_wrist_1
+        (5,0)   0.0     ; left_wrist_2
+        (6,0)   0.0     ; left_wrist_3
+        (7,0)   0.0     ; right_shoulder_1
+        (8,0)  -0.3     ; right_shoulder_2
+        (9,0)   0.0     ; right_shoulder_3
+        (10,0) -1.5     ; right_elbow
+        (11,0)  0.0     ; right_wrist_1
+        (12,0)  0.0     ; right_wrist_2
+        (13,0)  0.0     ; right_wrist_3
+    }
+}
+
+;=============================================================================
+; Initial Mode Schedule
+;=============================================================================
+
+initialModeSchedule
+{
+    ; No switching events initially
+    eventTimes
+    {
+    }
+    
+    ; Default: HM_DUAL_IDLE (torso + base locked, dual independent arms)
+    modeSequence
+    {
+        [0]
+        {
+            bodyMode "HM_DUAL_IDLE"
+            headMode "HEAD_DISABLE"
+        }
+    }
+}
+
+;=============================================================================
+; DDP Settings
+;=============================================================================
+
+ddp
+{
+    algorithm                       SLQ
+
+    nThreads                        4
+    threadPriority                  50
+
+    maxNumIterations                10
+    minRelCost                      1e-3
+    constraintTolerance             5e-3
+
+    displayInfo                     false
+    displayShortSummary             false
+    checkNumericalStability         false
+    debugPrintRollout               false
+
+    AbsTolODE                       1e-5
+    RelTolODE                       1e-3
+    maxNumStepsPerSecond            10000
+    timeStep                        0.01
+    backwardPassIntegratorType      ODE45
+
+    constraintPenaltyInitialValue   20.0
+    constraintPenaltyIncreaseRate   2.0
+
+    preComputeRiccatiTerms          true
+
+    useFeedbackPolicy               true
+
+    strategy                        LINE_SEARCH
+    lineSearch
+    {
+        minStepLength                   1e-2
+        maxStepLength                   1.0
+        hessianCorrectionStrategy       DIAGONAL_SHIFT
+        hessianCorrectionMultiple       1e-5
+    }
+}
+
+;=============================================================================
+; MPC Settings
+;=============================================================================
+
+mpc
+{
+    timeHorizon                     1.0
+    solutionTimeWindow              -1
+    coldStart                       false
+
+    debugPrint                      false
+
+    mpcDesiredFrequency             100
+    mrtDesiredFrequency             400
+}
+
+;=============================================================================
+; Rollout Settings
+;=============================================================================
+
+rollout
+{
+    AbsTolODE                       1e-5
+    RelTolODE                       1e-3
+    timeStep                        0.01
+    integratorType                  ODE45
+    maxNumStepsPerSecond            10000
+    checkNumericalStability         false
+}
+
+;=============================================================================
+; Input Cost
+;=============================================================================
+
+inputCost
+{
+    R
+    {
+        ; Base input cost (2 DOF for WheelBasedMobileManipulator: v_linear, omega)
+        base
+        {
+            WheelBasedMobileManipulator
+            {
+                scaling 1e-2
+
+                (0,0)   1.0     ; linear velocity
+                (1,1)   1.0     ; angular velocity (yaw rate)
+            }
+        }
+
+        ; Arm joint velocity costs
+        arm
+        {
+            scaling 1e-2
+
+            (0,0)   1.0     ; left arm joints
+            (1,1)   1.0
+            (2,2)   1.0
+            (3,3)   1.0
+            (4,4)   1.0
+            (5,5)   1.0
+            (6,6)   1.0
+            (7,7)   1.0     ; right arm joints
+            (8,8)   1.0
+            (9,9)   1.0
+            (10,10) 1.0
+            (11,11) 1.0
+            (12,12) 1.0
+            (13,13) 1.0
+        }
+    }
+}
+
+;=============================================================================
+; End Effector Constraint
+;=============================================================================
+
+endEffector
+{
+    muPosition                      1.0
+    muOrientation                   1.0
+}
+
+finalEndEffector
+{
+    muPosition                      1.0
+    muOrientation                   1.0
+}
+
+;=============================================================================
+; Body Relative Constraint (Mode-Aware, aligned with MobileManipulatorInterface)
+;=============================================================================
+
+bodyRelative
+{
+    activate                        true
+    xLowerBound                     0.00
+    xUpperBound                     0.25
+    muPosition                      0.5
+    muOrientation                   1.0
+}
+
+bodyTrackingEE
+{
+    activate                        false
+    muPosition                      0.5
+    muOrientation                   1.0
+}
+
+; Torso joint velocity lock when mode uses BodyConstraintMode::LOCKED (cmd BODY_LOCK; equality on u, first numJoints arm inputs after any base inputs)
+waistLock
+{
+    activate                        true
+    numJoints                       4
+}
+
+; Left / right arm joint velocity lock when mode has leftArmActive / rightArmActive false (equality u_arm=0)
+; Input layout: [base][waist numJoints][left leftNumJoints][right rightNumJoints] must match modelInfo inputDim
+armLock
+{
+    activate                        true
+    leftNumJoints                   7
+    rightNumJoints                  7
+}
+
+;=============================================================================
+; Bimanual Coupling Constraint
+;=============================================================================
+
+bimanualCoupling
+{
+    activate                        true
+    
+    ; Higher weights to enforce rigid coupling
+    muPosition                      5.0
+    muOrientation                   5.0
+    
+    ; Note: Relative pose is captured automatically when switching to COUPLED mode
+}
+
+;=============================================================================
+; Joint Position Limits
+;=============================================================================
+
+jointPositionLimits
+{
+    activate                        true
+    mu                              1e-2
+    delta                           1e-3
+}
+
+;=============================================================================
+; Joint Velocity Limits
+;=============================================================================
+
+jointVelocityLimits
+{
+    mu                              1e-2
+    delta                           1e-3
+
+    lowerBound
+    {
+        base
+        {
+            WheelBasedMobileManipulator
+            {
+                (0,0)  -1.0     ; linear velocity
+                (1,0)  -1.5     ; angular velocity (yaw rate)
+            }
+        }
+
+        arm
+        {
+            (0,0)  -2.0
+            (1,0)  -2.0
+            (2,0)  -2.0
+            (3,0)  -2.0
+            (4,0)  -2.0
+            (5,0)  -2.0
+            (6,0)  -2.0
+            (7,0)  -2.0
+            (8,0)  -2.0
+            (9,0)  -2.0
+            (10,0) -2.0
+            (11,0) -2.0
+            (12,0) -2.0
+            (13,0) -2.0
+        }
+    }
+
+    upperBound
+    {
+        base
+        {
+            WheelBasedMobileManipulator
+            {
+                (0,0)   1.0     ; linear velocity
+                (1,0)   1.5     ; angular velocity (yaw rate)
+            }
+        }
+
+        arm
+        {
+            (0,0)   2.0
+            (1,0)   2.0
+            (2,0)   2.0
+            (3,0)   2.0
+            (4,0)   2.0
+            (5,0)   2.0
+            (6,0)   2.0
+            (7,0)   2.0
+            (8,0)   2.0
+            (9,0)   2.0
+            (10,0)  2.0
+            (11,0)  2.0
+            (12,0)  2.0
+            (13,0)  2.0
+        }
+    }
+}
+
+;=============================================================================
+; Self Collision
+;=============================================================================
+
+selfCollision
+{
+    activate                        true
+    mu                              1e-2
+    delta                           1e-3
+    minimumDistance                 0.02
+
+    ; Collision link pairs to check
+    collisionLinkPairs
+    {
+    }
+
+    ; Collision object pairs (by index)
+    collisionObjectPairs
+    {
+    }
+}
+
+;=============================================================================
+; Optional sections not populated in this generic template (all default to
+; disabled when absent):
+;   headTrackingEE.{activate,muPosition,muOrientation} - independent 6D head pose tracking (HEAD_TRACKING).
+;   headMidpointGaze.{activate,cameraFrame,fx,fy,cx,cy,width,height,
+;     muAlignmentHorizontal, muAlignmentVertical,muFront,horizontalDeadbandDeg, verticalDeadbandDeg,minDepth} - head camera gaze at the left/right end-effector midpoint,
+;     active only in HEAD_GAZE head mode; mutually exclusive with headTrackingEE (see README.md
+;     "Head mode compatibility and mutual exclusion"). Independent of body mode; does NOT require
+;     customJointLock.activate=true.
+; Real per-robot values live in fa-w2-description/config/ocs2/*.info.
+;=============================================================================

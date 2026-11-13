@@ -1,0 +1,455 @@
+#include "marvin_hardware/tool/modbus_io.h"
+#include "MarvinSDK.h"
+#include "rclcpp/logging.hpp"
+#include <thread>
+#include <chrono>
+#include "rclcpp/logging.hpp"
+
+namespace marvin_hardware
+{
+    // Initialize static loggers
+    rclcpp::Logger ModbusIO::logger_ = rclcpp::get_logger("modbus_io");
+    std::atomic<bool> ModbusIO::debug_enabled_{false};
+
+    void ModbusIO::setDebugEnabled(bool enabled)
+    {
+        debug_enabled_.store(enabled, std::memory_order_relaxed);
+    }
+
+    bool ModbusIO::isDebugEnabled()
+    {
+        return debug_enabled_.load(std::memory_order_relaxed);
+    }
+
+    inline void hex_to_str(const unsigned char* data, int size, char* output, int output_size)
+    {
+        int pos = 0;
+        for (int i = 0; i < size && pos < output_size - 3; i++)
+        {
+            // 每个字节转换为两个十六进制字符
+            sprintf(output + pos, "%02X ", data[i]);
+            pos += 3;
+        }
+        if (pos > 0)
+        {
+            output[pos - 1] = '\0'; // 替换最后一个空格为结束符
+        }
+        else
+        {
+            output[0] = '\0';
+        }
+    }
+
+    // 将十六进制字符串转换为字节数组
+    inline int hex_string_to_bytes(const char* hex_str, unsigned char* bytes, int max_bytes)
+    {
+        int count = 0;
+        char byte_str[3] = {0};
+        const char* pos = hex_str;
+
+        while (*pos && count < max_bytes)
+        {
+            // 跳过空格
+            while (*pos == ' ') pos++;
+            if (!*pos) break;
+
+            // 提取两个字符作为一个字节
+            byte_str[0] = *pos++;
+            if (!*pos) break; // 确保有第二个字符
+            byte_str[1] = *pos++;
+
+            // 转换为字节
+            bytes[count++] = (unsigned char)strtol(byte_str, NULL, 16);
+        }
+
+        return count;
+    }
+
+    // ==============================================
+    // ModbusIO Implementation
+    // ==============================================
+
+    ModbusIO::ModbusIO(Clear485Func clear_485, Send485Func send_485,
+                       GetChDataFunc on_get_ch_data,
+                       long channel)
+        : clear_485_(clear_485),
+          send_485_(send_485),
+          on_get_ch_data_(on_get_ch_data ? on_get_ch_data : OnGetChDataA),
+          channel_(channel)
+    {
+
+    }
+
+    std::vector<uint16_t> ModbusIO::readRegisters(uint8_t slave_id, uint16_t start_addr,
+                                                  uint16_t count, uint8_t function_code)
+    {
+        // Polling parameters are internal to this implementation; the channel is fixed
+        // at construction (channel_) and not exposed via the API.
+        constexpr int kMaxAttempts = 50;
+        constexpr int kPollIntervalMs = 200;
+
+        if (count > MAX_MODBUS_REGISTERS)
+        {
+            count = MAX_MODBUS_REGISTERS;
+            RCLCPP_DEBUG(logger_, "Limiting count to %zu", MAX_MODBUS_REGISTERS);
+        }
+
+        std::vector<uint8_t> data = {
+            static_cast<uint8_t>(start_addr >> 8),
+            static_cast<uint8_t>(start_addr & 0xFF),
+            static_cast<uint8_t>(count >> 8),
+            static_cast<uint8_t>(count & 0xFF)
+        };
+
+        auto request = buildRequest(slave_id, function_code, data);
+
+        if (!sendRequest(request))
+        {
+            RCLCPP_DEBUG(logger_, "Failed to send read request");
+            return {};
+        }
+
+        // Allow RS485 turnaround before the first poll (matches gripper init example).
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+        std::vector<uint16_t> result;
+        uint8_t data_buf[MAX_BUFFER_SIZE];
+        char hex_str1[512];
+        long set_ch1 = channel_;
+
+        for (int attempt = 0; attempt < kMaxAttempts; ++attempt)
+        {
+            if (!on_get_ch_data_)
+            {
+                RCLCPP_DEBUG(logger_, "on_get_ch_data_ callback is null");
+                return {};
+            }
+
+            long tag = on_get_ch_data_(data_buf, &set_ch1);
+
+            if (tag >= 1)
+            {
+                hex_to_str(data_buf, static_cast<int>(tag), hex_str1, sizeof(hex_str1));
+                if (isDebugEnabled())
+                {
+                    RCLCPP_DEBUG(logger_, "Received channel=%ld size=%ld: %s", set_ch1, tag, hex_str1);
+                }
+
+                std::vector<uint8_t> response(data_buf, data_buf + static_cast<size_t>(tag));
+                if (response.size() < 5)
+                {
+                    if (attempt + 1 < kMaxAttempts)
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(kPollIntervalMs));
+                    }
+                    continue;
+                }
+
+                if (response[0] != slave_id || response[1] != function_code)
+                {
+                    if (attempt + 1 < kMaxAttempts)
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(kPollIntervalMs));
+                    }
+                    continue;
+                }
+
+                uint8_t byte_count = response[2];
+                if (response.size() < static_cast<size_t>(3 + byte_count + 2))
+                {
+                    if (attempt + 1 < kMaxAttempts)
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(kPollIntervalMs));
+                    }
+                    continue;
+                }
+
+                size_t reg_count = byte_count / 2;
+                result.reserve(reg_count);
+                for (size_t i = 0; i < reg_count; ++i)
+                {
+                    size_t idx = 3 + i * 2;
+                    uint16_t value = static_cast<uint16_t>(response[idx] << 8) | response[idx + 1];
+                    result.push_back(value);
+                }
+                return result;
+            }
+
+            if (attempt + 1 < kMaxAttempts)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(kPollIntervalMs));
+            }
+        }
+
+        RCLCPP_WARN(logger_, "Modbus read timeout: no valid response after %d attempts", kMaxAttempts);
+        return {};
+    }
+
+    bool ModbusIO::sendReadRequestAsync(uint8_t slave_id, uint16_t start_addr, uint16_t count, uint8_t function_code)
+    {
+        if (count > MAX_MODBUS_REGISTERS)
+        {
+            count = MAX_MODBUS_REGISTERS;
+            RCLCPP_DEBUG(logger_, "Limiting count to %zu", MAX_MODBUS_REGISTERS);
+        }
+
+        std::vector<uint8_t> data = {
+            static_cast<uint8_t>(start_addr >> 8),
+            static_cast<uint8_t>(start_addr & 0xFF),
+            static_cast<uint8_t>(count >> 8),
+            static_cast<uint8_t>(count & 0xFF)
+        };
+
+        auto request = buildRequest(slave_id, function_code, data);
+        return sendRequest(request);
+    }
+
+    bool ModbusIO::sendWriteSingleRegisterAsync(uint8_t slave_id, uint16_t register_addr, uint16_t value,
+                                                uint8_t function_code)
+    {
+        std::vector<uint8_t> data = {
+            static_cast<uint8_t>(register_addr >> 8),
+            static_cast<uint8_t>(register_addr & 0xFF),
+            static_cast<uint8_t>(value >> 8),
+            static_cast<uint8_t>(value & 0xFF)
+        };
+        return sendRequest(buildRequest(slave_id, function_code, data));
+    }
+
+    bool ModbusIO::sendFC06QueryAsync(uint8_t slave_id, uint16_t register_addr)
+    {
+        return sendWriteSingleRegisterAsync(slave_id, register_addr, 0x0000, 0x06);
+    }
+
+    bool ModbusIO::parseFC06Response(const uint8_t* data, size_t data_size,
+                                     uint8_t expected_slave_id, uint16_t expected_register_addr,
+                                     uint16_t& value_out)
+    {
+        if (data_size < 8 || data[0] != expected_slave_id || data[1] != 0x06)
+        {
+            return false;
+        }
+        const uint16_t register_addr =
+            static_cast<uint16_t>((static_cast<uint16_t>(data[2]) << 8) | data[3]);
+        if (register_addr != expected_register_addr)
+        {
+            return false;
+        }
+        value_out = static_cast<uint16_t>((static_cast<uint16_t>(data[4]) << 8) | data[5]);
+        return true;
+    }
+
+    std::vector<uint16_t> ModbusIO::parseModbusResponse(const uint8_t* data, size_t data_size,
+                                                        uint8_t expected_slave_id, uint8_t expected_function_code)
+    {
+        std::vector<uint16_t> result;
+        
+        if (data_size < 5) // minimal RTU frame size
+        {
+            RCLCPP_DEBUG(logger_, "parseModbusResponse: Data too short: %zu bytes (min 5)", data_size);
+            return result;
+        }
+
+        // Validate slave id
+        if (data[0] != expected_slave_id)
+        {
+            RCLCPP_DEBUG(logger_, "parseModbusResponse: slave id mismatch - expected 0x%02X, got 0x%02X",
+                        expected_slave_id, data[0]);
+            return result;
+        }
+        // Accept expected function code or common alternates (e.g. 0x04 for read when 0x03 expected)
+        uint8_t fc = data[1];
+        bool fc_ok = (fc == expected_function_code) ||
+            (expected_function_code == 0x03 && fc == 0x04) ||  // read: Holding vs Input registers
+            (expected_function_code == 0x04 && fc == 0x03);
+        if (!fc_ok)
+        {
+            RCLCPP_DEBUG(logger_, "parseModbusResponse: function code mismatch - expected 0x%02X, got 0x%02X",
+                        expected_function_code, fc);
+            return result;
+        }
+
+        uint8_t byte_count = data[2];
+        // Ensure we have enough data bytes plus CRC
+        if (data_size < static_cast<size_t>(3 + byte_count + 2))
+        {
+            return result;
+        }
+
+        // Extract register values (big-endian pairs)
+        size_t reg_count = byte_count / 2;
+        result.reserve(reg_count);
+        for (size_t i = 0; i < reg_count; ++i)
+        {
+            size_t idx = 3 + i * 2;
+            uint16_t value = static_cast<uint16_t>(data[idx] << 8) | data[idx + 1];
+            result.push_back(value);
+        }
+        
+        return result;
+    }
+
+    bool ModbusIO::writeSingleRegister(uint8_t slave_id, uint16_t register_addr, uint16_t value,
+                                       uint8_t function_code)
+    {
+        std::vector<uint8_t> data = {
+            static_cast<uint8_t>(register_addr >> 8),
+            static_cast<uint8_t>(register_addr & 0xFF),
+            static_cast<uint8_t>(value >> 8),
+            static_cast<uint8_t>(value & 0xFF)
+        };
+
+        auto request = buildRequest(slave_id, function_code, data);
+        if (!sendRequest(request))
+        {
+            RCLCPP_DEBUG(logger_, "Failed to write register 0x%04X", register_addr);
+            return false;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        return true;
+    }
+
+    bool ModbusIO::writeMultipleRegisters(uint8_t slave_id, uint16_t start_addr,
+                                          const std::vector<uint16_t>& values,
+                                          uint8_t function_code)
+    {
+        if (values.empty() || values.size() > MAX_MODBUS_REGISTERS)
+        {
+            RCLCPP_DEBUG(logger_, "Invalid register count: %zu", values.size());
+            return false;
+        }
+
+        std::vector<uint8_t> data = {
+            static_cast<uint8_t>(start_addr >> 8),
+            static_cast<uint8_t>(start_addr & 0xFF),
+            static_cast<uint8_t>(values.size() >> 8),
+            static_cast<uint8_t>(values.size() & 0xFF),
+            static_cast<uint8_t>(values.size() * 2)
+        };
+
+        for (uint16_t value : values)
+        {
+            data.push_back(static_cast<uint8_t>(value >> 8));
+            data.push_back(static_cast<uint8_t>(value & 0xFF));
+        }
+
+        auto request = buildRequest(slave_id, function_code, data);
+        if (!sendRequest(request))
+        {
+            RCLCPP_DEBUG(logger_, "Failed to write multiple registers");
+            return false;
+        }
+
+        return true;
+    }
+
+    bool ModbusIO::sendRequest(const std::vector<uint8_t>& request)
+    {
+        //if (clear_485_)
+        //{
+        //    const bool cleared = clear_485_();
+        //    RCLCPP_INFO(logger_, "Cleared channel=%ld result=%s", channel_, cleared ? "true" : "false");
+        //}
+
+        char debug_str[512];
+        hex_to_str(request.data(), static_cast<int>(request.size()), debug_str, sizeof(debug_str));
+        if (isDebugEnabled())
+        {
+            RCLCPP_DEBUG(logger_, "Sending channel=%ld size=%zu: %s", channel_, request.size(), debug_str);
+        }
+
+        const bool ok = send_485_((uint8_t*)request.data(), static_cast<long>(request.size()), channel_);
+        if (!ok)
+        {
+            RCLCPP_WARN(logger_, "Send failed channel=%ld size=%zu: %s", channel_, request.size(), debug_str);
+        }
+        else if (request.size() >= 2 &&
+                 (request[1] == 0x10 || request[1] == 0x06))
+        {
+            // 事件型诊断：只记录写指令，不打印 50Hz 状态读取请求。
+            // 这里的 accepted 表示 OnSetChData 已成功占用 SDK 通道发送槽。
+            RCLCPP_INFO(logger_,
+                        "Modbus TX accepted: channel=%ld slave=0x%02X fc=0x%02X size=%zu frame=[%s]",
+                        channel_, request[0], request[1], request.size(), debug_str);
+        }
+        else if (isDebugEnabled())
+        {
+            RCLCPP_DEBUG(logger_, "Sent channel=%ld result=true", channel_);
+        }
+        return ok;
+    }
+
+    std::vector<uint8_t> ModbusIO::receiveResponse(int max_attempts, int timeout_ms)
+    {
+        uint8_t buffer[MAX_BUFFER_SIZE];
+
+        for (int attempt = 0; attempt < max_attempts; attempt++)
+        {
+            long channel = channel_;
+            int received = on_get_ch_data_(buffer, &channel);
+
+            if (received > 0 && channel == channel_)
+            {
+                if (isDebugEnabled())
+                {
+                    char hex_str[2048];
+                    hex_to_str(buffer, received, hex_str, sizeof(hex_str));
+                    RCLCPP_DEBUG(logger_, "Received channel=%ld size=%d: %s", channel, received, hex_str);
+                }
+                std::vector<uint8_t> response(buffer, buffer + received);
+                return response;
+            }
+
+            if (attempt < max_attempts - 1)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
+            }
+        }
+
+        RCLCPP_WARN(logger_, "Receive timeout channel=%ld after %d attempts", channel_, max_attempts);
+        return {};
+    }
+
+    std::vector<uint8_t> ModbusIO::buildRequest(uint8_t slave_id, uint8_t function_code,
+                                                const std::vector<uint8_t>& data)
+    {
+        std::vector<uint8_t> request;
+        request.reserve(data.size() + 3);
+
+        request.push_back(slave_id);
+        request.push_back(function_code);
+        request.insert(request.end(), data.begin(), data.end());
+
+        uint16_t crc = calculateCRC(request.data(), request.size());
+        request.push_back(static_cast<uint8_t>(crc & 0xFF));
+        request.push_back(static_cast<uint8_t>(crc >> 8));
+
+        return request;
+    }
+
+    uint16_t ModbusIO::calculateCRC(const uint8_t* data, size_t length)
+    {
+        uint16_t crc = 0xFFFF;
+
+        for (size_t i = 0; i < length; i++)
+        {
+            crc ^= data[i];
+
+            for (int j = 0; j < 8; j++)
+            {
+                if (crc & 0x0001)
+                {
+                    crc = (crc >> 1) ^ 0xA001;
+                }
+                else
+                {
+                    crc >>= 1;
+                }
+            }
+        }
+
+        return crc;
+    }
+
+}

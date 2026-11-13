@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>arm_mpc</name>
+  <version>0.1.0</version>
+  <description>MPC task for one or two arms: OCS2 mobile-manipulator interface, observation, policy evaluation and MPC reset on top of mpc_core</description>
+  <maintainer email="biao876990970@hotmail.com">Huang Zhenbiao</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>ament_index_cpp</depend>
+  <depend>ocs2_mobile_manipulator</depend>
+  <depend>mpc_core</depend>
+  <depend>robot_controller_core</depend>
+  <depend>trajectory_manager</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

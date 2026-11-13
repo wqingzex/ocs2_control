@@ -1,0 +1,213 @@
+; m6_ccs_description：单臂精定位
+; 参数基准：W2 的 fixed_base.info，仅提取手臂适用项。
+; 状态与输入为 7 维：[joint1~7]。
+; 保留本模型的基座和末端坐标系；规划 xacro 固定末端执行器关节。
+
+model_information
+{
+    manipulatorModelType    0
+    baseFrame               "base_link"
+    eeFrame                 "tcp"
+    eeFrame1                ""
+
+    removeJoints
+    {
+    }
+}
+
+model_settings
+{
+    ; usePreComputation: true = 提前缓存 Pinocchio 中间量
+    usePreComputation       true
+
+    ; recompileLibraries: true = 每次启动重新生成 CppAD 动态库
+    recompileLibraries      true
+}
+
+ddp
+{
+    algorithm                       SLQ
+
+    nThreads                        3
+    threadPriority                  50
+
+    maxNumIterations                1
+    minRelCost                      0.1
+    constraintTolerance             1e-3
+
+    displayInfo                     false
+    displayShortSummary             false
+    checkNumericalStability         false
+    debugPrintRollout               false
+    debugCaching                    false
+
+    AbsTolODE                       1e-5
+    RelTolODE                       1e-3
+    maxNumStepsPerSecond            100000
+    timeStep                        1e-3
+    backwardPassIntegratorType      ODE45
+
+    constraintPenaltyInitialValue   20.0
+    constraintPenaltyIncreaseRate   2.0
+
+    preComputeRiccatiTerms          true
+
+    useFeedbackPolicy               false
+
+    strategy                        LINE_SEARCH
+    lineSearch
+    {
+        minStepLength                   1e-2
+        maxStepLength                   1.0
+        hessianCorrectionStrategy       DIAGONAL_SHIFT
+        hessianCorrectionMultiple       1e-3
+    }
+}
+
+mpc
+{
+    timeHorizon                     1.0     ; [s] 保留精定位配置的预测时域
+    solutionTimeWindow              0.2     ; [s]
+    coldStart                       false
+
+    debugPrint                      false
+
+    ; 独立 MPC/MRT 节点的期望频率；控制器实际频率由 ROS 参数
+    ; mpc_frequency / update_rate 决定，不能仅依据本节判断实际运行频率。
+    mpcDesiredFrequency             100     ; [Hz]
+    mrtDesiredFrequency             500     ; [Hz]
+}
+
+rollout
+{
+    AbsTolODE                       1e-5
+    RelTolODE                       1e-3
+    timeStep                        1e-2
+    integratorType                  ODE45
+    maxNumStepsPerSecond            100000
+    checkNumericalStability         false
+}
+
+; 初始化值；在线控制使用实际关节观测。
+initialState
+{
+    arm
+    {
+        (0,0)    0.0     ; joint1
+        (1,0)    0.0     ; joint2
+        (2,0)    0.0     ; joint3
+        (3,0)    0.0     ; joint4
+        (4,0)    0.0     ; joint5
+        (5,0)    0.0     ; joint6
+        (6,0)    0.0     ; joint7
+    }
+}
+
+; R 为 7x7 正对角矩阵，实际速度偏差权重 = scaling * 对角值。
+inputCost
+{
+    R
+    {
+        arm
+        {
+            scaling 5e-2
+
+            (0,0)    0.5     ; joint1
+            (1,1)    0.5     ; joint2
+            (2,2)    0.5     ; joint3
+            (3,3)    0.5     ; joint4
+            (4,4)    0.1     ; joint5
+            (5,5)    0.1     ; joint6
+            (6,6)    0.1     ; joint7
+        }
+    }
+}
+
+endEffector
+{
+    dualArmMode false
+    muPosition      100.0
+    muOrientation   50.0
+}
+
+finalEndEffector
+{
+    dualArmMode false
+    muPosition      200.0
+    muOrientation   100.0
+}
+
+; 关节位置限位来自本模型 URDF，以 relaxed barrier 软惩罚实现。
+jointPositionLimits
+{
+    activate                        true
+    mu                              1e-3
+    delta                           1e-3
+}
+
+; 速度上下限为 7 维列向量 (i,0)，以软惩罚实现，并非硬裁剪。
+jointVelocityLimits
+{
+    mu      1e-2
+    delta   1e-3
+
+    lowerBound
+    {
+        arm
+        {
+            (0,0)    -1.57   ; joint1
+            (1,0)    -1.57   ; joint2
+            (2,0)    -1.57   ; joint3
+            (3,0)    -1.57   ; joint4
+            (4,0)    -1.57   ; joint5
+            (5,0)    -1.57   ; joint6
+            (6,0)    -1.57   ; joint7
+        }
+    }
+
+    upperBound
+    {
+        arm
+        {
+            (0,0)    1.57    ; joint1
+            (1,0)    1.57    ; joint2
+            (2,0)    1.57    ; joint3
+            (3,0)    1.57    ; joint4
+            (4,0)    1.57    ; joint5
+            (5,0)    1.57    ; joint6
+            (6,0)    1.57    ; joint7
+        }
+    }
+}
+
+; 保持原单臂配置的自碰撞关闭状态；无全身躯干碰撞对或硬编码几何编号。
+selfCollision
+{
+    activate false
+    mu                  1e-3
+    delta               1e-2
+    minimumDistance     0.01
+
+    collisionObjectPairs
+    {
+    }
+    collisionLinkPairs
+    {
+    }
+}
+
+; 保留 M6 CCS 已有的 6/7 轴机械耦合范围；索引只覆盖本文件中的手臂。
+joint67Coupling
+{
+    activate                        true
+    j6LimitDeg                      58.0
+    j7LimitDeg                      78.0
+    diagonalLimitDeg                110.5
+    slope                           1.025
+    smoothTauDeg                    2.0
+    safetyMarginDeg                 1.0
+    penaltyWeight                   200.0
+    penaltyActivationDeg            3.0
+
+    ; 单臂不指定 left/right，读取器按 7 维模型自动使用 J6/J7 索引 5/6。
+}

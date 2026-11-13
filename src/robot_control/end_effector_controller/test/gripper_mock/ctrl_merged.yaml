@@ -1,0 +1,15 @@
+# The gripper as a GripperController instance.
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    gripper_controller:
+      type: end_effector_controller/GripperController
+gripper_controller:
+  ros__parameters:
+    joints: [gripper_joint]
+    command_interfaces: [position]
+    state_interfaces: [position, effort]
+    use_effort_interface: true
+    movej_interpolation_type: none

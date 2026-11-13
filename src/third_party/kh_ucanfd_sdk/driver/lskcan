@@ -1,0 +1,106 @@
+#!/bin/bash
+
+MYSELF=$(basename $0)
+SYSFSROOT="/sys/class"
+DRV="kcan"
+DRVROOT="${SYSFSROOT}/${DRV}"
+ECHO="echo"
+
+if [ ! -d "$DRVROOT" ]; then
+    $ECHO "$MYSELF: kcan driver not loaded"
+    exit 1
+fi
+
+devlist=$(ls $DRVROOT 2>/dev/null)
+
+for dev in $devlist; do
+    [ ! -d "$DRVROOT/$dev" ] && continue
+    
+    adapter_name=$(cat $DRVROOT/$dev/adapter_name 2>/dev/null || echo "N/A")
+    ndev=$(cat $DRVROOT/$dev/ndev 2>/dev/null || echo "N/A")
+    
+    bus_state_code=$(cat $DRVROOT/$dev/bus_state 2>/dev/null || echo "-1")
+    case $bus_state_code in
+        0) bus_state="CLOSED" ;;
+        1) bus_state="ACTIVE" ;;
+        2) bus_state="WARNING" ;;
+        3) bus_state="PASSIVE" ;;
+        4) bus_state="BUSOFF" ;;
+        *) bus_state="UNKNOWN ($bus_state_code)" ;;
+    esac
+    
+    clock=$(cat $DRVROOT/$dev/clock 2>/dev/null || echo "N/A")
+    rx_cnt=$(cat $DRVROOT/$dev/read 2>/dev/null || echo "N/A")
+    tx_cnt=$(cat $DRVROOT/$dev/write 2>/dev/null || echo "N/A")
+    
+    nom_bitrate=$(cat $DRVROOT/$dev/nom_bitrate 2>/dev/null || echo "N/A")
+    nom_brp=$(cat $DRVROOT/$dev/nom_brp 2>/dev/null || echo "N/A")
+    
+    nom_sample_point=$(cat $DRVROOT/$dev/nom_sample_point 2>/dev/null || echo "N/A")
+    if [[ "$nom_sample_point" =~ ^[0-9]+$ ]]; then
+        nom_sample_point=$((nom_sample_point / 100))
+    fi
+    
+    nom_sjw=$(cat $DRVROOT/$dev/nom_sjw 2>/dev/null || echo "N/A")
+    nom_tq=$(cat $DRVROOT/$dev/nom_tq 2>/dev/null || echo "N/A")
+    nom_tseg1=$(cat $DRVROOT/$dev/nom_tseg1 2>/dev/null || echo "N/A")
+    nom_tseg2=$(cat $DRVROOT/$dev/nom_tseg2 2>/dev/null || echo "N/A")
+    
+    data_bitrate=$(cat $DRVROOT/$dev/data_bitrate 2>/dev/null || echo "N/A")
+    data_brp=$(cat $DRVROOT/$dev/data_brp 2>/dev/null || echo "N/A")
+    
+    data_sample_point=$(cat $DRVROOT/$dev/data_sample_point 2>/dev/null || echo "N/A")
+    if [[ "$data_sample_point" =~ ^[0-9]+$ ]]; then
+        data_sample_point=$((data_sample_point / 100))
+    fi
+    
+    data_sjw=$(cat $DRVROOT/$dev/data_sjw 2>/dev/null || echo "N/A")
+    data_tq=$(cat $DRVROOT/$dev/data_tq 2>/dev/null || echo "N/A")
+    data_tsseg1=$(cat $DRVROOT/$dev/data_tsseg1 2>/dev/null || echo "N/A")
+    data_tsseg2=$(cat $DRVROOT/$dev/data_tsseg2 2>/dev/null || echo "N/A")
+    
+    errors=$(cat $DRVROOT/$dev/errors 2>/dev/null || echo "N/A")
+    rx_error_counter=$(cat $DRVROOT/$dev/rx_error_counter 2>/dev/null || echo "N/A")
+    tx_error_counter=$(cat $DRVROOT/$dev/tx_error_counter 2>/dev/null || echo "N/A")
+    
+    $ECHO "=============================================="
+    $ECHO "Device: $dev"
+    $ECHO "----------------------------------------------"
+    $ECHO "Device Status:"
+    $ECHO "  Adapter Name: $adapter_name"
+    $ECHO "  Network Device: $ndev"
+    $ECHO "  Bus State: $bus_state"
+    $ECHO "  Clock: $clock"
+    $ECHO "  RX Frames: $rx_cnt"
+    $ECHO "  TX Frames: $tx_cnt"
+    
+    $ECHO "----------------------------------------------"
+    $ECHO "Nominal Bitrate Configuration:"
+    $ECHO "  Bitrate: $nom_bitrate"
+    $ECHO "  BRP: $nom_brp"
+    $ECHO "  Sample Point: $nom_sample_point%"
+    $ECHO "  SJW: $nom_sjw"
+    $ECHO "  TQ: $nom_tq"
+    $ECHO "  TSEG1: $nom_tseg1"
+    $ECHO "  TSEG2: $nom_tseg2"
+    
+    if [ "$data_bitrate" != "N/A" ]; then
+        $ECHO "----------------------------------------------"
+        $ECHO "Data Bitrate Configuration (CAN FD):"
+        $ECHO "  Bitrate: $data_bitrate"
+        $ECHO "  BRP: $data_brp"
+        $ECHO "  Sample Point: $data_sample_point%"
+        $ECHO "  SJW: $data_sjw"
+        $ECHO "  TQ: $data_tq"
+        $ECHO "  TSEG1: $data_tsseg1"
+        $ECHO "  TSEG2: $data_tsseg2"
+    fi
+    
+    $ECHO "----------------------------------------------"
+    $ECHO "Error Status:"
+    $ECHO "  Total Errors: $errors"
+    $ECHO "  RX Error Counter: $rx_error_counter"
+    $ECHO "  TX Error Counter: $tx_error_counter"
+    $ECHO "=============================================="
+    $ECHO
+done

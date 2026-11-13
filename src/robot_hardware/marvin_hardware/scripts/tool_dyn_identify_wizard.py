@@ -1,0 +1,478 @@
+#!/usr/bin/env python3
+import json
+import sys
+import os
+import time
+import logging
+
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _has_sdk_python(root: str) -> bool:
+    return os.path.isdir(os.path.join(root, "SDK_PYTHON"))
+
+
+def _resolve_sdk_root() -> str:
+    """定位 TJ_FX_ROBOT_CONTRL_SDK 根目录（兼容源码运行/安装后运行）。"""
+    # 1) 源码运行：<pkg>/scripts/xxx.py -> src/third_party/TJ_FX_ROBOT_CONTRL_SDK（子模块）
+    pkg_dir = os.path.dirname(CURRENT_DIR)
+    cand1 = os.path.normpath(os.path.join(pkg_dir, "..", "..", "third_party", "TJ_FX_ROBOT_CONTRL_SDK"))
+    if _has_sdk_python(cand1):
+        return cand1
+
+    # 2) 安装后（colcon）：可执行文件在 <prefix>/lib/<pkg>/tool_dyn_identify_wizard
+    #    故 prefix = dirname(dirname(CURRENT_DIR))，share 在 <prefix>/share/<pkg>/...
+    try:
+        from ament_index_python.packages import get_package_share_directory  # type: ignore
+
+        share_dir = get_package_share_directory("marvin_hardware")
+        cand_ament = os.path.join(share_dir, "TJ_FX_ROBOT_CONTRL_SDK")
+        if _has_sdk_python(cand_ament):
+            return cand_ament
+    except Exception:
+        pass
+
+    # 3) 不依赖 ament 索引时，从安装路径推断 prefix（勿用三级 dirname，否则会指到 workspace 根目录）
+    prefix = os.path.dirname(os.path.dirname(CURRENT_DIR))
+    cand2 = os.path.join(prefix, "share", "marvin_hardware", "TJ_FX_ROBOT_CONTRL_SDK")
+    if _has_sdk_python(cand2):
+        return cand2
+
+    raise RuntimeError(
+        "无法定位 TJ_FX_ROBOT_CONTRL_SDK（需要包含 SDK_PYTHON）。"
+        "请 source install/setup.bash 后重试，并确认已重新 colcon build marvin_hardware（子模块含 SDK_PYTHON）。"
+    )
+
+
+# Use SDK python bindings from marvin_hardware's vendored SDK.
+# Collected data and the log are run outputs: <cwd>/logs/dyn_identify (git-ignored).
+OUTPUT_DIR = os.path.join(os.getcwd(), "logs", "dyn_identify")
+SDK_ROOT = _resolve_sdk_root()
+if SDK_ROOT not in sys.path:
+    sys.path.insert(0, SDK_ROOT)
+
+
+from SDK_PYTHON.fx_kine import Marvin_Kine  # noqa: E402
+from SDK_PYTHON.fx_robot import Marvin_Robot, DCSS  # noqa: E402
+
+
+def _arm_index(arm: str) -> int:
+    return 0 if arm == "A" else 1
+
+
+def _check_joints_reached(fb_joints, target_joints, tol_deg: float = 0.5) -> bool:
+    try:
+        return all(abs(float(a) - float(b)) <= tol_deg for a, b in zip(fb_joints, target_joints))
+    except Exception:
+        return False
+
+
+def _max_abs_joint_error_deg(fb_joints, target_joints) -> float:
+    try:
+        return max(abs(float(a) - float(b)) for a, b in zip(fb_joints, target_joints))
+    except Exception:
+        return float("inf")
+
+
+def _resolve_ccs_paths(arm: str):
+    """根据选择的手臂（A 左 / B 右）解析 CCS 示例路径。"""
+    # PVT/配置文件从 SDK 安装目录读取；采集数据写入当前工作目录（可写）。
+    base_template = os.path.join(SDK_ROOT, "CommonConfig", "LoadData_ccs", "LoadData")
+    side = "Left" if arm == "A" else "Right"
+    pvt_file = os.path.join(base_template, "IdenTraj", f"LoadIdenTraj_MarvinCCS_{side}.fmv")
+
+    # 工作目录：包含辨识所需的结构（CfgFile/IdenTraj/LoadData.csv/NoLoadData.csv）
+    work_base = os.path.join(OUTPUT_DIR, "ccs", arm)
+    os.makedirs(work_base, exist_ok=True)
+    os.makedirs(os.path.join(work_base, "CfgFile"), exist_ok=True)
+    os.makedirs(os.path.join(work_base, "IdenTraj"), exist_ok=True)
+
+    # 复制模板里的配置/轨迹文件到工作目录（避免安装目录不可写）
+    def _copy_if_missing(src: str, dst: str):
+        if os.path.isfile(src) and (not os.path.isfile(dst)):
+            with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
+                fdst.write(fsrc.read())
+
+    # CfgFile 里的内容用于辨识（按 demo 目录结构复制）
+    cfg_dir = os.path.join(base_template, "CfgFile")
+    if os.path.isdir(cfg_dir):
+        for name in os.listdir(cfg_dir):
+            _copy_if_missing(os.path.join(cfg_dir, name), os.path.join(work_base, "CfgFile", name))
+
+    # IdenTraj 文件也复制一份（用于完整性/可迁移；采集阶段仍读取原始 pvt_file）
+    traj_dst = os.path.join(work_base, "IdenTraj", os.path.basename(pvt_file))
+    _copy_if_missing(pvt_file, traj_dst)
+
+    # identify_tool_dyn expects fixed filenames inside ipath.
+    load_csv = os.path.join(work_base, "LoadData.csv")
+    noload_csv = os.path.join(work_base, "NoLoadData.csv")
+    return work_base, pvt_file, load_csv, noload_csv
+
+
+def _power_off_robot(robot: Marvin_Robot, logger: logging.Logger) -> None:
+    """断开连接前将左右臂切换到下电模式（ARM_STATE_IDLE / 下伺服）。"""
+    logger.info("[步骤] 切换机器人到下电模式（左右臂下伺服）")
+    for arm in ("A", "B"):
+        robot.clear_set()
+        robot.set_state(arm=arm, state=0)
+        robot.send_cmd()
+        time.sleep(0.1)
+    time.sleep(0.5)
+    logger.info("[步骤] 下电完成")
+
+
+def _power_off_arm(robot: Marvin_Robot, arm: str, logger: logging.Logger) -> None:
+    robot.clear_set()
+    robot.set_state(arm=arm, state=0)
+    robot.send_cmd()
+    time.sleep(0.5)
+    logger.info(f"[步骤] 手臂 {arm} 已下电")
+
+
+def _go_to_joint_zero(
+    robot: Marvin_Robot,
+    dcss: DCSS,
+    arm: str,
+    logger: logging.Logger,
+    vel_ratio: int = 30,
+    acc_ratio: int = 30,
+    timeout_s: float = 60.0,
+) -> None:
+    """将指定手臂切到位置模式，并运动到关节零位 (0,0,0,0,0,0,0)（单位：度），等待到位。
+
+    注意：某些情况下 SDK 的 low_speed_flag 可能在未到位时就为 1（例如未使能/命令未生效/通信异常）。
+    因此这里以“关节误差满足阈值”为到位的唯一判据，low_speed_flag 仅作为诊断信息。
+    """
+    target = [0.0] * 7
+    idx = _arm_index(arm)
+
+    robot.clear_set()
+    robot.set_vel_acc(arm=arm, velRatio=vel_ratio, AccRatio=acc_ratio)
+    robot.set_state(arm=arm, state=1)  # POSITION
+    robot.send_cmd()
+    time.sleep(0.8)
+
+    logger.info(f"[步骤] 手臂 {arm} 运动到关节零位 {target}（单位：度）")
+    t0 = time.time()
+    last_clear_t = 0.0
+    clear_attempts = 0
+    last_pos_state_req_t = 0.0
+    pos_state_req_attempts = 0
+    while True:
+        # IMPORTANT:
+        # The SDK uses an internal send buffer which accumulates "set" operations until send_cmd().
+        # If we don't clear it, the buffer can overflow and later commands may become ineffective
+        # while still printing local logs. Therefore, we clear_set() every cycle to send a single,
+        # fresh command frame.
+        robot.clear_set()
+        robot.set_joint_cmd_pose(arm=arm, joints=target)
+        robot.send_cmd()
+        time.sleep(0.02)
+
+        sub_data = robot.subscribe(dcss)
+        fb = sub_data["outputs"][idx]["fb_joint_pos"]
+        low_spd = sub_data["outputs"][idx]["low_speed_flag"][0]
+        cur_state = sub_data["states"][idx].get("cur_state", None)
+        cmd_state = sub_data["states"][idx].get("cmd_state", None)
+        err_code = sub_data["states"][idx].get("err_code", None)
+        max_err = _max_abs_joint_error_deg(fb, target)
+
+        # If controller reports arm error, try clearing it periodically.
+        # Especially important for ARM_ERR_Emcy=13: after releasing physical E-stop,
+        # cabinet often stays in error state until clear-error succeeds.
+        now = time.time()
+        if err_code not in (None, 0):
+            if now - last_clear_t > 1.0:
+                last_clear_t = now
+                clear_attempts += 1
+                try:
+                    robot.clear_error(arm)
+                except Exception:
+                    pass
+                # Try to print servo fault details (hex + decoded) for faster diagnosis.
+                try:
+                    servo_faults = robot.get_servo_error_code(arm, lang="CN")
+                    logger.warning(f"[步骤] arm={arm} err_code={err_code}，已触发清错(第{clear_attempts}次)。伺服故障码: {servo_faults}")
+                except Exception:
+                    logger.warning(f"[步骤] arm={arm} err_code={err_code}，已触发清错(第{clear_attempts}次)。")
+
+        # If error is cleared but arm is still in IDLE (0), re-request POSITION mode periodically.
+        # After E-stop clear, cabinet often ends up in IDLE (servo down) and needs a fresh state request.
+        if err_code in (None, 0) and cur_state == 0:
+            if now - last_pos_state_req_t > 1.0:
+                last_pos_state_req_t = now
+                pos_state_req_attempts += 1
+                try:
+                    robot.clear_set()
+                    robot.set_vel_acc(arm=arm, velRatio=vel_ratio, AccRatio=acc_ratio)
+                    robot.set_state(arm=arm, state=1)  # POSITION
+                    robot.send_cmd()
+                    logger.warning(
+                        f"[步骤] arm={arm} 当前处于下伺服(cur_state=0)，已重新请求进入位置模式(第{pos_state_req_attempts}次)。"
+                    )
+                except Exception as e:
+                    logger.warning(f"[步骤] arm={arm} 重新请求位置模式时异常: {e}")
+
+        if _check_joints_reached(fb, target, tol_deg=0.05):
+            logger.info(f"[步骤] 手臂 {arm} 已到达关节零位。max_err_deg={max_err:.3f} fb_joint_pos={fb}")
+            return
+        if (time.time() - t0) > timeout_s:
+            logger.error(
+                f"[步骤] 等待手臂 {arm} 到达零位超时。cur_state={cur_state} cmd_state={cmd_state} err_code={err_code} "
+                f"low_speed_flag={low_spd} max_err_deg={max_err:.3f} fb_joint_pos={fb}"
+            )
+            raise TimeoutError("等待手臂到达关节零位超时")
+
+
+def _convert_sdk_raw_to_csv(raw_path: str, save_path: str, logger: logging.Logger) -> None:
+    """将 SDK 原始采集文件转为辨识用 CSV；仅成功后替换 save_path，失败时保留原文件。"""
+    processed_data = []
+    with open(raw_path, "r", encoding="utf-8") as file:
+        lines = file.readlines()[1:]
+    for line in lines:
+        parts = line.strip().split("$")
+        numbers = []
+        for part in parts:
+            if part:
+                num_str = part.split()[-1]
+                numbers.append(num_str)
+        if len(numbers) >= 2:
+            numbers = numbers[2:]
+        processed_data.append(numbers)
+
+    tmp_path = save_path + ".tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as out_file:
+            for row in processed_data:
+                out_file.write(",".join(row) + "\n")
+        os.replace(tmp_path, save_path)
+    except Exception:
+        if os.path.isfile(tmp_path):
+            os.remove(tmp_path)
+        raise
+    finally:
+        if os.path.isfile(raw_path):
+            os.remove(raw_path)
+
+    logger.info(f"数据已保存为: {save_path}")
+
+
+def _ensure_pvt_mode(robot, dcss, arm, logger, max_attempts=2):
+    idx = _arm_index(arm)
+    last_cur_state, last_err_code = None, None
+    for _ in range(max_attempts):
+        robot.check_error_and_clear(dcss)
+        robot.clear_set()
+        robot.set_state(arm=arm, state=2)
+        robot.send_cmd()
+        time.sleep(0.5)
+        st = robot.subscribe(dcss)["states"][idx]
+        last_cur_state = st.get("cur_state")
+        last_err_code = st.get("err_code")
+        if last_cur_state == 2 and last_err_code in (None, 0):
+            return
+    logger.error(f"手臂 {arm} 进入 PVT 失败: cur_state={last_cur_state}, err_code={last_err_code}")
+    raise RuntimeError(f"手臂 {arm} 进入 PVT 模式失败")
+
+
+def collect_identy_data(
+    robot: Marvin_Robot,
+    dcss: DCSS,
+    logger: logging.Logger,
+    arm: str,
+    pvt_file: str,
+    pvt_id: int,
+    save_path: str,
+):
+    _ensure_pvt_mode(robot, dcss, arm, logger)
+
+    robot.send_pvt_file(arm, pvt_file, pvt_id)
+    logger.info(f"设置 PVT 轨迹文件: {pvt_file}, PVT id: {pvt_id}")
+    time.sleep(0.5)
+
+    # 采集数据列布局：关节角(7) + 关节电流(7) + 时间标签(1)。
+    # 时间标签索引随 SDK 版本变化：43 版(100343007 之后)为 66，以前为 76；
+    # B 臂整体 +100。见 DEMO_PYTHON/showcase_identy_tool_dynamic_CCS_B.py。
+    try:
+        sdk_version = robot.SDK_version()
+    except Exception:
+        sdk_version = 0
+    tag_idx = 66 if sdk_version > 100343007 else 76
+    logger.info(f"SDK 版本={sdk_version}，采集时间标签索引={tag_idx}")
+
+    base = 0 if arm == "A" else 100
+    target_ids = (
+        [base + i for i in range(7)]
+        + [base + 50 + i for i in range(7)]
+        + [base + tag_idx]
+        + [0] * 21
+    )
+    if arm not in ("A", "B"):
+        raise ValueError("arm must be A or B")
+
+    cols = 15
+    rows = 1000000
+    robot.clear_set()
+    robot.collect_data(targetNum=cols, targetID=target_ids, recordNum=rows)
+    robot.send_cmd()
+    logger.info("开始采集辨识数据")
+    time.sleep(0.5)
+
+    robot.clear_set()
+    robot.set_pvt_id(arm, pvt_id)
+    robot.send_cmd()
+    logger.info("开始运行 PVT 轨迹")
+
+    time.sleep(60)
+
+    robot.clear_set()
+    robot.stop_collect_data()
+    robot.send_cmd()
+    time.sleep(0.5)
+
+    raw_path = save_path + ".raw"
+    robot.save_collected_data_to_path(raw_path)
+    time.sleep(1)
+
+    _convert_sdk_raw_to_csv(raw_path, save_path, logger)
+    _power_off_arm(robot, arm, logger)
+
+
+def _prompt(msg: str) -> str:
+    return input(msg).strip()
+
+
+def _save_result(arm: str, params, logger: logging.Logger) -> None:
+    """result_<arm>.json for ./scripts/setup.sh dyn: {"arm": "A", "params": [10 numbers], "time": iso}."""
+    try:
+        values = [float(v) for v in params]
+    except (TypeError, ValueError):
+        values = []
+    if len(values) != 10:
+        logger.error(f"[结果] 参数不是 10 个数，未保存结果文件: {params}")
+        return
+    with open(os.path.join(OUTPUT_DIR, f"result_{arm}.json"), "w", encoding="utf-8") as handle:
+        json.dump({"arm": arm, "params": values, "time": time.strftime("%Y-%m-%dT%H:%M:%S")}, handle)
+
+
+def run_wizard():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    log_path = os.path.join(OUTPUT_DIR, "tool_dyn_identify.log")
+    logger = logging.getLogger("tool_dyn_identify")
+    logger.setLevel(logging.INFO)
+    logger.handlers.clear()
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    sh = logging.StreamHandler()
+    sh.setLevel(logging.WARNING)
+    sh.setFormatter(fmt)
+    fh = logging.FileHandler(log_path, encoding="utf-8")
+    fh.setFormatter(fmt)
+    logger.addHandler(sh)
+    logger.addHandler(fh)
+
+    print("=== 机械臂负载辨识向导（工具动力学参数辨识 / CCS）===")
+    arm = os.environ.get("TOOL_DYN_ARM", "").strip().upper() or _prompt("请选择手臂 [A=左臂 / B=右臂]（默认 B）：").upper() or "B"
+    if arm not in ("A", "B"):
+        raise ValueError("手臂只能是 A 或 B")
+    ip = _prompt("请输入机器人控制器 IP（默认 192.168.1.190）：") or "192.168.1.190"
+
+    base, pvt_file, load_csv, noload_csv = _resolve_ccs_paths(arm)
+    logger.info(f"[配置] arm={arm} ip={ip}")
+    logger.info(f"[配置] pvt_file={pvt_file}")
+    logger.info(f"[配置] ipath(base)={base}")
+    logger.info(f"[配置] noload_csv={noload_csv}")
+    logger.info(f"[配置] load_csv={load_csv}")
+
+    dcss = DCSS()
+    robot = Marvin_Robot()
+
+    logger.info("[步骤] 连接机器人")
+    init = robot.connect(ip)
+    if init == 0:
+        logger.error("连接机器人失败：端口可能被占用")
+        raise RuntimeError("连接失败")
+    
+    robot.log_switch("0")
+    robot.local_log_switch("0")
+    logger.info("[步骤] 检查并清除错误")
+    robot.check_error_and_clear(dcss)
+    
+    logger.info("[步骤] 验证 UDP 订阅通道（frame_serial 是否刷新）")
+    motion_tag = 0
+    frame_update = None
+    for _ in range(8):
+        sub_data = robot.subscribe(dcss)
+        fs = sub_data["outputs"][0]["frame_serial"]
+        print(f"连接帧 frame_serial: {fs}")
+        if fs != 0 and fs != frame_update:
+            motion_tag += 1
+            frame_update = fs
+        time.sleep(0.01)
+    if motion_tag <= 0:
+        logger.error("连接失败：frame_serial 未刷新（可能被防火墙/网络阻断）")
+        raise RuntimeError("订阅数据未刷新")
+    logger.info("[步骤] 连接成功（frame_serial 正常刷新）")
+
+
+    reuse_noload = os.environ.get("TOOL_DYN_REUSE_NOLOAD", "").strip().lower() in ("1", "true", "yes")
+    did_noload_collect = False
+    if reuse_noload and os.path.isfile(noload_csv):
+        logger.info(f"[步骤] 复用上次空载数据，跳过空载采集: {noload_csv}")
+        print(f"\n[跳过空载] 复用上次空载数据: {noload_csv}")
+        # 跳过空载采集时，带载采集前同样需要先让手臂回到关节零位。
+        _prompt(
+            f"\n[确认] 即将让手臂 {arm} 运动到关节零位 (0,0,0,0,0,0,0)（单位：度）。\n"
+            f"确认无误请按回车继续（Ctrl+C 退出）。"
+        )
+        _go_to_joint_zero(robot, dcss, arm, logger)
+    else:
+        if reuse_noload:
+            logger.warning(f"[步骤] 未找到可复用的空载数据 {noload_csv}，将照常进行空载采集")
+            print(f"\n[提示] 未找到可复用的空载数据 {noload_csv}，将照常进行空载采集。")
+        _prompt(
+            f"\n[确认] 即将让手臂 {arm} 运动到关节零位 (0,0,0,0,0,0,0)（单位：度）。\n"
+            f"确认无误请按回车继续（Ctrl+C 退出）。"
+        )
+        _go_to_joint_zero(robot, dcss, arm, logger)
+        _prompt(
+            "\n[确认] 请确认当前为【空载】状态（无工具/无负载）。\n"
+            "确认无误请按回车开始【空载】采集。"
+        )
+        collect_identy_data(robot, dcss, logger, arm=arm, pvt_file=pvt_file, pvt_id=3, save_path=noload_csv)
+        logger.info("[步骤] 空载采集完成")
+        did_noload_collect = True
+
+    if did_noload_collect:
+        _prompt(
+            f"\n[确认] 空载采集已完成，手臂 {arm} 已下电。\n"
+            "请安装末端工具，完成后按回车开始【带载】采集。"
+        )
+    else:
+        _prompt(
+            "\n[确认] 请现在安装工具/负载，切换到【带载】状态。\n"
+            "准备好后请按回车开始【带载】采集。"
+        )
+    collect_identy_data(robot, dcss, logger, arm=arm, pvt_file=pvt_file, pvt_id=3, save_path=load_csv)
+    logger.info("[步骤] 带载采集完成")
+
+    logger.info("[步骤] 开始工具动力学参数辨识")
+    kk = Marvin_Kine()
+    tool_dynamic_parameters = kk.identify_tool_dyn(robot_type=1, ipath=base)
+    if isinstance(tool_dynamic_parameters, str):
+        logger.error(f"辨识失败: {tool_dynamic_parameters}")
+        raise RuntimeError(f"辨识失败: {tool_dynamic_parameters}")
+    logger.info(f"[结果] 工具动力学参数 (m,mx,my,mz,ixx,ixy,ixz,iyy,iyz,izz): {tool_dynamic_parameters}")
+    print("\n=== 辨识结果 ===")
+    print(tool_dynamic_parameters)
+    _save_result(arm, tool_dynamic_parameters, logger)
+    print(f"\n日志已保存到: {log_path}")
+
+    _prompt("\n按回车释放机器人连接。")
+    robot.release_robot()
+    logger.info("[步骤] 已释放机器人连接")
+
+
+if __name__ == "__main__":
+    run_wizard()
+

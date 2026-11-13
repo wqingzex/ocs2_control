@@ -1,0 +1,9 @@
+<library path="joint_controller">
+    <class name="joint_controller/JointController"
+           type="joint_controller::JointController"
+           base_class_type="controller_interface::ControllerInterface">
+        <description>
+            Joint-space FSM controller (HOME / HOLD / MOVEJ) without an MPC task: waist, head and body joints.
+        </description>
+    </class>
+</library>

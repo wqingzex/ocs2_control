@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.16)
+project(w2_payload)
+find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
+ament_python_install_package(w2_payload)
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+if(BUILD_TESTING)
+  find_package(ament_cmake_pytest REQUIRED)
+  foreach(t test_setup_steps test_setup_devices test_hand_probe test_setup_script test_camera_processes)
+    ament_add_pytest_test(${t} test/${t}.py
+      PYTHON_EXECUTABLE python3
+      APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR})
+  endforeach()
+endif()
+ament_package()

@@ -1,0 +1,13 @@
+# Generic per-side gripper fragment (GripperController instance).
+# Placeholders: {side} -> left|right, {side_} -> left_|right_
+# Convention: actuated joint is always {side_}gripper_joint (see control_compose._is_eef_joint).
+{side}_gripper_controller:
+  ros__parameters:
+    joints: [{side_}gripper_joint]
+    command_interfaces: [position]
+    state_interfaces: [position, effort]
+    use_effort_interface: true
+    movej_interpolation_type: none
+
+joint_state_extra_joints:
+  - {side_}gripper_joint

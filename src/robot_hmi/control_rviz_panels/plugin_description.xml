@@ -1,0 +1,31 @@
+<?xml version="1.0"?><library path="control_rviz_panels">
+  <class
+    name="control_rviz_panels/FsmPanel"
+    type="control_rviz_panels::FsmPanel"
+    base_class_type="rviz_common::Panel">
+    <description>Controller FSM state switching panel (HOME / HOLD / MPC / MOVEJ)</description>
+  </class>
+  <class
+    name="control_rviz_panels/GripperControlPanel"
+    type="control_rviz_panels::GripperControlPanel"
+    base_class_type="rviz_common::Panel">
+    <description>Gripper Control Panel for robot arms</description>
+  </class>
+  <class
+    name="control_rviz_panels/JointControlPanel"
+    type="control_rviz_panels::JointControlPanel"
+    base_class_type="rviz_common::Panel">
+    <description>Joint Control Panel for adjusting joint positions when command is 3 or 4</description>
+  </class>
+  <class
+    name="control_rviz_panels/WholeBodyCapabilityPanel"
+    type="control_rviz_panels::WholeBodyCapabilityPanel"
+    base_class_type="rviz_common::Panel">
+    <description>Whole-body controller capability status panel</description>
+  </class>
+  <class name="control_rviz_panels/TargetErrorDisplay"
+         type="control_rviz_panels::TargetErrorDisplay"
+         base_class_type="rviz_common::Display">
+    <description>Tracking error dashboard over the RViz 3D viewport.</description>
+  </class>
+</library>

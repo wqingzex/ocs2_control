@@ -1,0 +1,14 @@
+<package format="2">
+  <name>linkhou_s2_description</name>
+  <version>1.0.0</version>
+  <description>Linkhou S2 wheeled chassis (v1 and v2) of the FiveAges W2</description>
+  <maintainer email="TODO@email.com"/>
+  <license>BSD</license>
+
+  <exec_depend>sensor_models</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+
+</package>

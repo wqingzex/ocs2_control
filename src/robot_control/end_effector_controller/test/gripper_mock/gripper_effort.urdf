@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<robot name="grip_test">
+  <link name="base"/>
+  <link name="finger"/>
+  <joint name="gripper_joint" type="prismatic">
+    <parent link="base"/><child link="finger"/><axis xyz="1 0 0"/>
+    <limit lower="0.0" upper="0.08" effort="10" velocity="1"/>
+  </joint>
+  <ros2_control name="grip_hw" type="system">
+    <hardware><plugin>mock_components/GenericSystem</plugin></hardware>
+    <joint name="gripper_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="effort"><param name="initial_value">1.0</param></state_interface>
+    </joint>
+  </ros2_control>
+</robot>

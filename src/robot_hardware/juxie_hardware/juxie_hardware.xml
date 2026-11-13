@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<library path="juxie_hardware">
+  <class name="juxie_hardware/JxHardware" type="juxie_hardware::JxHardware" base_class_type="hardware_interface::SystemInterface">
+    <description>
+      JX motor hardware interface for ROS2 Control (CAN FD communication, Cyclic Synchronous Position mode)
+    </description>
+  </class>
+</library>

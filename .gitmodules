@@ -1,0 +1,11 @@
+[submodule "src/third_party/OrbbecSDK_ROS2"]
+	path = src/third_party/OrbbecSDK_ROS2
+	url = https://github.com/orbbec/OrbbecSDK_ROS2.git
+	shallow = true
+[submodule "src/third_party/ocs2_ros2"]
+	path = src/third_party/ocs2_ros2
+	url = https://github.com/legubiao/ocs2_ros2
+	shallow = true
+[submodule "src/third_party/TJ_FX_ROBOT_CONTRL_SDK"]
+	path = src/third_party/TJ_FX_ROBOT_CONTRL_SDK
+	url = https://github.com/cynthia-you/TJ_FX_ROBOT_CONTRL_SDK.git
