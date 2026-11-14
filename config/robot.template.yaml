@@ -1,10 +1,10 @@
 # 本机配置模板：复制成 config/robot.local.yaml 后修改（./scripts/start.sh / ./scripts/setup.sh 默认读取本文件，遥操作和推理都用）。
-# 上半部分：启动什么（机型、手、真机 / 仿真、相机）；字段说明和默认值见 src/robot_teleop/fa_teleop/config/teleop.yaml，
+# 上半部分：启动什么（机型、手、真机 / 仿真、相机）；字段说明和默认值见 src/robot_teleop/teleop_app/config/teleop.yaml，
 # 只写与默认值不同的项即可。下半部分：这台机器的硬件参数（platform / defaults / hardware / control），由 ROS 启动文件读取。
 # 首次使用：./scripts/setup.sh cam 弹窗确认相机画面与左右位置；./scripts/setup.sh hand 确认左右手。
 
 robot:
-  entry: split_body
+  entry: whole_body
   hand: linkerhand_l6       # none | linkerhand_l6 | xhand1（xhand1 只支持 usb）
   hand_drive: usb           # usb（485 转 USB 接电脑）| "485"（接机械臂 485 接口）
   hardware: real

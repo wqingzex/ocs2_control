@@ -44,7 +44,7 @@ OCS2_SKIP_PACKAGES=(
 # build-workspace --minimal 只编译这些包及其依赖。
 MINIMAL_PACKAGES=(
   fiveages_w2_description juxie_hardware marvin_hardware modbus_hardware
-  arms_teleop topic_based_hardware fa_teleop
+  joystick_teleop keyboard_teleop xr_teleop topic_based_hardware teleop_app w2_camera w2_hand
 )
 
 # ==================================================================================================
@@ -69,7 +69,7 @@ usage() {
   cat <<'EOF_USAGE'
 初始化：./scripts/setup.sh
   依次完成：依赖、主机 / SDK、编译、相机配置、手配置、负载辨识、XR 配对、最终检查。
-  已配置（有确认记录）或默认值可用的步骤会跳过，开头先列出每步的状态；--force 全部重新配置。
+  已配置（有确认记录）或默认值可用的步骤会跳过；--force 全部重新配置。
   相机和手会弹出本地配置窗口，确认后保存到 config/robot.local.yaml。
   容器内也保留完整向导；仅不执行物理机的 udev 和 CAN 操作。
 单步重试：./scripts/setup.sh <步骤>，只执行指定步骤：
@@ -114,8 +114,24 @@ deps_rosdep_update() {
   done
 }
 
+# MarvinPlatform_EN 是 PyInstaller 打包脚本，不是 ROS 包；colcon 扫描时会执行它的 setup.py 并报错，所以让 colcon 忽略。
+# 子模块里的 COLCON_IGNORE 同时加入子模块的 info/exclude，避免子模块显示为有未跟踪文件。
+colcon_ignore_marvin_platform() {
+  local dir exclude
+  for dir in "${WS_DIR}"/src/third_party/TJ_FX_ROBOT_CONTRL_SDK_*/MarvinPlatform_EN; do
+    [[ -d "${dir}" ]] || continue
+    touch "${dir}/COLCON_IGNORE"
+    exclude="$(git -C "${dir}" rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null || true)"
+    if [[ -n "${exclude}" ]] && ! grep -qxF 'MarvinPlatform_EN/COLCON_IGNORE' "${exclude}" 2>/dev/null; then
+      mkdir -p "$(dirname "${exclude}")"
+      echo 'MarvinPlatform_EN/COLCON_IGNORE' >> "${exclude}"
+    fi
+  done
+}
+
 step_deps() {
   git -C "${WS_DIR}" submodule update --init --recursive --depth 1  # 浅克隆：只取固定的提交
+  colcon_ignore_marvin_platform
   source_ros
   command -v rosdep >/dev/null || die "未安装 rosdep：sudo apt install python3-rosdep"
   [[ -d /etc/ros/rosdep/sources.list.d ]] || as_root rosdep init
@@ -241,6 +257,7 @@ step_host() {
 
 # ---- build ----------------------------------------------------------------------------------------
 step_build() {
+  colcon_ignore_marvin_platform
   source_ros
   cd "${WS_DIR}"
   export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-4}"
@@ -251,18 +268,22 @@ step_build() {
     --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
 }
 
-# ---- 相机、手使用公共 w2_payload；XR 由遥操作模块处理 ---------------------------------------------
+# ---- 相机 w2_camera、手 w2_hand、负载辨识 w2_payload；XR 由遥操作模块处理 ---------------------------------
+PAYLOAD_PYTHONPATH="${WS_DIR}/src/robot_payload/w2_payload/common:${WS_DIR}/src/robot_payload/w2_payload/w2_camera:${WS_DIR}/src/robot_payload/w2_payload/w2_hand"
 run_python_step() {
   source_ros --workspace
-  local python_status=0 module=w2_payload.setup.steps
-  local python_path="${WS_DIR}/src/robot_payload/w2_payload"  # 相机、手只需要公共包
-  if [[ "$1" == "xr" ]]; then
-    module=fa_teleop_runtime.init_steps
-    python_path="${python_path}:${WS_DIR}/src/robot_teleop/fa_teleop"
-  fi
+  local python_status=0 module python_path="${PAYLOAD_PYTHONPATH}"
+  case "$1" in
+    cameras) module=w2_camera.camera_setup ;;
+    hand) module=w2_hand.hand_setup ;;
+    dyn) module=w2_payload.load_identify ;;
+    xr)
+      module=xr_teleop.pairing
+      python_path="${python_path}:${WS_DIR}/src/robot_payload/input/xr_teleop" ;;
+  esac
   # shellcheck disable=SC2086
   PYTHONPATH="${python_path}:${PYTHONPATH:-}" \
-    python3 -m "${module}" --config "${CONFIG}" --ws-root "${WS_DIR}" ${YES} ${RESET} "$1" || python_status=$?
+    python3 -m "${module}" --config "${CONFIG}" --ws-root "${WS_DIR}" ${YES} ${RESET} $([[ "$1" == "xr" ]] && echo xr) || python_status=$?
   if (( python_status == 130 )); then exit 130; fi  # Ctrl+C cancels the full init, not only this step.
   return "${python_status}"
 }
@@ -274,33 +295,24 @@ step_xr() { run_python_step xr; }
 # ---- 已配置或默认值可用的步骤不再配置 ---------------------------------------------------------------
 # 完整流程里这样的步骤直接跳过；单步命令（如 ./scripts/setup.sh cam）和 --force 永远重新配置。
 step_ready() {  # 返回 0 表示不用配置；原因写入 READY_REASON
-  local status=0 python_path="${WS_DIR}/src/robot_payload/w2_payload:${PYTHONPATH:-}"
+  local status=0 python_path="${PAYLOAD_PYTHONPATH}:${PYTHONPATH:-}"
   READY_REASON=""
   case "$1" in
     cameras|hand|dyn)
-      READY_REASON="$(PYTHONPATH="${python_path}" python3 -m w2_payload.setup.status --config "${CONFIG}" "$1" 2>/dev/null)" || status=$? ;;
+      READY_REASON="$(PYTHONPATH="${python_path}" python3 -m w2_payload.config_status status --config "${CONFIG}" "$1" 2>/dev/null)" || status=$? ;;
     xr)
-      READY_REASON="$(PYTHONPATH="${WS_DIR}/src/robot_teleop/fa_teleop:${python_path}" python3 -m fa_teleop_runtime.init_steps \
+      READY_REASON="$(PYTHONPATH="${WS_DIR}/src/robot_payload/input/xr_teleop:${python_path}" python3 -m xr_teleop.pairing \
         --config "${CONFIG}" --ws-root "${WS_DIR}" --status xr 2>/dev/null)" || status=$? ;;
     *) return 1 ;;
   esac
   return "${status}"
 }
 
-print_status_table() {
-  local name
-  log "配置状态：已配置或默认值可用的步骤会跳过（./scripts/setup.sh <步骤> 单独重配，--force 全部重配）"
-  for name in cameras hand dyn xr; do
-    step_ready "${name}" || true
-    printf '  %-5s %s\n' "$(step_command "${name}")" "${READY_REASON:-需配置}"
-  done
-}
-
 # ---- summary --------------------------------------------------------------------------------------
 step_summary() {
   source_ros --workspace
-  PYTHONPATH="${WS_DIR}/src/robot_payload/w2_payload:${PYTHONPATH:-}" \
-    python3 -m w2_payload.setup.check "${CONFIG}"
+  PYTHONPATH="${PAYLOAD_PYTHONPATH}:${PYTHONPATH:-}" \
+    python3 -m w2_payload.config_status check "${CONFIG}"
 }
 
 # ==================================================================================================
@@ -388,7 +400,6 @@ main() {
   RESULTS=()
   INCOMPLETE=()
   local step
-  [[ -z "${FULL_INIT}" ]] || print_status_table
   for step in "${STEPS[@]}"; do run_step "${step}"; done
   log "初始化结果"
   printf '  %s\n' "${RESULTS[@]}"

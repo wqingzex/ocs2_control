@@ -21,10 +21,12 @@
 ./scripts/start.sh                 # 按配置启动运控、VR、相机，Ctrl+C 停止（运控先切 HOLD）
 ./scripts/start.sh sim | isaac     # 硬件改为 mock_components / Isaac
 ./scripts/start.sh viz             # 只在 RViz 看模型，带关节滑块，不启动控制
-./scripts/start.sh up|down|restart|status|logs [模块]   # 按模块管理，status --hz 看话题频率
+./scripts/start.sh up|down|restart|status|logs [模块]   # 按模块管理，status --hz 看话题频率；up control 等控制器全部激活（失败会报错）并默认带 RViz（--no-rviz 不带）；up xr 等头显发来数据，没连上给警告
 ./scripts/start.sh nav [--list] [--map ID] [--map-only]  # 导航
 ./scripts/start.sh dyn-identify    # 机械臂负载辨识向导，需要终端
-./scripts/start.sh console         # Web 控制台
+./scripts/start.sh console         # Web 控制台，前台运行（Ctrl+C 停止）
+./scripts/start.sh console start|stop|restart|status [--port N]   # 后台启动 / 停止 / 重启 / 查看，默认端口 8765
+./scripts/start.sh console --open  # 后台启动并用浏览器打开（双击 W2控制台 用的就是它）
 ./scripts/start.sh diag            # 打包日志、事件时间线、配置，出问题时发给开发者
 ./scripts/start.sh record [名称] [--topics joint|xr|collect|/a,/b]   # 录制，默认只录关节
 ./scripts/start.sh play 名称 [--rate 0.5] [--loop] [--paused] [--start 秒] [--xr]
@@ -32,6 +34,17 @@
 ./scripts/start.sh check | build   # 只校验配置 / 编译
 ```
 
-选项，命令前后都可以：`-c 配置文件`，`--set 字段=值`（只对本次运行有效，如 `--set robot.hardware=isaac`），`--entry split_body|dual_arm|whole_body`，`--hand none|linkerhand_l6|xhand1`，`--hand-drive usb|485`，`--rviz`（同时启动 RViz）。
+选项，命令前后都可以：`-c 配置文件`，`--set 字段=值`（只对本次运行有效，如 `--set robot.hardware=isaac`），`--entry whole_body|split_body|dual_arm`，`--hand none|linkerhand_l6|xhand1`，`--hand-drive usb|485`，`--rviz`（同时启动 RViz）。
 
-模块、日志位置和排查方法见 [`docs/VR遥操作.md`](../docs/VR遥操作.md)；背后的实现在 [`fa_teleop`](../src/robot_teleop/fa_teleop/README.md) 和 [`w2_payload`](../src/robot_payload/w2_payload/README.md)。
+## nudge.py：真机验证用的小幅微调
+
+```bash
+./scripts/nudge.py show                  # 头、腰关节位置和状态机状态
+./scripts/nudge.py fsm movej|hold        # 状态机 MOVEJ（4）/ HOLD（2）
+./scripts/nudge.py head 1 0.05           # 头关节 1（或 2）相对当前位置动 0.05 rad，等到位
+./scripts/nudge.py waist 0.05            # 转腰 body_joint4，只在 MOVEJ 下执行
+```
+
+增量不超过 0.1 rad，用于 [`docs/重启后真机验证.md`](../docs/重启后真机验证.md)；需要容器里的 ROS 环境。
+
+模块、日志位置和排查方法见 [`docs/VR遥操作.md`](../docs/VR遥操作.md)；背后的实现在 [`teleop_app`](../src/robot_teleop/teleop_app/README.md) 和 [`w2_payload`](../src/robot_payload/w2_payload/README.md)。

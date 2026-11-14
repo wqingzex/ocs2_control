@@ -52,7 +52,7 @@ bags/
 run/
 # Web 控制台访问令牌
 config/console.token
-# fa_teleop 编译生成的本机架构双击入口
+# teleop_app 编译生成的本机架构双击入口
 /W2控制台
 # 本机 ROS 通信环境变量（RMW / Domain ID / Zenoh），start.sh 会读取
 config/ros_env.sh

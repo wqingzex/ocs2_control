@@ -11,7 +11,7 @@ Pico 头显（XRoboToolkit App）
 XRoboToolkit PC Service（RoboticsServiceProcess，本机）
    │ 本机 gRPC（127.0.0.1:60061）
    ▼
-fa_teleop xr_bridge_node（C++，节点名 /xr_target_node）
+xr_teleop xr_bridge_node（C++，节点名 /xr_target_node）
    │ /teleop/head_pose /teleop/left_ee_pose /teleop/right_ee_pose /teleop/controller_state
    │ /teleop/thumbstick_axes /teleop/trigger_values /teleop/grip_values /teleop/connection_status
    ▼
@@ -67,7 +67,7 @@ git clone --recurse-submodules --shallow-submodules git@github.com:wqingzex/ocs2
 |---|---|
 | `deps` | 子模块 + `rosdep install`（`rosdep update` 网络超时会自动重试） |
 | `host` | `./scripts/setup.sh host`：Orbbec udev 规则、腰部 CAN 免密 sudo、PC Service deb（需要 sudo） |
-| `build-workspace` | 增量编译当前仓库的整个 ROS 2 工作区：运控、硬件驱动、机器人模型、相机、XR 和控制台；复用已有结果，跳过 ocs2_ros2 里用不到的示例包。只编译，不执行设备配置、配对或启动运控。`fa_teleop` 会生成双击入口 `W2控制台`。`--minimal` 可缩小为 W2 必需的包及其依赖 |
+| `build-workspace` | 增量编译当前仓库的整个 ROS 2 工作区：运控、硬件驱动、机器人模型、相机、XR 和控制台；复用已有结果，跳过 ocs2_ros2 里用不到的示例包。只编译，不执行设备配置、配对或启动运控。`teleop_app` 会生成双击入口 `W2控制台`。`--minimal` 可缩小为 W2 必需的包及其依赖 |
 | `cam` | 扫描后弹出本地窗口，显示各设备实时画面、型号、序列号与端口；按画面分配头部 / 左腕 / 右腕，可停用、交换左右腕、设置 0/90/180/270° 旋转。所选画面均正常且逐项确认位置、方向后，才保存序列号、端口与旋转 |
 | `hand` | 弹出本地窗口选择 L6 / XHand1、usb / 485 接线和左右设备；优先使用稳定串口路径。分别点击“开合测试”、核对实物并确认左右后保存。开合测试由用户点击并确认后执行，不启动整机运控 |
 | `xr` | 默认选择有线网卡，也可选 Wi-Fi；显示所选网卡的 IPv4 地址。临时启动 PC Service + xr_bridge，不限时等待头显追踪数据及设备 ID，确认绑定后写入 `xr.device_id`；Ctrl+C 可取消，结束后只停止自己启动的进程 |
@@ -75,14 +75,14 @@ git clone --recurse-submodules --shallow-submodules git@github.com:wqingzex/ocs2
 
 相机和手的初始化由 `setup.sh` 直接弹出 Qt 窗口完成，无需打开 Web 控制台。左右以机器人自身方向为准。相机窗口可通过遮挡左右腕镜头核对位置；旋转应用于预览与最终发布的画面。检测到旧采集进程时会列出设备与 PID，询问是否停止；明确确认后只停止对应的相机进程，并自动重启预览。设备占用或无最新画面时不能确认保存。容器不可见的宿主机采集进程需先在宿主机停止，不更改进程隔离或停止运控。
 
-这些通用功能位于 `src/robot_payload/w2_payload` 公共包，遥操作与推理共用配置、设备识别和相机 launch，不依赖 `fa_teleop`。推理可使用 `w2_payload.config.load` 读取同一份配置，并用 `ros2 launch w2_payload cameras.launch.py config:=...` 启动相机。`fa_teleop` 只依赖 `w2_payload`（在 package.xml 中声明），`w2_payload` 不知道 `fa_teleop`；`xr / joystick / navigation` 配置段由 `fa_teleop` 管理，XR 配对仍在遥操作模块。
+这些通用功能位于 `src/robot_payload` 下：`w2_payload/` 里的 `common`（包名 `w2_payload`）、`w2_camera`、`w2_hand` 三个包，遥操作与推理共用配置、设备识别和相机 launch，不依赖 `teleop_app`。推理可使用 `w2_payload.config.load` 读取同一份配置，并用 `ros2 launch w2_payload cameras.launch.py config:=...` 启动相机。`teleop_app` 只依赖 `w2_payload`（在 package.xml 中声明），`w2_payload` 不知道 `teleop_app`；`xr / joystick / navigation` 配置段由 `teleop_app` 管理，XR 配对仍在遥操作模块。
 
 手部只在点击“开合测试”并确认后才连接设备并动作：食指、中指、无名指、小指慢速运动到行程约一半（L6 寄存器 255 为张开、130 为半握；已经偏握时改为张开），再回到测试前的姿态，拇指不动；任何一步出错都会先写回原姿态。XHand1 的反馈请求使用与现有驱动一致的零力矩、禁用模式帧。485 模式还需确认原运控已停止。485 的左右臂接口固定，接反时调整实物接线。关闭窗口或 Ctrl+C 时释放本次使用的资源，保留旧配置；保存时再次读取左右手反馈（只读，不动作），断连不会写入确认结果。左右手都完成开合测试后才允许保存。
 
 确认结果保存在同一文件的 `setup.cameras` / `setup.hand` 中，并绑定设备映射。修改序列号、旋转、接线或串口后，旧确认失效，`./scripts/setup.sh check` 会显示需要重新确认。`--yes` 只能复用已有确认的配置，不能替代首次画面或实物确认。物理机需桌面显示，容器需映射显示与对应 USB / 串口设备。
 
 - `setup.sh host` 只放行 `ip link set can0 down/up ...` 两条命令（`/etc/sudoers.d/fa-w2-can`，写入前用 `visudo` 校验）。arm64 无桌面环境时可用 `XRT_PCS_HEADLESS=1 ./scripts/setup.sh host`。
-- **xr_bridge 在编译时需要 PC Service 的 SDK**（`/opt/apps/roboticsservice/SDK`，或设置 `XRT_SDK_DIR`）。没装 PC Service 时 `fa_teleop` 仍能编译，但不会生成 `xr_bridge_node`，启动时会报错提示。
+- **xr_bridge 在编译时需要 PC Service 的 SDK**（`/opt/apps/roboticsservice/SDK`，或设置 `XRT_SDK_DIR`）。没装 PC Service 时 `xr_teleop` 仍能编译，但不会生成 `xr_bridge_node`，启动时会报错提示。
 - 头显端：安装 XRoboToolkit App，与机器人处于可互通的局域网（电脑可用网线或 Wi-Fi），在 App 里选择机器人地址连接 PC Service。
 
 XR 的 `network_mode` 默认是 `ethernet`（网线），也支持 `wifi`。这里指电脑/机器人接入局域网的网卡；Pico 与其处于可互通的网络即可，电脑可以插网线、Pico 使用 Wi-Fi。初始化保存 `network_interface` 和头显 `device_id`，IP 按当前网卡重新读取。PC Service 自身负责局域网服务广播，头显 App 首次仍需选择电脑，配对以收到有效头部或手柄追踪数据及设备 ID 为准。头显端的连接及数据发送入口以所装 XRoboToolkit App 版本为准，企业版 PICO 的设备型号本身不能确定 App 界面。公开 SDK 没有按 ID 强制连接或唤醒头显的接口。
@@ -105,7 +105,7 @@ Linux 上的 XR 验证容器可使用 Docker `--network host`，使 PC Service �
 |---|---|---|
 | `pc_service` | XRoboToolkit PC Service（只停止自己启动的） | — |
 | `control` | 运控 launch（控制器 + teleop_command，`launch_mode:=control_only`，不带 RViz） | — |
-| `joystick` | 手柄遥操作（`arms_teleop`）；**按需**，和 rviz 一样不会被"全部启动"带起，也不会自动启动运控 | `control` |
+| `joystick` | 手柄遥操作（`joystick_teleop`）；**按需**，和 rviz 一样不会被"全部启动"带起，也不会自动启动运控 | `control` |
 | `rviz` | RViz（同一运控 launch 的 `launch_mode:=rviz_only`，带 FSM/手/关节面板）；**按需**：`up` 和"全部启动"不启动它，需要时单独 `./scripts/start.sh up rviz` 或在控制台点启动；窗口出现在机器人屏幕上 | `control` |
 | `xr` | xr_bridge_node（节点名 `/xr_target_node`） | `pc_service` |
 | `camera_head` / `camera_left_wrist` / `camera_right_wrist` | 每台相机一个驱动进程 | — |
@@ -129,7 +129,7 @@ Linux 上的 XR 验证容器可使用 Docker `--network host`，使 PC Service �
 
 **停止运控时**：FSM 不在 HOLD（例如 OCS2）会先询问，确认后发 `/fsm_command 2`、等 FSM 回到 HOLD 再停；5 s 内没回到 HOLD 会再次询问。`--yes` 跳过询问（仍然先切 HOLD）。模块状态保存在 `run/`，`start.sh` 退出或控制台重启都不影响已启动的模块。
 
-旧的"一个 launch 起全部"仍可用：`ros2 launch fa_teleop teleop.launch.py config:=config/robot.local.yaml`。
+旧的"一个 launch 起全部"仍可用：`ros2 launch teleop_app teleop.launch.py config:=config/robot.local.yaml`。
 
 ### 3.1.1 导航、负载辨识、手柄遥操作
 
@@ -148,15 +148,16 @@ Linux 上的 XR 验证容器可使用 Docker `--network host`，使 PC Service �
 ```bash
 # 日常双击仓库根目录的 W2控制台，即可打开网页界面。
 ./scripts/start.sh console --open  # 对应的终端命令（可选）
-# 如需指定端口：./scripts/start.sh console --open --port 8080
+./scripts/start.sh console start|stop|restart|status   # 后台启动 / 停止 / 重启 / 查看（默认端口 8765）
+# 如需指定端口：./scripts/start.sh console --open --port 8765
 # 让其他电脑能访问（见下面“网络”）：./scripts/start.sh console --open --host 0.0.0.0
 ```
 
 双击打开（不用敲命令）：
 
 - **机器人本机**：正常编译后，直接双击**仓库根目录的 `W2控制台`**。控制台没运行就在后台启动（日志 `logs/console/`），然后用默认浏览器打开控制台；已经在运行就直接打开。页面里的“全部启动”按钮用于启动运控、VR 和相机。
-- `W2控制台` 是原生可执行文件，随 `fa_teleop` 正常编译自动生成，并具有执行权限；x86_64 和 ARM64 机器各自编译生成本机架构的同名文件，无需安装桌面快捷方式。它根据自身位置调用 `start.sh console --open`，可随整个仓库移动，不能单独移出仓库。该文件属于编译产物，不提交到 Git。
-- **4090 / 其他电脑**：控制台默认只监听本机，要先在机器人上用 `--host 0.0.0.0` 启动（或用下面的 SSH 端口转发）。启动后浏览器直接打开 `http://机器人IP:8080/`（页面顶部"其他电脑访问"里也列了各网卡的地址），可以存书签。机器人防火墙要放行 8080 端口。
+- `W2控制台` 是原生可执行文件，随 `teleop_app` 正常编译自动生成，并具有执行权限；x86_64 和 ARM64 机器各自编译生成本机架构的同名文件，无需安装桌面快捷方式。它根据自身位置调用 `start.sh console --open`，可随整个仓库移动，不能单独移出仓库。该文件属于编译产物，不提交到 Git。
+- **4090 / 其他电脑**：控制台默认只监听本机，要先在机器人上用 `--host 0.0.0.0` 启动（或用下面的 SSH 端口转发）。启动后浏览器直接打开 `http://机器人IP:8765/`（页面顶部"其他电脑访问"里也列了各网卡的地址），可以存书签。机器人防火墙要放行 8765 端口。
 
 - **控制模式**：HOLD / HOME / OCS2 / MOVEJ / 切换姿态（Home ↔ Rest），可切换的规则与 RViz 的 FSM 面板相同（HOLD 下可切 HOME / OCS2 / MOVEJ，其他状态只能回 HOLD，切换姿态只在 HOME 下可用），服务端会再校验一次；HOME 和切换姿态会先弹窗确认。
 - **打开 / 关闭 RViz**：在控制模式区域。RViz 是独立模块（`launch_mode:=rviz_only`），窗口出现在机器人屏幕上；它只订阅话题、面板只在点按钮时才发命令，打开或关闭都不影响遥操作和推理控制。运控没启动时按钮不可用。
@@ -164,14 +165,14 @@ Linux 上的 XR 验证容器可使用 Docker `--network host`，使 PC Service �
 - **停止运控**：FSM 不在 HOLD 时弹窗确认，确认后先切 HOLD 再停；切不到 HOLD 会拒绝停止。
 - 相机设置：扫描设备（先停掉运行中的相机）→ 为头部 / 左腕 / 右腕选择序列号和旋转 → 保存到配置（保留注释）；可一键对调左右腕。
 - 预览：运行中的相机直接显示画面（compressed 话题的 JPEG 原样转发，不解码，每路 ≤10 Hz，页面隐藏时停止拉流）。
-- 网络：默认只监听本机（`127.0.0.1`）。没有登录、明文 HTTP，而且能切换 HOME / OCS2 / MOVEJ 让机械臂运动。从 4090 访问推荐 SSH 端口转发：`ssh -L 8080:127.0.0.1:8080 <机器人>`，再打开 `http://127.0.0.1:8080/`；确实要直接访问，用 `--host 0.0.0.0` 启动，并且只在机器人内网使用。
+- 网络：默认只监听本机（`127.0.0.1`）。没有登录、明文 HTTP，而且能切换 HOME / OCS2 / MOVEJ 让机械臂运动。从 4090 访问推荐 SSH 端口转发：`ssh -L 8765:127.0.0.1:8765 <机器人>`，再打开 `http://127.0.0.1:8765/`；确实要直接访问，用 `--host 0.0.0.0` 启动，并且只在机器人内网使用。
 - 安全：没有登录，也没有 token。控制台默认只监听本机，这是唯一的访问限制；用 `--host 0.0.0.0` 启动后，同一网络里能访问端口的人都能操作机器人，需要时用防火墙限制来源。关闭控制台不会停止已启动的模块。
 
-配置文件是 `config/robot.local.yaml`（模板 `config/robot.template.yaml`），遥操作和推理共用：上半部分（`robot` / `xr` / `cameras` / `joystick` / `navigation`）决定启动什么，下半部分（`platform` / `defaults` / `hardware` / `control`）是这台机器的硬件参数，由 ROS 启动文件读取。启动部分只需写与默认值不同的字段，完整字段与默认值见 `src/robot_teleop/fa_teleop/config/teleop.yaml`。启动前会做校验：未知字段、类型错误、xhand1 + 天机 485、相机序列号为空等都会直接报错，并指出是哪个字段。
+配置文件是 `config/robot.local.yaml`（模板 `config/robot.template.yaml`），遥操作和推理共用：上半部分（`robot` / `xr` / `cameras` / `joystick` / `navigation`）决定启动什么，下半部分（`platform` / `defaults` / `hardware` / `control`）是这台机器的硬件参数，由 ROS 启动文件读取。启动部分只需写与默认值不同的字段，完整字段与默认值见 `src/robot_teleop/teleop_app/config/teleop.yaml`。启动前会做校验：未知字段、类型错误、xhand1 + 天机 485、相机序列号为空等都会直接报错，并指出是哪个字段。
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
-| `robot.entry` | `split_body` | `split_body` W2 分体 / `dual_arm` M6 双臂 / `whole_body` W2 全身（WBC） |
+| `robot.entry` | `whole_body` | `whole_body` W2 全身（WBC）/ `split_body` W2 分体 / `dual_arm` M6 双臂 |
 | `robot.hand` | `linkerhand_l6` | `none` / `linkerhand_l6` / `xhand1` |
 | `robot.hand_drive` | `usb` | 接线方式：`usb`（485 转 USB 接电脑）/ `485`（接机械臂 485 接口）；xhand1 只能 `usb` |
 | `robot.hardware` | `real` | `real` / `mock_components` / `isaac` |
@@ -236,7 +237,7 @@ Linux 上的 XR 验证容器可使用 Docker `--network host`，使 PC Service �
 | 头 | Gemini 335Lg | `gemini_330_series.launch.py`，自动曝光 | `/camera_head/color/image_raw/compressed` |
 | 左 / 右腕 | Gemini 305 | `gemini305.launch.py`，固定曝光 50 / 增益 16 | `/camera_{left,right}_wrist/color/image_raw/compressed` |
 
-参数移植自 `fiveages-vla/camera_setup`（dev @04398b9c）：640×480 YUYV，关闭深度、红外、点云、TF 和 diagnostics。305 有两只彩色眼，旋转 90/270 时用左眼、否则用右眼，统一重映射到 `<name>/color`，话题名与旋转无关。USB 2 下 60 Hz 可能超带宽，默认 30 Hz。只想单独开相机：`ros2 launch fa_teleop cameras.launch.py config:=config/robot.local.yaml`。
+参数移植自 `fiveages-vla/camera_setup`（dev @04398b9c）：640×480 YUYV，关闭深度、红外、点云、TF 和 diagnostics。305 有两只彩色眼，旋转 90/270 时用左眼、否则用右眼，统一重映射到 `<name>/color`，话题名与旋转无关。USB 2 下 60 Hz 可能超带宽，默认 30 Hz。只想单独开相机：`ros2 launch teleop_app cameras.launch.py config:=config/robot.local.yaml`。
 
 ## 7. 录制与回放
 
@@ -262,7 +263,7 @@ Linux 上的 XR 验证容器可使用 Docker `--network host`，使 PC Service �
 
 ```bash
 ./scripts/start.sh config/mock.yaml            # 前台启动仿真运控；配置使用 mock_components，关闭 xr 和 cameras
-ros2 run fa_teleop xr_stub.py --script steps.json
+ros2 run xr_teleop xr_stub.py --script steps.json
 ```
 
 时间线示例（秒，从 stub 启动算起；未写的字段保持不变）：
@@ -278,11 +279,11 @@ ros2 run fa_teleop xr_stub.py --script steps.json
 ## 9. 测试
 
 ```bash
-colcon build --packages-select fa_teleop teleop_command --cmake-args -DBUILD_TESTING=ON
-colcon test --packages-select fa_teleop teleop_command && colcon test-result --verbose
+colcon build --packages-select xr_teleop teleop_app teleop_command --cmake-args -DBUILD_TESTING=ON
+colcon test --packages-select xr_teleop teleop_app teleop_command && colcon test-result --verbose
 ```
 
-- **与旧 Python 节点逐帧一致**：`fa_teleop/test/data/*.csv` 由旧实现（fa-py-libraries `xr_target_node.py` @041159c，经 `XroboToolkitWrapper`）生成。按键 6000 帧覆盖全部 29 个事件码；位姿 300 帧，含 NaN / 零四元数的回退情况。
+- **与旧 Python 节点逐帧一致**：`xr_teleop/test/data/*.csv` 由旧实现（fa-py-libraries `xr_target_node.py` @041159c，经 `XroboToolkitWrapper`）生成。按键 6000 帧覆盖全部 29 个事件码；位姿 300 帧，含 NaN / 零四元数的回退情况。
 - 配置校验、launch 参数映射、相机参数（pytest）；simple 按键方案；JSON 解析；头显 yaw 对齐（`teleop_command/test/test_vr_alignment.cpp`）。
 - 模块管理：依赖顺序、PID 复用识别、SIGINT→SIGTERM→SIGKILL、停运控前切 HOLD 的询问流程；初始化步骤（相机扫描解析、角色建议、写回配置保留注释、手与串口）；Web 控制台 API（token、409 确认流程、相机分配、MJPEG 流、静态文件越权）。
 - docker mock 端到端：`./scripts/start.sh up/status --hz/restart/logs/down`（OCS2 下停运控先发 HOLD，无残留进程）；`./scripts/setup.sh --yes cameras hand vr summary`；控制台 uvicorn + rclpy（2.5 s 收到 25 帧 MJPEG，即 10 Hz 限速）。
@@ -309,6 +310,6 @@ colcon test --packages-select fa_teleop teleop_command && colcon test-result --v
 - 三台 Orbbec 相机在 USB / GMSL 下实际出图（容器中没有 USB 设备）；
 - Isaac 仿真入口（容器中没有 Isaac，topic_based 硬件因收不到 `/isaac/joint_states` 无法激活）；
 - 腰部 CAN `restart-ms 100` 在真机上的效果；
-- Web 控制台从另一台机器（4090）访问：容器中只验证了本机回环地址，跨机器需确认防火墙放行 8080 端口。
+- Web 控制台从另一台机器（4090）访问：容器中只验证了本机回环地址，跨机器需确认防火墙放行 8765 端口。
 
 另外，`cgal5_colcon` 在编译时会从 GitHub 下载 CGAL 5.3 源码包，**离线环境无法编译**（原有问题，未改动）；网络不稳定时重跑 `./scripts/setup.sh build-workspace` 即可。

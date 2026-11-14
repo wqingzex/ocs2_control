@@ -25,7 +25,7 @@ cd ocs2_control
 
 | 字段 | 取值 |
 |---|---|
-| `entry` | `split_body` 分体（臂 + 腰）、`dual_arm` 双臂、`whole_body` 全身 |
+| `entry` | `whole_body` 全身（默认）、`split_body` 分体（臂 + 腰）、`dual_arm` 双臂 |
 | `hand` | `none`、`linkerhand_l6`、`xhand1`（只支持 USB） |
 | `hardware` | `real`、`mock_components`、`isaac` |
 
@@ -93,8 +93,7 @@ ocs2_control/
 ├─ scripts/       setup.sh（初始化）、start.sh（启动）                       → scripts/README.md
 ├─ config/        robot.local.yaml 本机配置、robot.template.yaml 模板        → config/README.md
 ├─ docs/          使用与原理文档、截图                                        → docs/README.md
-├─ web/           Web 控制台前端                                              → web/README.md
-├─ W2控制台       编译 fa_teleop 时生成的启动器，双击打开网页控制台（不进 git）
+├─ W2控制台       编译 teleop_app 时生成的启动器，双击打开网页控制台（不进 git）
 ├─ logs/ run/     运行时生成：各模块日志、模块状态（不进 git）
 └─ src/           源码                                                        → src/README.md
 ```
