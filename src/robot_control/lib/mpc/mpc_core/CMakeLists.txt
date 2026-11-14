@@ -32,7 +32,7 @@ find_package(ocs2_ros_interfaces REQUIRED)
 # After the ocs2 packages: robot_controller_core pulls in pinocchio, which changes the Boost variant
 # variables that ocs2_core resolves boost_log against.
 find_package(robot_controller_core REQUIRED)
-find_package(motion_planning QUIET)
+find_package(motion_planning REQUIRED)
 
 add_library(${PROJECT_NAME} SHARED
     src/MpcRuntimeBase.cpp
@@ -80,13 +80,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     ${ocs2_ros_interfaces_TARGETS}
 )
 
-if(motion_planning_FOUND)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC HAS_MOTION_PLANNING)
-    target_link_libraries(${PROJECT_NAME} PUBLIC motion_planning::motion_planning)
-    message(STATUS "mpc_core: motion_planning found (circle services enabled)")
-else()
-    message(STATUS "mpc_core: motion_planning not found (circle services disabled)")
-endif()
+target_link_libraries(${PROJECT_NAME} PUBLIC motion_planning::motion_planning)
 
 
 install(
@@ -122,9 +116,7 @@ ament_export_dependencies(
     ocs2_ros_interfaces
     robot_controller_core
 )
-if(motion_planning_FOUND)
-    ament_export_dependencies(motion_planning)
-endif()
+ament_export_dependencies(motion_planning)
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 
 ament_package()

@@ -2,7 +2,7 @@
 
 #include <rclcpp/clock.hpp>
 
-namespace robot_controller_core
+namespace robot_dynamics
 {
     /// The clock for RCLCPP_*_THROTTLE in code that has no node clock at hand (trajectory managers, planners).
     /// A steady clock: it keeps running when simulation time pauses and never jumps, so a throttled message
@@ -12,4 +12,4 @@ namespace robot_controller_core
         static rclcpp::Clock clock(RCL_STEADY_TIME);
         return clock;
     }
-} // namespace robot_controller_core
+} // namespace robot_dynamics

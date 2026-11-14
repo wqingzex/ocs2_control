@@ -5,7 +5,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <stdexcept>
 
-namespace robot_controller_core
+namespace robot_dynamics
 {
     GravityCompensation::GravityCompensation(const std::string& urdf_path)
     {
@@ -103,4 +103,4 @@ namespace robot_controller_core
     {
         return computeStaticTorques(joint_positions);
     }
-} // namespace robot_controller_core
+} // namespace robot_dynamics

@@ -1,13 +1,13 @@
 # end_effector_controller
 
-末端执行器的控制器插件，都是在 [`joint_controller`](../joint_controller/README.md) 上加开合命令：
+末端执行器的控制器插件，都是关节空间状态机（`robot_controller_core` 的 HOME / HOLD / MOVEJ）加开合命令：
 
 | 插件 | 做什么 |
 |---|---|
 | `end_effector_controller/HandController` | 灵巧手：关节插值，加开合命令 |
 | `end_effector_controller/GripperController` | 夹爪：单关节，开合命令，关闭时带力反馈 |
 
-`src/EndEffector.h` 是两者共用的接口，`HandEndEffector.cpp`、`GripperEndEffector.cpp` 是各自的实现，`EndEffectorController.cpp` 把控制器的钩子转给它们。
+`EndEffectorController`（`src/EndEffector.h`、`EndEffectorController.cpp`）直接继承 `robot_controller_core::FsmController`，和 `joint_controller` 没有继承关系；开合行为是它持有的 `EndEffector`（`HandEndEffector.cpp`、`GripperEndEffector.cpp`），控制器把钩子转给它。
 
 测试：`test/gripper_mock/run.sh` 用单关节 `mock_components` 夹爪测开合、百分比、HOLD、解除、重新激活保持位置、HOME 和力反馈。
 

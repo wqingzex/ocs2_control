@@ -8,13 +8,11 @@
 #include <robot_control_msgs/msg/joint_waypoint.hpp>
 
 // 条件编译：只在 motion_planning 可用时包含相关头文件
-#ifdef HAS_MOTION_PLANNING
 #include "motion_planning/path_planner/movej.h"
 #include "motion_planning/path_planner/smooth_curve_of_multi_joints_using_blending.h"
 #include "motion_planning/common/trajectory_init_parameters.h"
-#endif
 
-namespace robot_controller_core
+namespace trajectory_manager
 {
     /**
      * @brief Unified joint trajectory manager for single-node and multi-node trajectories
@@ -66,7 +64,7 @@ namespace robot_controller_core
 
         struct HeadTimedCandidate
         {
-            HeadJointIndices indices{};
+            robot_dynamics::HeadJointIndices indices{};
             double yaw_start_delay{0.0};
             double pitch_start_delay{0.0};
             std::unique_ptr<JointTrajectoryManager> base;
@@ -81,8 +79,8 @@ namespace robot_controller_core
         bool buildHeadTimedCandidate(
             const std::vector<double>& start,
             const std::vector<double>& target,
-            HeadJointIndices indices,
-            const HeadCouplingLimits& limits,
+            robot_dynamics::HeadJointIndices indices,
+            const robot_dynamics::HeadCouplingLimits& limits,
             bool allow_yaw,
             bool allow_pitch,
             const HeadCandidateOptions& options,
@@ -261,10 +259,8 @@ namespace robot_controller_core
         // Multi-node trajectory computation - basic mode (segment-based)
         std::vector<double> computeMultiNodeBasic(double step_seconds);
 
-#ifdef HAS_MOTION_PLANNING
         // Multi-node trajectory computation - advanced mode (motion_planning)
         std::vector<double> computeMultiNodeAdvanced();
-#endif
 
         // Calculate interpolation phase based on type and progress
         double calculatePhase(InterpolationType type, double percent) const;
@@ -321,15 +317,12 @@ namespace robot_controller_core
         * @brief Clear the current plan
         */
         void clearPlan();
-#ifdef HAS_MOTION_PLANNING
         bool getTrajectoryParameter(const robot_control_msgs::msg::JointWaypoint& waypoint,
                                     planning::TrajectoryParameter& res);
-#endif
         double planningTime_{0.0};
         bool timed_evaluation_ready_{false};
 
         // Advanced mode (motion_planning) - conditionally compiled
-#ifdef HAS_MOTION_PLANNING
         // Single-node DOUBLES planner
         std::unique_ptr<planning::moveJ> movej_planner_;
         // Random-access calls mutate planner completion state; isolate them from run().
@@ -337,6 +330,5 @@ namespace robot_controller_core
 
         // Multi-node DOUBLES planner
         std::unique_ptr<planning::SmoothCurveOfMultiJointsUsingBlending> multi_node_planner_;
-#endif
     };
-} // namespace robot_controller_core
+} // namespace trajectory_manager

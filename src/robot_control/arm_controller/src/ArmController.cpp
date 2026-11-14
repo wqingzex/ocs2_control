@@ -30,7 +30,7 @@ namespace arm_controller
         }
 
         void onTaskCreated(
-            const std::shared_ptr<robot_controller_core::GravityCompensation>& /*gravity*/) override
+            const std::shared_ptr<robot_dynamics::GravityCompensation>& /*gravity*/) override
         {
             if (!task_->interface_)
             {
@@ -48,7 +48,7 @@ namespace arm_controller
                         "Using end effector names from OCS2 config: left='%s', right='%s'",
                         left_ee_name.c_str(), right_ee_name.c_str());
 
-            kinematics_ = std::make_shared<robot_controller_core::ArmKinematics>(
+            kinematics_ = std::make_shared<robot_dynamics::ArmKinematics>(
                 task_->interface_->getPinocchioInterface().getModel());
             kinematics_->initializeFromParameters(
                 joint_names_, left_ee_name, right_ee_name, task_->interface_->dual_arm_);
@@ -128,7 +128,7 @@ namespace arm_controller
 
         std::shared_ptr<ocs2::arm_mpc::ArmMpcTask> task_;
         rclcpp::Service<robot_control_msgs::srv::KinematicsService>::SharedPtr kinematics_service_;
-        std::shared_ptr<robot_controller_core::ArmKinematics> kinematics_;
+        std::shared_ptr<robot_dynamics::ArmKinematics> kinematics_;
     };
 } // namespace arm_controller
 

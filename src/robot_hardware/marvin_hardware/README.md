@@ -61,4 +61,4 @@ ros2 control switch_controllers --activate whole_body_controller
 
 ## 编译
 
-Marvin SDK 是子模块 `src/third_party/TJ_FX_ROBOT_CONTRL_SDK`（上游 `cynthia-you/TJ_FX_ROBOT_CONTRL_SDK`，固定在 `02440e8`），克隆后需 `git submodule update --init src/third_party/TJ_FX_ROBOT_CONTRL_SDK`。只支持底层控制系统 100343（43 版固件）及以上，使用其中的 `contrlSDK100343`，不支持 43 以前的固件。`libKine.so` 缺失时编译会自动重建。`examples/` 里是不经过 `ros2_control` 的夹爪、灵巧手 SDK 调试程序。夹爪的位置换算复用 `gripper_hardware_common`。
+Marvin SDK 按控制器固件分成两个子模块（上游 `cynthia-you/TJ_FX_ROBOT_CONTRL_SDK`，`.gitmodules` 里都设了 `shallow = true`，只拉固定的那一个提交）：`src/third_party/TJ_FX_ROBOT_CONTRL_SDK_343`（固定在 `02440e8`，固件 100343 及以上，用 `contrlSDK100343`）和 `src/third_party/TJ_FX_ROBOT_CONTRL_SDK_338`（固定在 `1fa6cc6`，固件 338，用 `contrlSDK`）。克隆后 `git submodule update --init --depth 1 src/third_party/TJ_FX_ROBOT_CONTRL_SDK_343 src/third_party/TJ_FX_ROBOT_CONTRL_SDK_338`（`./scripts/setup.sh deps` 会做）。用 `-DMARVIN_FIRMWARE=343|338` 选（默认 343），要和控制器固件一致，装错时连接后读不到控制器版本，激活后立即急停抱闸。`libKine.so` 缺失或不是 Linux ELF 时编译会自动用 g++ 重建（338 子模块里带的是 Windows DLL，会被重建）。`examples/` 里是不经过 `ros2_control` 的夹爪、灵巧手 SDK 调试程序。夹爪的位置换算复用 `gripper_hardware_common`。

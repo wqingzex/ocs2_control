@@ -10,7 +10,7 @@ namespace robot_controller_core
 {
     StateHold::StateHold(CtrlInterfaces& ctrl_interfaces,
                         std::shared_ptr<rclcpp_lifecycle::LifecycleNode> node,
-                        const std::shared_ptr<GravityCompensation>& gravity_compensation,
+                        const std::shared_ptr<robot_dynamics::GravityCompensation>& gravity_compensation,
                         const FsmFlavor flavor)
         : FSMState(FSMStateName::HOLD, "HOLD", ctrl_interfaces),
           node_(std::move(node)),
@@ -122,7 +122,7 @@ namespace robot_controller_core
 
                     // Once a second while the difference persists. (The old version kept its timer in a function
                     // static, which all controllers of the process shared.)
-                    RCLCPP_WARN_THROTTLE(node_->get_logger(), steadyLogClock(), 1000,
+                    RCLCPP_WARN_THROTTLE(node_->get_logger(), robot_dynamics::steadyLogClock(), 1000,
                                          "HOLD state: position difference (max: %.4f rad) exceeds threshold (%.4f rad). "
                                          "Updating hold positions to current positions for safety.",
                                          max_diff, joint_position_diff_threshold_);

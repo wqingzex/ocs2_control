@@ -51,7 +51,7 @@ namespace robot_controller_core
         /** Planning model of the task; nullptr when the controller has none (then no gravity compensation). */
         [[nodiscard]] virtual const pinocchio::Model* planningModel() const { return nullptr; }
         /** on_init, right after createTask() (gravity is null when there is no planning model). */
-        virtual void onTaskCreated(const std::shared_ptr<GravityCompensation>&) {}
+        virtual void onTaskCreated(const std::shared_ptr<robot_dynamics::GravityCompensation>&) {}
         /** on_init, right after HOME is configured. */
         virtual void onHomeStateCreated() {}
         /** on_init, after onHomeStateCreated(): creates the states_ entries the controller adds (the MPC state). */

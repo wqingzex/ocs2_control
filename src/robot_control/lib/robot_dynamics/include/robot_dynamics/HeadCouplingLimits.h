@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace robot_controller_core
+namespace robot_dynamics
 {
 // Angles are radians: yaw left positive, pitch down positive.
 struct HeadCouplingConfig

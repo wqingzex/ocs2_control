@@ -12,7 +12,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(ament_cmake REQUIRED)
 find_package(controller_interface REQUIRED)
-find_package(joint_controller REQUIRED)
 find_package(robot_controller_core REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -27,7 +26,6 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 target_link_libraries(${PROJECT_NAME} PUBLIC
     ${controller_interface_TARGETS}
     ${pluginlib_TARGETS}
-    ${joint_controller_TARGETS}
     ${robot_controller_core_TARGETS}
     ${std_msgs_TARGETS}
     ${tf2_ros_TARGETS}
@@ -43,7 +41,7 @@ install(
     RUNTIME DESTINATION bin
 )
 
-ament_export_dependencies(controller_interface pluginlib joint_controller robot_controller_core std_msgs tf2_ros)
+ament_export_dependencies(controller_interface pluginlib robot_controller_core std_msgs tf2_ros)
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 
 ament_package()

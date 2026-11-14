@@ -25,7 +25,7 @@ namespace end_effector_controller
         class HandEndEffector final : public EndEffector
         {
         public:
-            void declareParameters(joint_controller::JointController& c) override
+            void declareParameters(EndEffectorController& c) override
             {
                 auto declare = c.declarer();
                 close_config_ = declare("target_command_close_config", static_cast<int32_t>(1));
@@ -58,14 +58,14 @@ namespace end_effector_controller
                 }
             }
 
-            void setupCommands(joint_controller::JointController& c) override { setupHandCommands(c); }
+            void setupCommands(EndEffectorController& c) override { setupHandCommands(c); }
 
-            void onAfterFsmStarted(joint_controller::JointController&) override { is_active_.store(true); }
+            void onAfterFsmStarted(EndEffectorController&) override { is_active_.store(true); }
             // The interface loans are released after deactivation; the hand callbacks must not read them.
             void onDeactivate() override { is_active_.store(false); }
 
         private:
-            void buildHoldMask(joint_controller::JointController& c)
+            void buildHoldMask(EndEffectorController& c)
             {
                 const auto& joints = c.joints();
                 hold_mask_.assign(joints.size(), false);
@@ -84,7 +84,7 @@ namespace end_effector_controller
             }
 
             // Joints listed in target_command_hold_joints keep their current position when a command arrives.
-            void applyHoldOverrides(joint_controller::JointController& c, std::vector<double>& target) const
+            void applyHoldOverrides(EndEffectorController& c, std::vector<double>& target) const
             {
                 if (hold_mask_.empty())
                 {
@@ -122,9 +122,9 @@ namespace end_effector_controller
             }
 
             // Only effective in MOVEJ: sets the MOVEJ target without switching states.
-            void setupHandCommands(joint_controller::JointController& c)
+            void setupHandCommands(EndEffectorController& c)
             {
-                joint_controller::JointController* controller = &c;
+                EndEffectorController* controller = &c;
 
                 const std::string command_topic = c.name() + "/target_command";
                 target_command_subscription_ = c.node()->create_subscription<std_msgs::msg::Int32>(

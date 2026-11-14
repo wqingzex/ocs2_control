@@ -13,14 +13,13 @@ namespace
     }
 } // namespace
 
-namespace robot_controller_core
+namespace trajectory_manager
 {
     bool WaistLiftingPlanner::initSpeedJPlannerFromState(
         const double start_pos, const double start_vel, const double target_vel,
         const double max_acc, const double max_jerk, const double total_time,
         const double period)
     {
-#ifdef HAS_MOTION_PLANNING
         speedj_planner_ = std::make_unique<planning::SpeedJ>();
         size_t nr_of_joints = 1;
         planning::TrajectPoint start_joint_point(nr_of_joints);
@@ -48,16 +47,6 @@ namespace robot_controller_core
         }
         speedj_planner_->setRealStartTime(0.0);
         return true;
-#else
-        (void)start_pos;
-        (void)start_vel;
-        (void)target_vel;
-        (void)max_acc;
-        (void)max_jerk;
-        (void)total_time;
-        (void)period;
-        return false;
-#endif
     }
 
     bool WaistLiftingPlanner::resolveSpeedModeMaxReachablePos(
@@ -273,7 +262,6 @@ namespace robot_controller_core
             length_plan_uses_xz_ = true;
         }
 
-#ifdef HAS_MOTION_PLANNING
         movej_planner_ = std::make_unique<planning::moveJ>();
         size_t nr_of_joints = 1;
         planning::TrajectPoint start_joint_point(nr_of_joints);
@@ -291,22 +279,8 @@ namespace robot_controller_core
         }
 
         movej_planner_->setRealStartTime(0.0);
-#else
-        speed_plan_state_.period = std::max(period, 1.0e-4);
-        speed_plan_state_.elapsed_time = 0.0;
-        speed_plan_state_.total_time = std::max(duration, 0.0);
-        speed_plan_state_.start_pos = start_pos;
-        speed_plan_state_.target_pos = end_pos;
-        speed_plan_state_.target_speed = 0.0;
-        speed_plan_state_.max_acc = 0.0;
-        speed_plan_state_.motion_over = (speed_plan_state_.total_time <= min_val);
-        waist_position_cache_ = (speed_plan_state_.total_time <= min_val) ? end_pos : start_pos;
-        waist_velocity_cache_ = 0.0;
-#endif
-#ifdef HAS_MOTION_PLANNING
         waist_position_cache_ = start_pos;
         waist_velocity_cache_ = 0.0;
-#endif
         return true;
     }
 
@@ -402,34 +376,13 @@ namespace robot_controller_core
                 ? speed_upper_bound_ : speed_lower_bound_;
             speed_mode_max_reachable_valid_ = true;
         }
-#ifdef HAS_MOTION_PLANNING
         if (!initSpeedJPlannerFromState(start_pos, waist_velocity_cache_,
                                         target_lifting_speed, max_lifting_acc,
                                         max_lifting_jerk, total_time, period))
         {
             return false;
         }
-#else
-        (void)max_lifting_jerk;
-        speed_plan_state_.period = std::max(period, 1.0e-4);
-        speed_plan_state_.elapsed_time = 0.0;
-        speed_plan_state_.total_time = std::max(total_time, 0.0);
-        speed_plan_state_.start_pos = start_pos;
-        speed_plan_state_.target_pos = start_pos;
         waist_position_cache_ = start_pos;
-        speed_plan_state_.target_speed = target_lifting_speed;
-        speed_plan_state_.max_acc = std::max(max_lifting_acc, 0.0);
-        speed_plan_state_.motion_over = (std::abs(target_lifting_speed) <= min_val);
-        if (speed_plan_state_.total_time <= min_val || std::abs(target_lifting_speed) <= min_val)
-        {
-            speed_plan_state_.target_speed = 0.0;
-            waist_velocity_cache_ = 0.0;
-            speed_plan_state_.motion_over = true;
-        }
-#endif
-#ifdef HAS_MOTION_PLANNING
-        waist_position_cache_ = start_pos;
-#endif
         return true;
     }
 
@@ -461,7 +414,6 @@ namespace robot_controller_core
             speed_mode_max_reachable_valid_ = true;
         }
 
-#ifdef HAS_MOTION_PLANNING
         if (std::abs(target_lifting_speed - waist_velocity_cache_) <= min_val)
         {
             speedj_planner_.reset();
@@ -477,23 +429,6 @@ namespace robot_controller_core
         {
             return false;
         }
-#else
-        (void)max_lifting_jerk;
-        speed_plan_state_.period = std::max(period, 1.0e-4);
-        speed_plan_state_.elapsed_time = 0.0;
-        speed_plan_state_.total_time = std::max(total_time, 0.0);
-        speed_plan_state_.start_pos = start_pos;
-        speed_plan_state_.target_pos = start_pos;
-        speed_plan_state_.target_speed = target_lifting_speed;
-        speed_plan_state_.max_acc = std::max(max_lifting_acc, 0.0);
-        speed_plan_state_.motion_over =
-            (std::abs(target_lifting_speed - waist_velocity_cache_) <= min_val) &&
-            (std::abs(target_lifting_speed) <= min_val);
-        if (speed_plan_state_.motion_over)
-        {
-            waist_velocity_cache_ = target_lifting_speed;
-        }
-#endif
         return true;
     }
 
@@ -510,7 +445,6 @@ namespace robot_controller_core
         double planner_pos = 0.0;
         double curr_x = x_;
         double curr_z = 0.0;
-#ifdef HAS_MOTION_PLANNING
         planning::TrajectPoint point(1);
         if (type_speed_)
         {
@@ -594,73 +528,6 @@ namespace robot_controller_core
             waist_position_cache_ = planner_pos;
             waist_velocity_cache_ = point.joint_vel(0);
         }
-#else
-        if (type_speed_)
-        {
-            if (!speed_plan_state_.motion_over)
-            {
-                const double dt = speed_plan_state_.period;
-                if (speed_mode_max_reachable_valid_ && !speed_mode_stop_replanned_ &&
-                    std::abs(waist_velocity_cache_) > min_val && speed_plan_state_.max_acc > min_val)
-                {
-                    // Fallback uses acceleration limits only, so estimate the matching stop distance.
-                    const double direction = waist_velocity_cache_ > 0.0 ? 1.0 : -1.0;
-                    const double boundary = direction > 0.0 ? speed_upper_bound_ : speed_lower_bound_;
-                    const double distance = waist_velocity_cache_ * waist_velocity_cache_ /
-                        (2.0 * speed_plan_state_.max_acc);
-                    if (direction * (waist_position_cache_ + direction * distance - boundary) >= -0.001)
-                    {
-                        speed_mode_stop_replanned_ = true;
-                        speed_plan_state_.target_speed = 0.0;
-                    }
-                }
-                if (speed_plan_state_.max_acc > min_val)
-                {
-                    const double max_delta_v = speed_plan_state_.max_acc * dt;
-                    const double delta_v = std::clamp(speed_plan_state_.target_speed - waist_velocity_cache_,
-                                                      -max_delta_v, max_delta_v);
-                    waist_velocity_cache_ += delta_v;
-                }
-                else
-                {
-                    waist_velocity_cache_ = speed_plan_state_.target_speed;
-                }
-
-                if (std::abs(speed_plan_state_.target_speed) <= min_val &&
-                    std::abs(waist_velocity_cache_) <= min_val)
-                {
-                    speed_plan_state_.motion_over = true;
-                }
-                waist_position_cache_ += waist_velocity_cache_ * dt;
-                speed_plan_state_.elapsed_time += dt;
-                if (speed_plan_state_.total_time > min_val &&
-                    speed_plan_state_.elapsed_time >= speed_plan_state_.total_time)
-                {
-                    speed_plan_state_.motion_over = true;
-                }
-            }
-            planner_pos = waist_position_cache_;
-        }
-        else
-        {
-            if (!speed_plan_state_.motion_over)
-            {
-                const double duration = std::max(speed_plan_state_.total_time, min_val);
-                speed_plan_state_.elapsed_time = std::min(
-                    speed_plan_state_.elapsed_time + speed_plan_state_.period, duration);
-                const double p = std::clamp(speed_plan_state_.elapsed_time / duration, 0.0, 1.0);
-                const double smooth_p = p * p * (3.0 - 2.0 * p);
-                waist_position_cache_ = speed_plan_state_.start_pos +
-                    (speed_plan_state_.target_pos - speed_plan_state_.start_pos) * smooth_p;
-                if (p >= 1.0 - min_val)
-                {
-                    speed_plan_state_.motion_over = true;
-                }
-            }
-            planner_pos = waist_position_cache_;
-            waist_velocity_cache_ = 0.0;
-        }
-#endif
         // A final hard boundary also covers fallback planning and discretization.
         if (type_speed_ &&
             (planner_pos < speed_lower_bound_ || planner_pos > speed_upper_bound_ ||
@@ -670,9 +537,7 @@ namespace robot_controller_core
             planner_pos = std::clamp(planner_pos, speed_lower_bound_, speed_upper_bound_);
             waist_position_cache_ = planner_pos;
             setCurrentVelToZero();
-#ifdef HAS_MOTION_PLANNING
             speedj_planner_.reset();
-#endif
         }
         double curr_phi = phi_;
         if (isPhiSpeedMode())
@@ -1069,4 +934,4 @@ namespace robot_controller_core
         return (joint_angle < single_joint_limit_lower_ - min_val ||
             joint_angle > single_joint_limit_upper_ + min_val);
     };
-} // namespace robot_controller_core
+} // namespace trajectory_manager

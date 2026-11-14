@@ -3,7 +3,7 @@
 <package format="3">
   <name>joint_controller</name>
   <version>0.1.0</version>
-  <description>ros2_control controller plugin for joint-space control without an MPC task (waist, head, body); base of the end-effector controllers</description>
+  <description>ros2_control controller plugin for joint-space control without an MPC task (waist, head, body)</description>
   <maintainer email="biao876990970@hotmail.com">Huang Zhenbiao</maintainer>
   <license>Apache-2.0</license>
 

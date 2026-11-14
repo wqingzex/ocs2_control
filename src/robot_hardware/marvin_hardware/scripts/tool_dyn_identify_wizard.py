@@ -17,7 +17,8 @@ def _resolve_sdk_root() -> str:
     """定位 TJ_FX_ROBOT_CONTRL_SDK 根目录（兼容源码运行/安装后运行）。"""
     # 1) 源码运行：<pkg>/scripts/xxx.py -> src/third_party/TJ_FX_ROBOT_CONTRL_SDK（子模块）
     pkg_dir = os.path.dirname(CURRENT_DIR)
-    cand1 = os.path.normpath(os.path.join(pkg_dir, "..", "..", "third_party", "TJ_FX_ROBOT_CONTRL_SDK"))
+    firmware = os.environ.get("MARVIN_FIRMWARE", "343")
+    cand1 = os.path.normpath(os.path.join(pkg_dir, "..", "..", "third_party", f"TJ_FX_ROBOT_CONTRL_SDK_{firmware}"))
     if _has_sdk_python(cand1):
         return cand1
 

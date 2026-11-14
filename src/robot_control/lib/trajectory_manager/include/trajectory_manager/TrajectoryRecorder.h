@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace robot_controller_core
+namespace trajectory_manager
 {
 // 单条位姿采样点：绝对时间(秒) + 位置 + 四元数[qx,qy,qz,qw]
 struct TrajSample
@@ -42,4 +42,4 @@ private:
     std::vector<TrajSample> cal_left_, cal_right_, pred_left_, pred_right_, real_left_,
         real_right_;
 };
-}  // namespace robot_controller_core
+}  // namespace trajectory_manager

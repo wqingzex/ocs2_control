@@ -8,4 +8,4 @@
 | 重力补偿 | `GravityCompensation.h` |
 | 关节限位（从 URDF 读取）、头部耦合限位、伺服滤波 | `JointLimitsManager.h`、`HeadCouplingLimits.h`、`JointServoFilter.h` |
 
-头文件用 `#include <robot_dynamics/Kinematics.h>`，命名空间是 `robot_controller_core`（和核心共用，暂未拆开）。被 `trajectory_manager`、`robot_controller_core`、两个 MPC 任务包和 `robot_controller` 使用。
+头文件用 `#include <robot_dynamics/Kinematics.h>`，命名空间是 `robot_dynamics`。被 `trajectory_manager`、`robot_controller_core`、两个 MPC 任务包和 `robot_controller` 使用。

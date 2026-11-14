@@ -4,7 +4,7 @@
 #include <cctype>
 #include <string>
 
-namespace robot_controller_core
+namespace trajectory_manager
 {
     /**
      * @brief Common interpolation type used by FSM states (e.g. Home/MoveJ).
@@ -74,5 +74,5 @@ namespace robot_controller_core
         }
         return fallback;
     }
-} // namespace robot_controller_core
+} // namespace trajectory_manager
 

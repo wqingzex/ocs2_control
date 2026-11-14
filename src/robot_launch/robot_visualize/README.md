@@ -18,4 +18,4 @@ ros2 launch robot_visualize visualize.launch.py   robot:=<名字>
 
 常用参数：`type`、`left_type` / `right_type`（左右不同末端）、`collider`、`direction`、`skin`、`variant`、`chassis`。
 
-`fa_teleop` 的"只看模型"也是调用这里的 `humanoid.launch.py` / `manipulator.launch.py`。RViz 配置在 `config/rviz/`，公共函数在 `robot_visualize/visualize.py`。
+`teleop_app` 的"只看模型"也是调用这里的 `humanoid.launch.py` / `manipulator.launch.py`。RViz 配置在 `config/rviz/`，公共函数在 `robot_visualize/visualize.py`。

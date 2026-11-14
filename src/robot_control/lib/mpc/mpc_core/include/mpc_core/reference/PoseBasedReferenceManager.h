@@ -14,9 +14,7 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
-#ifdef HAS_MOTION_PLANNING
 #include <motion_planning/path_planner/circular_curve.h>
-#endif
 #include <memory>
 #include <nav_msgs/msg/path.hpp>
 #include <mpc_core/reference/OCS2ReferenceTargetContext.hpp>
@@ -325,7 +323,6 @@ private:
     double moveL_max_angular_jerk_{4.0};
     bool moveL_auto_extend_duration_{true};
 
-#ifdef HAS_MOTION_PLANNING
     std::shared_ptr<planning::CircularCurver> left_circle_curve_;
     std::shared_ptr<planning::CircularCurver> right_circle_curve_;
 
@@ -370,7 +367,6 @@ private:
     bool initCircleCurve(vector_t start_pose, robot_control_msgs::msg::CircleMessage::SharedPtr msg,
                          std::shared_ptr<planning::CircularCurver> circle_ptr);
     double min_val = 1.0e-6;
-#endif
 
     [[nodiscard]] bool shouldAcceptExternalTargets() const
     {

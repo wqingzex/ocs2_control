@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace robot_controller_core
+namespace robot_dynamics
 {
 // Stateful third-order tracking filter ported from rokae_hardware.
 // Retains the original discrete switching law; v/a limits can overshoot by a step.

@@ -42,10 +42,6 @@ target_include_directories(${PROJECT_NAME}
         "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>"
 )
 
-# motion_planning is a required dependency now; the macro stays so the existing #ifdef blocks keep compiling
-# (they are all in the enabled state, as in the workspace builds before).
-target_compile_definitions(${PROJECT_NAME} PUBLIC HAS_MOTION_PLANNING)
-
 target_link_libraries(${PROJECT_NAME} PUBLIC
         ${rclcpp_TARGETS}
         ${geometry_msgs_TARGETS}

@@ -19,13 +19,23 @@ find_package(gripper_hardware_common REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(EIGEN3 REQUIRED eigen3)
 
-# Marvin SDK 是子模块 src/third_party/TJ_FX_ROBOT_CONTRL_SDK（上游 cynthia-you/TJ_FX_ROBOT_CONTRL_SDK，固定在 02440e8）。
-# 只支持底层控制系统 100343（43 版固件）及以上，使用其中的 contrlSDK100343。
-get_filename_component(_TJ_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/TJ_FX_ROBOT_CONTRL_SDK" ABSOLUTE)
-if(NOT EXISTS "${_TJ_SDK_ROOT}/contrlSDK100343")
-    message(FATAL_ERROR "marvin_hardware: Marvin SDK 子模块未检出（${_TJ_SDK_ROOT}），请执行 git submodule update --init src/third_party/TJ_FX_ROBOT_CONTRL_SDK")
+# Marvin SDK 是子模块（上游 cynthia-you/TJ_FX_ROBOT_CONTRL_SDK），按臂的底层控制系统固件选一份：
+#   343：src/third_party/TJ_FX_ROBOT_CONTRL_SDK_343（固定在 02440e8），用其中的 contrlSDK100343；43 版固件及以上。
+#   338：src/third_party/TJ_FX_ROBOT_CONTRL_SDK_338（固定在 1fa6cc6），用其中的 contrlSDK；38 版固件。
+# 固件和 SDK 不配套时，连接后读不到控制器版本，驱动随即急停。选择：colcon build --cmake-args -DMARVIN_FIRMWARE=338
+set(MARVIN_FIRMWARE "343" CACHE STRING "Marvin control system firmware: 343 or 338")
+set_property(CACHE MARVIN_FIRMWARE PROPERTY STRINGS 343 338)
+if(MARVIN_FIRMWARE STREQUAL "343")
+    set(MARVIN_CONTROL_SDK_DIR "contrlSDK100343")
+elseif(MARVIN_FIRMWARE STREQUAL "338")
+    set(MARVIN_CONTROL_SDK_DIR "contrlSDK")
+else()
+    message(FATAL_ERROR "marvin_hardware: MARVIN_FIRMWARE must be 343 or 338 (got '${MARVIN_FIRMWARE}')")
 endif()
-set(MARVIN_CONTROL_SDK_DIR "contrlSDK100343")
+get_filename_component(_TJ_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/TJ_FX_ROBOT_CONTRL_SDK_${MARVIN_FIRMWARE}" ABSOLUTE)
+if(NOT EXISTS "${_TJ_SDK_ROOT}/${MARVIN_CONTROL_SDK_DIR}")
+    message(FATAL_ERROR "marvin_hardware: Marvin SDK 子模块未检出（${_TJ_SDK_ROOT}），请执行 git submodule update --init src/third_party/TJ_FX_ROBOT_CONTRL_SDK_${MARVIN_FIRMWARE}")
+endif()
 
 set(HEADER_KINE_DIR "${_TJ_SDK_ROOT}/kinematicsSDK/")
 set(HEADER_CONTROL_DIR "${_TJ_SDK_ROOT}/${MARVIN_CONTROL_SDK_DIR}/")

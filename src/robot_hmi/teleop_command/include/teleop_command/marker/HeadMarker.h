@@ -183,7 +183,7 @@ namespace teleop_command
         std::map<std::string, double> head_rpy_axis_direction_; // RPY旋转轴方向
 
         // 限位管理
-        std::shared_ptr<robot_controller_core::JointLimitsManager> head_limits_manager_;
+        std::shared_ptr<robot_dynamics::JointLimitsManager> head_limits_manager_;
         rclcpp::Subscription<std_msgs::msg::String>::SharedPtr robot_description_subscription_;
 
         // 状态

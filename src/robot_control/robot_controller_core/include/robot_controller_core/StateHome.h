@@ -39,7 +39,7 @@ namespace robot_controller_core
          * @param node ROS node for dynamic parameter access and logger (required)
          */
         explicit StateHome(CtrlInterfaces& ctrl_interfaces,
-                          const std::shared_ptr<GravityCompensation>& gravity_compensation = nullptr,
+                          const std::shared_ptr<robot_dynamics::GravityCompensation>& gravity_compensation = nullptr,
                           const std::shared_ptr<rclcpp_lifecycle::LifecycleNode>& node = nullptr,
                           FsmFlavor flavor = FsmFlavor::JOINT);
 
@@ -195,7 +195,7 @@ namespace robot_controller_core
         bool validateTarget(const std::vector<double>& target) const;
         mutable std::mutex limits_mutex_;
         std::vector<std::string> joint_names_;
-        std::unique_ptr<JointLimitsManager> joint_limits_;
+        std::unique_ptr<robot_dynamics::JointLimitsManager> joint_limits_;
         void switchConfiguration();
         void selectConfigurationImpl(size_t config_index);
         void startInterpolation();
@@ -208,7 +208,7 @@ namespace robot_controller_core
         void clearPendingMotion();
         bool runStopToZero(const rclcpp::Duration& period);
 
-        std::shared_ptr<GravityCompensation> gravity_compensation_;
+        std::shared_ptr<robot_dynamics::GravityCompensation> gravity_compensation_;
 
         // Home configurations
         std::vector<std::vector<double>> home_configs_;     // Multiple home configurations (rest pose is index 1)
@@ -222,13 +222,13 @@ namespace robot_controller_core
         // Interpolation
         double home_max_velocity_{2.0}, home_max_acceleration_{4.0}, home_max_jerk_{20.0};
         double duration_{3.0};                              // Interpolation duration in seconds (default value, will be updated by updateParam())
-        InterpolationType interpolation_type_{InterpolationType::TANH};
+        trajectory_manager::InterpolationType interpolation_type_{trajectory_manager::InterpolationType::TANH};
         double tanh_scale_{3.0};
         double home_speed_warn_{1.0};                       // rad/s on the furthest joint; only a log warning, never a limit
         std::shared_ptr<rclcpp_lifecycle::LifecycleNode> node_; // ROS node for parameter access
 
         // Unified trajectory manager
-        JointTrajectoryManager trajectory_manager_;
+        trajectory_manager::JointTrajectoryManager trajectory_manager_;
         // Current target joint publisher (shared convention across controllers)
         rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr current_target_joint_publisher_;
         void publishCurrentTargetJoint(const std::vector<double>& target_positions);
@@ -242,7 +242,7 @@ namespace robot_controller_core
         // Stop-to-zero then apply pending motion
         bool stop_to_zero_active_{false};
         std::function<void()> pending_motion_;
-        JointSpeedStopPlanner speed_stop_planner_;
+        trajectory_manager::JointSpeedStopPlanner speed_stop_planner_;
     };
 } // namespace robot_controller_core
 

@@ -65,7 +65,7 @@ namespace robot_controller_core
         explicit StateMoveJ(CtrlInterfaces& ctrl_interfaces,
                             const std::shared_ptr<rclcpp_lifecycle::LifecycleNode>& node = nullptr,
                             const std::vector<std::string>& joint_names = {},
-                            const std::shared_ptr<GravityCompensation>& gravity_compensation = nullptr);
+                            const std::shared_ptr<robot_dynamics::GravityCompensation>& gravity_compensation = nullptr);
 
         // Call after URDF and loaned position interfaces are available; throws on invalid enabled setup.
         void validateHeadCouplingSetup() const;
@@ -199,7 +199,6 @@ namespace robot_controller_core
         bool setWaistTurningFactor(double factor);
         bool setWaistPhiFactor(double factor);
 
-
         /**
          * @brief Setup joint trajectory service
          * @param service_name Service name (default: "joint_trajectory")
@@ -208,7 +207,7 @@ namespace robot_controller_core
         void setupJointTrajectoryAction(const std::string& action_name = "joint_trajectory");
         void setupWaistLiftingPoseAction(const std::string& action_name = "waist_lifting_pose");
 
-        void setKinematicsSolver(const std::shared_ptr<ArmKinematics>& kinematics = nullptr);
+        void setKinematicsSolver(const std::shared_ptr<robot_dynamics::ArmKinematics>& kinematics = nullptr);
         // 在 StateMoveJ.h 的 public 部分添加
         /**
         * @brief Setup linear trajectory service for MoveL planning
@@ -269,23 +268,23 @@ namespace robot_controller_core
     private:
         void loadHeadCouplingConfig();
         bool headCouplingApplies() const;
-        HeadCouplingLimits headCouplingLimits() const;
-        HeadPose measuredHeadPose() const;
+        robot_dynamics::HeadCouplingLimits headCouplingLimits() const;
+        robot_dynamics::HeadPose measuredHeadPose() const;
         bool submitHeadTarget(const std::vector<double>& requested, const std::vector<bool>& mask);
         bool prepareHeadTarget(const std::vector<double>& requested, const std::vector<bool>& mask,
                                std::vector<double>& effective,
-                               std::unique_ptr<JointTrajectoryManager::HeadTimedCandidate>& candidate) const;
+                               std::unique_ptr<trajectory_manager::JointTrajectoryManager::HeadTimedCandidate>& candidate) const;
         void clearHeadExecution();
         bool runHeadWait(const rclcpp::Duration& period);
         void failHeadExecution(const std::string& reason);
         bool head_execution_active_{false};
         bool head_waiting_{false};
         double head_wait_elapsed_{0.0};
-        HeadPose head_final_endpoint_{};
-        std::unique_ptr<JointTrajectoryManager::HeadTimedCandidate> head_candidate_;
+        robot_dynamics::HeadPose head_final_endpoint_{};
+        std::unique_ptr<trajectory_manager::JointTrajectoryManager::HeadTimedCandidate> head_candidate_;
         double head_elapsed_{0.0};
-        HeadCouplingConfig head_coupling_config_;
-        std::optional<HeadJointIndices> head_joint_indices_;
+        robot_dynamics::HeadCouplingConfig head_coupling_config_;
+        std::optional<robot_dynamics::HeadJointIndices> head_joint_indices_;
         void updateParam();
         void declareMoveJVelocityParameters();
         void updateMoveJVelocityParameters();
@@ -372,12 +371,12 @@ namespace robot_controller_core
             double& estimated_duration);
 
         std::shared_ptr<rclcpp_lifecycle::LifecycleNode> node_;
-        std::shared_ptr<GravityCompensation> gravity_compensation_;
+        std::shared_ptr<robot_dynamics::GravityCompensation> gravity_compensation_;
 
         void initializeServo(const std::vector<double>& positions);
         bool canUpdateServoTarget() const;
         std::vector<double> advanceServo(double period);
-        std::vector<JointServoFilter> servo_filters_;
+        std::vector<robot_dynamics::JointServoFilter> servo_filters_;
         bool servo_initialized_{false};
 
         double duration_{3.0}; // Interpolation duration in seconds
@@ -412,12 +411,10 @@ namespace robot_controller_core
         // Trajectory message subscription
         rclcpp::Subscription<trajectory_msgs::msg::JointTrajectory>::SharedPtr trajectory_subscription_;
 
-#ifdef HAS_MOTION_PLANNING
         std::shared_ptr<tf2_ros::Buffer> cartesian_tf_buffer_;
         bool transformCartesianPoseStamped(
             const geometry_msgs::msg::PoseStamped& in,
             geometry_msgs::msg::PoseStamped& out);
-#endif
 
         // Current target joint publisher (shared convention across controllers)
         rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr current_target_joint_publisher_;
@@ -428,17 +425,17 @@ namespace robot_controller_core
         void publishFsmCommand(int32_t command);
 
         // Joint limit checking
-        std::shared_ptr<JointLimitsManager> joint_limits_manager_;
+        std::shared_ptr<robot_dynamics::JointLimitsManager> joint_limits_manager_;
         // Optional joint limits manager for URDF-based limits
         std::function<std::vector<double>(const std::vector<double>&)> joint_limit_checker_;
         // Optional joint limit checker callback
 
         // Interpolation configuration
-        InterpolationType interpolation_type_{InterpolationType::TANH};
+        trajectory_manager::InterpolationType interpolation_type_{trajectory_manager::InterpolationType::TANH};
         double tanh_scale_{3.0};
 
         // Unified trajectory manager
-        JointTrajectoryManager trajectory_manager_;
+        trajectory_manager::JointTrajectoryManager trajectory_manager_;
 
         /**
          * @brief Update joint mask based on prefix
@@ -493,9 +490,8 @@ namespace robot_controller_core
         // indices of joints that belong to body/waist (determined from joint_names_)
         std::vector<size_t> body_joint_indices_;
 
-
         // Waist lifting support
-        std::shared_ptr<robot_controller_core::WaistLiftingPlanner> waist_lifting_planner_;
+        std::shared_ptr<trajectory_manager::WaistLiftingPlanner> waist_lifting_planner_;
         std::shared_ptr<tf2_ros::Buffer> waist_absolute_tf_buffer_;
         std::string waist_absolute_source_frame_{"base_footprint"};
         std::string waist_absolute_target_frame_{"body_base"};
@@ -507,7 +503,7 @@ namespace robot_controller_core
         void cancelPendingWaist(PendingWaistKind kind);
         Eigen::Vector3d default_waist_phi_para_{0.25, 1.0, 5.0};
         bool waist_lifting_debug_print_active_{false};
-        std::shared_ptr<robot_controller_core::WaistLiftingPlanner> waist_turning_planner_;
+        std::shared_ptr<trajectory_manager::WaistLiftingPlanner> waist_turning_planner_;
         bool waist_turning_active_{false};
         double waist_lifting_duration_{3.0};
         Eigen::Vector3d default_waist_lifting_para_;
@@ -542,7 +538,6 @@ namespace robot_controller_core
          */
         Eigen::VectorXd getCurrentWaistAngles();
         std::vector<double> applyWaistJointLimits(const std::vector<double>& waist_positions);
-
 
         // Service server
         rclcpp::Service<robot_control_msgs::srv::JointTrajectory>::SharedPtr joint_trajectory_service_;
@@ -601,7 +596,7 @@ namespace robot_controller_core
             const std::vector<double>& request_positions);
 
         //增加movel相关的代码
-        CartesianTrajectoryManager cartesian_manager_;
+        trajectory_manager::CartesianTrajectoryManager cartesian_manager_;
 
         struct CartesianCommandDefaults
         {
@@ -704,11 +699,10 @@ namespace robot_controller_core
         Eigen::VectorXd getCurrentJointAngles() const;
         bool checkAndHandleCollision();
 
-
         bool stop_to_zero_active_{false};
         std::function<void()> pending_motion_;
         std::function<void()> pending_motion_cancel_;
         std::function<void()> pending_waist_motion_;
-        JointSpeedStopPlanner speed_stop_planner_;
+        trajectory_manager::JointSpeedStopPlanner speed_stop_planner_;
     };
 } // namespace robot_controller_core

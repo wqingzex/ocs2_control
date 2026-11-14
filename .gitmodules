@@ -6,6 +6,11 @@
 	path = src/third_party/ocs2_ros2
 	url = https://github.com/legubiao/ocs2_ros2
 	shallow = true
-[submodule "src/third_party/TJ_FX_ROBOT_CONTRL_SDK"]
-	path = src/third_party/TJ_FX_ROBOT_CONTRL_SDK
+[submodule "src/third_party/TJ_FX_ROBOT_CONTRL_SDK_343"]
+	path = src/third_party/TJ_FX_ROBOT_CONTRL_SDK_343
 	url = https://github.com/cynthia-you/TJ_FX_ROBOT_CONTRL_SDK.git
+	shallow = true
+[submodule "src/third_party/TJ_FX_ROBOT_CONTRL_SDK_338"]
+	path = src/third_party/TJ_FX_ROBOT_CONTRL_SDK_338
+	url = https://github.com/cynthia-you/TJ_FX_ROBOT_CONTRL_SDK.git
+	shallow = true

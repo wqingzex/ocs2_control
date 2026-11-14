@@ -28,7 +28,7 @@ These instructions assume you are running on Ubuntu 22.04:
 4. Get the repo and install any dependencies:
 
         cd $COLCON_WS/src
-        git clone git@github.com:PickNikRobotics/topic_based_hardware.git
+        git clone git@github.com:PickNikRobotics/topic_based_ros2_control.git
 
         rosdep install --ignore-src --from-paths . -y
 

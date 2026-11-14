@@ -71,7 +71,7 @@ namespace ocs2::arm_mpc
             // Declare dir before enabled so both can be applied together from yaml/callback.
             traj_record_dir_ = auto_declare("traj_record_dir", std::string("/tmp/traj_record"));
             const bool traj_record_enabled = auto_declare("traj_record_enabled", false);
-            robot_controller_core::TrajectoryRecorder::instance()
+            trajectory_manager::TrajectoryRecorder::instance()
                 .setEnabled(traj_record_enabled, traj_record_dir_);
 
             declareRuntimeParameters(auto_declare);

@@ -11,7 +11,7 @@
 #include <fstream>
 #include <cstdlib>
 
-namespace robot_controller_core
+namespace robot_dynamics
 {
     // ==================== 构造函数 ====================
 
@@ -1582,4 +1582,4 @@ namespace robot_controller_core
         response->computation_time_ms = std::chrono::duration<double, std::milli>(
             end_time - start_time).count();
     }
-} // namespace robot_controller_core
+} // namespace robot_dynamics

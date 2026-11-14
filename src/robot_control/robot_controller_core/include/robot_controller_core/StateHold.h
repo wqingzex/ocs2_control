@@ -31,7 +31,7 @@ namespace robot_controller_core
          */
         explicit StateHold(CtrlInterfaces& ctrl_interfaces,
                          std::shared_ptr<rclcpp_lifecycle::LifecycleNode> node = nullptr,
-                         const std::shared_ptr<GravityCompensation>& gravity_compensation = nullptr,
+                         const std::shared_ptr<robot_dynamics::GravityCompensation>& gravity_compensation = nullptr,
                          FsmFlavor flavor = FsmFlavor::JOINT);
 
         void enter() override;
@@ -43,7 +43,7 @@ namespace robot_controller_core
         void updateParam();
 
         std::shared_ptr<rclcpp_lifecycle::LifecycleNode> node_;
-        std::shared_ptr<GravityCompensation> gravity_compensation_;
+        std::shared_ptr<robot_dynamics::GravityCompensation> gravity_compensation_;
         FsmFlavor flavor_{FsmFlavor::JOINT};
         std::vector<double> hold_positions_;                  // Positions recorded when entering
         double first_check_position_threshold_{0.1};          // Threshold for the initial hold position check (radians). If <= 0, checking is disabled.

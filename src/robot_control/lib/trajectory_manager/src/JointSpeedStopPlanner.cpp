@@ -3,7 +3,7 @@
 #include <cmath>
 #include <limits>
 
-namespace robot_controller_core
+namespace trajectory_manager
 {
     void JointSpeedStopPlanner::reset()
     {

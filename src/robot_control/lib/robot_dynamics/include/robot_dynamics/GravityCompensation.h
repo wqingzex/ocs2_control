@@ -16,7 +16,7 @@
 #include <pinocchio/algorithm/rnea.hpp>
 #pragma GCC diagnostic pop
 
-namespace robot_controller_core
+namespace robot_dynamics
 {
     /**
      * @brief Gravity compensation utility class
@@ -78,5 +78,5 @@ namespace robot_controller_core
         mutable pinocchio::Data data_;  // Mutable for const methods
         mutable bool logged_base_pad_ = false;
     };
-} // namespace robot_controller_core
+} // namespace robot_dynamics
 

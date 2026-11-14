@@ -9,14 +9,11 @@
 #include <string>
 #include <vector>
 
-#ifdef HAS_MOTION_PLANNING
 #include "motion_planning/path_planner/circular_curve.h"
 #include "motion_planning/path_planner/movel.h"
-#endif
 
-namespace robot_controller_core
+namespace trajectory_manager
 {
-#ifdef HAS_MOTION_PLANNING
     class CartesianTrajectoryManager
     {
     public:
@@ -24,7 +21,7 @@ namespace robot_controller_core
         ~CartesianTrajectoryManager();
 
         void setKinematicsSolver(
-            const std::shared_ptr<ArmKinematics>& kinematics = nullptr);
+            const std::shared_ptr<robot_dynamics::ArmKinematics>& kinematics = nullptr);
 
         bool planSingleArmMoveL(
             const std::vector<double>& start_joint_pos,
@@ -60,7 +57,7 @@ namespace robot_controller_core
 
         PathType path_type_;
 
-        std::shared_ptr<ArmKinematics> arm_kinematics_;
+        std::shared_ptr<robot_dynamics::ArmKinematics> arm_kinematics_;
         std::unique_ptr<planning::moveL> left_movel_planner_;
         std::unique_ptr<planning::moveL> right_movel_planner_;
         std::unique_ptr<planning::CircularCurver> left_movec_planner_;
@@ -79,7 +76,7 @@ namespace robot_controller_core
         //辅助函数
         bool validateCircleMsg(
             const robot_control_msgs::msg::CircleMessage& target_circle_msg, std::string& error_message);
-        planning::TrajectPoint setCartesianPoint(const EndEffectorPose& input_point);
+        planning::TrajectPoint setCartesianPoint(const robot_dynamics::EndEffectorPose& input_point);
         planning::TrajectPoint setCartesianPoint(const geometry_msgs::msg::Pose& input_point);
         planning::TrajectoryParameter setCartesianParameter(
             const robot_control_msgs::msg::LinearMessage& target_point_msg);
@@ -98,85 +95,11 @@ namespace robot_controller_core
                            std::vector<double>& result);
         bool solveRealtimeTrackingIK(
             const std::string& arm_name,
-            const EndEffectorPose& pose,
+            const robot_dynamics::EndEffectorPose& pose,
             Eigen::VectorXd& current_joint_pos,
             std::vector<double>& result,
             const char* motion_name);
         double min_val = 1.0e-6;
         rclcpp::Logger logger_;
     };
-#else
-    class CartesianTrajectoryManager
-    {
-    public:
-        CartesianTrajectoryManager() = default;
-        ~CartesianTrajectoryManager() = default;
-
-        void setKinematicsSolver(
-            const std::shared_ptr<ArmKinematics>& kinematics = nullptr)
-        {
-            arm_kinematics_ = kinematics;
-        }
-
-        bool planSingleArmMoveL(
-            const std::vector<double>& /*start_joint_pos*/,
-            const robot_control_msgs::msg::LinearMessage& /*target_point_msg*/,
-            const double /*period*/ = 0.01)
-        {
-            last_error_ = "motion_planning not found; MoveL is disabled";
-            return false;
-        }
-        bool planSingleArmMoveC(
-            const std::vector<double>& /*start_joint_pos*/,
-            const robot_control_msgs::msg::CircleMessage& /*target_circle_msg*/,
-            const double /*period*/ = 0.01)
-        {
-            last_error_ = "motion_planning not found; MoveC is disabled";
-            return false;
-        }
-        bool planDualArmMoveL(
-            const std::vector<double>& /*start_joint_pos*/,
-            const robot_control_msgs::msg::LinearMessage& /*target_point_msg*/,
-            const double /*period*/ = 0.01)
-        {
-            last_error_ = "motion_planning not found; dual-arm MoveL is disabled";
-            return false;
-        }
-        bool planDualArmMoveC(
-            const std::vector<double>& /*start_joint_pos*/,
-            const robot_control_msgs::msg::CircleMessage& /*target_circle_msg*/,
-            const double /*period*/ = 0.01)
-        {
-            last_error_ = "motion_planning not found; dual-arm MoveC is disabled";
-            return false;
-        }
-
-        bool getNextJointPos(std::vector<double>& /*res*/)
-        {
-            last_error_ = "motion_planning not found; no cartesian trajectory available";
-            return false;
-        }
-
-        void setSampleStamp(double /*t*/) {}
-
-        double getPlanningTime() const { return planningTime_; }
-        bool isCompleted() const { return completed_; }
-        std::string getLastError() const { return last_error_; }
-        std::vector<std::string> getMovelJointNames(std::string /*arm_name*/) { return {}; }
-        void clearPlanner()
-        {
-            completed_ = false;
-            planningTime_ = 0.0;
-            last_error_.clear();
-        }
-
-        bool hasKinematics() { return arm_kinematics_ != nullptr; }
-
-    private:
-        std::shared_ptr<ArmKinematics> arm_kinematics_;
-        bool completed_ = false;
-        std::string last_error_;
-        double planningTime_ = 0.0;
-    };
-#endif
-} // namespace robot_controller_core
+} // namespace trajectory_manager

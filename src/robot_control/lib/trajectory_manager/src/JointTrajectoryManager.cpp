@@ -32,7 +32,7 @@ namespace
     }
 }
 
-namespace robot_controller_core
+namespace trajectory_manager
 {
     JointTrajectoryManager::JointTrajectoryManager(rclcpp::Logger logger)
         : logger_(std::move(logger))
@@ -41,11 +41,7 @@ namespace robot_controller_core
 
     bool JointTrajectoryManager::isDoublesAvailable()
     {
-#ifdef HAS_MOTION_PLANNING
         return true;
-#else
-        return false;
-#endif
     }
 
     JointTrajectoryManager::TimedPoint JointTrajectoryManager::HeadTimedCandidate::evaluateAt(double t) const
@@ -77,8 +73,8 @@ namespace robot_controller_core
     bool JointTrajectoryManager::buildHeadTimedCandidate(
         const std::vector<double>& start,
         const std::vector<double>& target,
-        HeadJointIndices indices,
-        const HeadCouplingLimits& limits,
+        robot_dynamics::HeadJointIndices indices,
+        const robot_dynamics::HeadCouplingLimits& limits,
         bool allow_yaw,
         bool allow_pitch,
         const HeadCandidateOptions& options,
@@ -101,8 +97,8 @@ namespace robot_controller_core
             for (double v : {options.duration, options.frequency, options.tanh_scale,
                              options.max_velocity, options.max_acceleration, options.max_jerk})
                 require(std::isfinite(v) && v > 0.0, "Invalid head timing options");
-            const HeadPose from{start[indices.yaw], start[indices.pitch]};
-            const HeadPose to{target[indices.yaw], target[indices.pitch]};
+            const robot_dynamics::HeadPose from{start[indices.yaw], start[indices.pitch]};
+            const robot_dynamics::HeadPose to{target[indices.yaw], target[indices.pitch]};
             require(limits.contains(from) && limits.contains(to), "Head timing endpoints outside limits");
             require((allow_yaw || from.yaw == to.yaw) && (allow_pitch || from.pitch == to.pitch),
                     "Head timing moves an unauthorized joint");
@@ -139,18 +135,18 @@ namespace robot_controller_core
             result->yaw = plan({from.yaw}, {to.yaw}, result->base->singleNodeDuration());
             result->pitch = plan({from.pitch}, {to.pitch}, result->base->singleNodeDuration());
 
-            const double boundary = HeadCouplingConfig::yaw_boundary;
+            const double boundary = robot_dynamics::HeadCouplingConfig::yaw_boundary;
             const bool outward = std::abs(to.yaw) > boundary;
             const double side_yaw = outward ? to.yaw : from.yaw;
             const auto side_range = limits.pitchRange(side_yaw);
             // Advance outward clearance / postpone inward release by the existing yaw margin.
             // If a center endpoint lies inside the margin, use half its remaining clearance.
             const double center_yaw = outward ? std::abs(from.yaw) : std::abs(to.yaw);
-            const double clearance = std::min(HeadCouplingConfig::yaw_margin,
+            const double clearance = std::min(robot_dynamics::HeadCouplingConfig::yaw_margin,
                                              std::max(0.0, (boundary-center_yaw)/2.0));
             const double guarded_boundary = boundary - clearance;
             const double side_upper = outward ? std::max(to.pitch,
-                side_range.upper - HeadCouplingConfig::pitch_margin) : side_range.upper;
+                side_range.upper - robot_dynamics::HeadCouplingConfig::pitch_margin) : side_range.upper;
 
             // Find the first crossing with a bracket. The upper/lower bounds let us
             // align safety events conservatively, including tanh's endpoint jump.
@@ -305,7 +301,6 @@ namespace robot_controller_core
             }
             else
             {
-#ifdef HAS_MOTION_PLANNING
                 const double vmax = std::max(max_velocity, 1e-6);
                 const double amax = std::max(max_acceleration, 1e-6);
                 const double jmax = std::max(max_jerk, 1e-6);
@@ -409,12 +404,6 @@ namespace robot_controller_core
                     reset();
                     return false;
                 }
-#else
-                (void)auto_extend_duration;
-                (void)max_velocity;
-                (void)max_acceleration;
-                (void)max_jerk;
-#endif
             }
         }
         else
@@ -451,9 +440,6 @@ namespace robot_controller_core
         double controller_frequency,
         double tanh_scale)
     {
-#ifndef HAS_MOTION_PLANNING
-        (void)joint_blend_ratios;
-#endif
 
         if (type == InterpolationType::SERVO)
         {
@@ -470,7 +456,6 @@ namespace robot_controller_core
         active_max_velocity_ = default_max_velocity_;
         active_max_acceleration_ = default_max_acceleration_;
         active_max_jerk_ = default_max_jerk_;
-
 
         // Store parameters
         waypoints_ = waypoints;
@@ -522,7 +507,6 @@ namespace robot_controller_core
             }
             else
             {
-#ifdef HAS_MOTION_PLANNING
                 // Initialize SmoothCurveOfMultiJointsUsingBlending for DOUBLES
                 try
                 {
@@ -604,7 +588,6 @@ namespace robot_controller_core
                     reset();
                     return false;
                 }
-#endif
             }
         }
         else
@@ -638,7 +621,7 @@ namespace robot_controller_core
         if (!initialized_)
         {
             // Every few seconds while it keeps happening (a latch that fires once per process hides the next incident).
-            RCLCPP_WARN_THROTTLE(logger_, steadyLogClock(), 5000,
+            RCLCPP_WARN_THROTTLE(logger_, robot_dynamics::steadyLogClock(), 5000,
                                  "getNextPoint() called but trajectory is not initialized");
             return std::vector<double>();
         }
@@ -674,7 +657,6 @@ namespace robot_controller_core
         case TrajectoryMode::MULTI_NODE_BASIC:
             result = computeMultiNodeBasic(step_seconds);
             break;
-#ifdef HAS_MOTION_PLANNING
         case TrajectoryMode::MULTI_NODE_ADVANCED:
             if (step_seconds > 0.0)
             {
@@ -682,7 +664,6 @@ namespace robot_controller_core
             }
             result = computeMultiNodeAdvanced();
             break;
-#endif
         default:
             RCLCPP_ERROR(logger_, "Invalid trajectory mode");
             return std::vector<double>();
@@ -705,9 +686,7 @@ namespace robot_controller_core
     void JointTrajectoryManager::reset()
     {
         timed_evaluation_ready_ = false;
-#ifdef HAS_MOTION_PLANNING
         evaluation_planner_.reset();
-#endif
 
         mode_ = TrajectoryMode::NONE;
         initialized_ = false;
@@ -726,10 +705,8 @@ namespace robot_controller_core
         current_segment_ = 0;
 
         // Reset planners (but keep configuration parameters unchanged)
-#ifdef HAS_MOTION_PLANNING
         movej_planner_.reset();
         multi_node_planner_.reset();
-#endif
     }
 
     double JointTrajectoryManager::getProgress() const
@@ -811,7 +788,6 @@ namespace robot_controller_core
         {
             return result;
         }
-#ifdef HAS_MOTION_PLANNING
         if (interpolation_type_ == InterpolationType::DOUBLES)
         {
             const auto point = evaluation_planner_->calculatePointAtTInRealTime(elapsed_seconds);
@@ -823,7 +799,6 @@ namespace robot_controller_core
             }
             return result;
         }
-#endif
         const double percent = elapsed_seconds / duration;
         const double phase = calculatePhase(interpolation_type_, percent);
         double velocity = 1.0 / duration;
@@ -851,7 +826,6 @@ namespace robot_controller_core
 
         if (interpolation_type_ == InterpolationType::DOUBLES)
         {
-#ifdef HAS_MOTION_PLANNING
             if (movej_planner_)
             {
                 if (std::isfinite(step_seconds) && step_seconds > 0.0)
@@ -885,11 +859,6 @@ namespace robot_controller_core
                 RCLCPP_ERROR(logger_, "moveJ planner not initialized for DOUBLES interpolation");
                 return target_pos_; // Fallback to target
             }
-#else
-            // Should not reach here if validation is correct
-            RCLCPP_ERROR(logger_, "DOUBLES interpolation not available");
-            return target_pos_;
-#endif
         }
         else
         {
@@ -1017,7 +986,6 @@ namespace robot_controller_core
         }
     }
 
-#ifdef HAS_MOTION_PLANNING
     std::vector<double> JointTrajectoryManager::computeMultiNodeAdvanced()
     {
         if (!multi_node_planner_)
@@ -1054,7 +1022,6 @@ namespace robot_controller_core
 
         return result;
     }
-#endif
 
     double JointTrajectoryManager::calculatePhase(InterpolationType type, double percent) const
     {
@@ -1215,7 +1182,6 @@ namespace robot_controller_core
         const robot_control_msgs::msg::JointWaypoint& waypoint)
     {
         clearPlan();
-#ifdef HAS_MOTION_PLANNING
         interpolation_type_ = InterpolationType::DOUBLES;
         size_t num_joints = start_pos.size();
 
@@ -1264,7 +1230,6 @@ namespace robot_controller_core
                          "Initialized single-node trajectory: %zu joints, duration=%.3f, type=%s",
                          start_pos_.size(), planningTime_, toString(interpolation_type_));
 
-
             return true;
         }
         catch (const std::exception& e)
@@ -1272,12 +1237,6 @@ namespace robot_controller_core
             RCLCPP_ERROR(logger_, "Exception in single target planning: %s", e.what());
             return false;
         }
-#else
-        (void)start_pos;
-        (void)waypoint;
-        RCLCPP_ERROR(logger_, "motion_planning not available");
-        return false;
-#endif
     }
 
     bool JointTrajectoryManager::planMultiTrajectory(const std::vector<double>& start_pos,
@@ -1285,16 +1244,12 @@ namespace robot_controller_core
                                                      waypoints)
     {
         clearPlan();
-#ifndef HAS_MOTION_PLANNING
-        (void)start_pos;
-#endif
 
         if (waypoints.size() < 2)
         {
             RCLCPP_ERROR(logger_, "At least 2 waypoints required for multi-trajectory planning");
             return false;
         }
-#ifdef HAS_MOTION_PLANNING
         interpolation_type_ = InterpolationType::DOUBLES;
         size_t num_joints = start_pos.size();
         size_t num_waypoints = waypoints.size();
@@ -1353,7 +1308,6 @@ namespace robot_controller_core
         {
             multi_node_planner_ = std::make_unique<planning::SmoothCurveOfMultiJointsUsingBlending>();
 
-
             if (!multi_node_planner_->init(init_params))
             {
                 RCLCPP_ERROR(
@@ -1361,7 +1315,6 @@ namespace robot_controller_core
                 reset();
                 return false;
             }
-
 
             mode_ = TrajectoryMode::MULTI_NODE_ADVANCED;
 
@@ -1385,23 +1338,15 @@ namespace robot_controller_core
             RCLCPP_ERROR(logger_, "Exception in multi-trajectory planning: %s", e.what());
             return false;
         }
-#else
-        RCLCPP_ERROR(logger_, "motion_planning not available");
-        return false;
-#endif
     }
-
 
     void JointTrajectoryManager::clearPlan()
     {
         timed_evaluation_ready_ = false;
-#ifdef HAS_MOTION_PLANNING
         movej_planner_.reset();
         multi_node_planner_.reset();
-#endif
     }
 
-#ifdef HAS_MOTION_PLANNING
     bool JointTrajectoryManager::getTrajectoryParameter(const robot_control_msgs::msg::JointWaypoint& waypoint,
                                                         planning::TrajectoryParameter& res)
     {
@@ -1457,7 +1402,6 @@ namespace robot_controller_core
         }
         return true;
     }
-#endif
     double JointTrajectoryManager::getPlanningTime() const
     {
         if (isDoublesAvailable() && interpolation_type_ == InterpolationType::DOUBLES)
@@ -1477,4 +1421,4 @@ namespace robot_controller_core
         }
 
     }
-} // namespace robot_controller_core
+} // namespace trajectory_manager

@@ -22,7 +22,6 @@
 namespace ocs2::mpc_core
 {
 
-#ifdef HAS_MOTION_PLANNING
     bool PoseBasedReferenceManager::initCircleCurve(
         vector_t start_pose,
         robot_control_msgs::msg::CircleMessage::SharedPtr msg,
@@ -178,7 +177,6 @@ namespace ocs2::mpc_core
         return true;
     };
 
-
     // 使用已有的变换转换位姿
     static geometry_msgs::msg::Pose
     transformPose(const geometry_msgs::msg::Pose& pose,
@@ -259,7 +257,6 @@ namespace ocs2::mpc_core
         }
     };
 
-
     void PoseBasedReferenceManager::handleLeftCircleService(
         const std::shared_ptr<rmw_request_id_t> request_header,
         const std::shared_ptr<robot_control_msgs::srv::ExecuteCircle::Request> request,
@@ -293,11 +290,9 @@ namespace ocs2::mpc_core
             std::make_shared<robot_control_msgs::msg::CircleMessage>();
         transCircleMessageToBaseFrame(request->circle_params, base_frame_msg);
 
-
         // 开始执行
         startServiceExecution(left_service_state_, start_state, *base_frame_msg, "left");
         sendPlannedTrajectoryToOCS2(left_service_state_.time_trajectory, left_service_state_.state_trajectory, "left");
-
 
         response->success = true;
         response->message = "The left arm starts to execute a circular arc trajectory, with an estimated time of: " +
@@ -346,7 +341,6 @@ namespace ocs2::mpc_core
         robot_control_msgs::msg::CircleMessage::SharedPtr base_frame_msg =
             std::make_shared<robot_control_msgs::msg::CircleMessage>();
         transCircleMessageToBaseFrame(request->circle_params, base_frame_msg);
-
 
         // 开始执行
         startServiceExecution(right_service_state_, start_state, *base_frame_msg, "right");
@@ -437,7 +431,6 @@ namespace ocs2::mpc_core
                 return false;
             }
         }
-
 
         if (msg.use_three_point_method)
         {
@@ -645,7 +638,6 @@ namespace ocs2::mpc_core
                                                input_trajectory);
         referenceManagerPtr_->setTargetTrajectories(std::move(target_trajectories));
 
-
         if (arm_name == "left")
         {
             left_target_state_ = pose_trajectory.back();
@@ -659,6 +651,5 @@ namespace ocs2::mpc_core
             publishCurrentTargets("right");
         }
     }
-#endif
 
 } // namespace ocs2::mpc_core

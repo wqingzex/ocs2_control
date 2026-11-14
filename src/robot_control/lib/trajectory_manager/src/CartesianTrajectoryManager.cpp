@@ -17,7 +17,7 @@ namespace
     constexpr double kRealtimeIkAcceptTol = 1.0e-3;
 }
 
-namespace robot_controller_core
+namespace trajectory_manager
 {
     CartesianTrajectoryManager::CartesianTrajectoryManager()
         : logger_(rclcpp::get_logger("cartesian_trajectory_manager"))
@@ -27,7 +27,7 @@ namespace robot_controller_core
     CartesianTrajectoryManager::~CartesianTrajectoryManager() = default;
 
     void CartesianTrajectoryManager::setKinematicsSolver(
-        const std::shared_ptr<ArmKinematics>& kinematics)
+        const std::shared_ptr<robot_dynamics::ArmKinematics>& kinematics)
     {
         arm_kinematics_ = kinematics;
     }
@@ -49,7 +49,7 @@ namespace robot_controller_core
             return false;
         }
         arm_type_ = target_point_msg.arm_name;
-        RobotState js(arm_kinematics_->getLeftArmJointCount(),
+        robot_dynamics::RobotState js(arm_kinematics_->getLeftArmJointCount(),
                       arm_kinematics_->getRightArmJointCount());
         if (arm_type_ == "left")
         {
@@ -70,7 +70,7 @@ namespace robot_controller_core
         Eigen::VectorXd current_joint_pos = Eigen::Map<const Eigen::VectorXd>(
             start_joint_pos.data(), start_joint_pos.size());
 
-        EndEffectorPose start_pose =
+        robot_dynamics::EndEffectorPose start_pose =
             arm_kinematics_->computeSingleEndEffectorPose(js, arm_type_);
 
         std::unique_ptr<planning::moveL> planner = std::make_unique<planning::moveL>();
@@ -86,20 +86,20 @@ namespace robot_controller_core
             RCLCPP_ERROR_STREAM(logger_, last_error_);
             return false;
         }
-        ArmKinematics::SolverType ik_tp;
+        robot_dynamics::ArmKinematics::SolverType ik_tp;
         if (target_point_msg.ik_type == "BFGS")
         {
-            ik_tp = ArmKinematics::SolverType::BFGS;
+            ik_tp = robot_dynamics::ArmKinematics::SolverType::BFGS;
             RCLCPP_INFO_STREAM(logger_, "BFGS is set");
         }
         else if (target_point_msg.ik_type == "DLS")
         {
-            ik_tp = ArmKinematics::SolverType::DLS;
+            ik_tp = robot_dynamics::ArmKinematics::SolverType::DLS;
             RCLCPP_INFO_STREAM(logger_, "DLS is set");
         }
         else
         {
-            ik_tp = ArmKinematics::SolverType::AUTO;
+            ik_tp = robot_dynamics::ArmKinematics::SolverType::AUTO;
             RCLCPP_INFO_STREAM(logger_, "Auto is set");
         }
         arm_kinematics_->setSolverType(ik_tp);
@@ -152,7 +152,7 @@ namespace robot_controller_core
         }
 
         arm_type_ = target_circle_msg.arm_name;
-        RobotState js(arm_kinematics_->getLeftArmJointCount(),
+        robot_dynamics::RobotState js(arm_kinematics_->getLeftArmJointCount(),
                       arm_kinematics_->getRightArmJointCount());
         if (arm_type_ == "left")
         {
@@ -173,7 +173,7 @@ namespace robot_controller_core
         Eigen::VectorXd current_joint_pos = Eigen::Map<const Eigen::VectorXd>(
             start_joint_pos.data(), start_joint_pos.size());
 
-        EndEffectorPose start_pose =
+        robot_dynamics::EndEffectorPose start_pose =
             arm_kinematics_->computeSingleEndEffectorPose(js, arm_type_);
 
         // 更新起点
@@ -204,18 +204,18 @@ namespace robot_controller_core
                 return false;
             }
         }
-        ArmKinematics::SolverType ik_tp;
+        robot_dynamics::ArmKinematics::SolverType ik_tp;
         if (target_circle_msg.ik_type == "BFGS")
         {
-            ik_tp = ArmKinematics::SolverType::BFGS;
+            ik_tp = robot_dynamics::ArmKinematics::SolverType::BFGS;
         }
         else if (target_circle_msg.ik_type == "DLS")
         {
-            ik_tp = ArmKinematics::SolverType::DLS;
+            ik_tp = robot_dynamics::ArmKinematics::SolverType::DLS;
         }
         else
         {
-            ik_tp = ArmKinematics::SolverType::AUTO;
+            ik_tp = robot_dynamics::ArmKinematics::SolverType::AUTO;
         }
 
         arm_kinematics_->setSolverType(ik_tp);
@@ -556,18 +556,18 @@ namespace robot_controller_core
 
     bool CartesianTrajectoryManager::solveRealtimeTrackingIK(
         const std::string& arm_name,
-        const EndEffectorPose& pose,
+        const robot_dynamics::EndEffectorPose& pose,
         Eigen::VectorXd& current_joint_pos,
         std::vector<double>& result,
         const char* motion_name)
     {
         const auto solver = arm_kinematics_->getSolverType();
-        const bool dls_rt = (solver == ArmKinematics::SolverType::DLS);
+        const bool dls_rt = (solver == robot_dynamics::ArmKinematics::SolverType::DLS);
         const int max_iters = dls_rt ? kRealtimeIkMaxIterations : 1500;
         const double tol = dls_rt ? kRealtimeIkAcceptTol : 1.0e-4;
 
         Eigen::VectorXd solution;
-        ArmKinematics::SolutionInfo info;
+        robot_dynamics::ArmKinematics::SolutionInfo info;
         const bool strict_ok = arm_kinematics_->solveSingleArmIKWithInfo(
             pose, current_joint_pos, solution, info, arm_name, max_iters, tol);
 
@@ -580,7 +580,7 @@ namespace robot_controller_core
         {
             std::ostringstream oss;
             oss << "[CTL-005] IK failed while calculating " << motion_name << " joint position for " << arm_name
-                << " arm: solver=" << ArmKinematics::solverTypeName(info.usedSolver)
+                << " arm: solver=" << robot_dynamics::ArmKinematics::solverTypeName(info.usedSolver)
                 << ", status=" << info.status
                 << ", final_error=" << info.poseErrorNorm;
             last_error_ = oss.str();
@@ -612,17 +612,17 @@ namespace robot_controller_core
         }
 
         planning::TrajectPoint movel_point = planner->run();
-        EndEffectorPose pose;
+        robot_dynamics::EndEffectorPose pose;
         pose.position = movel_point.cart_pos;
         Eigen::Quaterniond q(
             movel_point.quaternion_point.q.w, movel_point.quaternion_point.q.x,
             movel_point.quaternion_point.q.y, movel_point.quaternion_point.q.z);
         pose.setQuaternion(q);
 
-        auto& rec = robot_controller_core::TrajectoryRecorder::instance();
+        auto& rec = trajectory_manager::TrajectoryRecorder::instance();
         if (rec.enabled())
         {
-            robot_controller_core::TrajSample cs;
+            trajectory_manager::TrajSample cs;
             cs.stamp_sec = last_sample_stamp_;
             cs.position = {movel_point.cart_pos(0), movel_point.cart_pos(1), movel_point.cart_pos(2)};
             cs.quat_xyzw = {movel_point.quaternion_point.q.x, movel_point.quaternion_point.q.y,
@@ -660,17 +660,17 @@ namespace robot_controller_core
         }
 
         planning::TrajectPoint movec_point = planner->run();
-        EndEffectorPose pose;
+        robot_dynamics::EndEffectorPose pose;
         pose.position = movec_point.cart_pos;
         Eigen::Quaterniond q(
             movec_point.quaternion_point.q.w, movec_point.quaternion_point.q.x,
             movec_point.quaternion_point.q.y, movec_point.quaternion_point.q.z);
         pose.setQuaternion(q);
 
-        auto& rec = robot_controller_core::TrajectoryRecorder::instance();
+        auto& rec = trajectory_manager::TrajectoryRecorder::instance();
         if (rec.enabled())
         {
-            robot_controller_core::TrajSample cs;
+            trajectory_manager::TrajSample cs;
             cs.stamp_sec = last_sample_stamp_;
             cs.position = {movec_point.cart_pos(0), movec_point.cart_pos(1), movec_point.cart_pos(2)};
             cs.quat_xyzw = {movec_point.quaternion_point.q.x, movec_point.quaternion_point.q.y,
@@ -810,7 +810,7 @@ namespace robot_controller_core
     }
 
     planning::TrajectPoint CartesianTrajectoryManager::setCartesianPoint(
-        const EndEffectorPose& input_point)
+        const robot_dynamics::EndEffectorPose& input_point)
     {
         planning::TrajectPoint res;
         res.cart_pos = input_point.position;
@@ -949,4 +949,4 @@ namespace robot_controller_core
             return speed_mode_para;
         }
     }
-} // namespace robot_controller_core
+} // namespace trajectory_manager

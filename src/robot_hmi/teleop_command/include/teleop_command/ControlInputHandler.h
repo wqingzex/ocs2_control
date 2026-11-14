@@ -21,7 +21,7 @@ namespace teleop_command
     /**
      * ControlInputHandler - 控制输入处理器Wrapper
      *
-     * 接收 control_input，累积位姿增量更新 marker，并将 hand_command 转发到夹爪控制器。
+     * 接收 /teleop/control_input，累积位姿增量更新 marker，并将 hand_command 转发到夹爪控制器。
      */
     class ControlInputHandler
     {

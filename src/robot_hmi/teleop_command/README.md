@@ -4,7 +4,7 @@
 
 ## 作用
 
-位于输入和控制器之间。输入来源：RViz 交互 marker、VR（`VRInputHandler`，订阅 `/xr/*`）、键盘手柄（`control_input`）。输出：`left_target`、`right_target`，由控制器里的 `PoseBasedReferenceManager` 转成 MPC 目标。VR 同时负责握把离合（按住跟随、松开停止）和状态机切换。
+位于输入和控制器之间。输入来源：RViz 交互 marker、VR（`VRInputHandler`，订阅 `/teleop/*`）、键盘手柄（`/teleop/control_input`）。输出：`left_target`、`right_target`，由控制器里的 `PoseBasedReferenceManager` 转成 MPC 目标。VR 同时负责握把离合（按住跟随、松开停止）和状态机切换。
 
 ## 使用
 
@@ -39,5 +39,5 @@ ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs
 | 发布 | `left_target` `right_target`（及 `/stamped`） | 目标位姿 |
 | 发布 | `/fsm_command` | VR 触发的状态机切换 |
 | 订阅 | `left_current_pose` `right_current_pose` | 当前位姿，用来更新 marker |
-| 订阅 | `control_input` | 键盘手柄输入（`Inputs`） |
-| 订阅 | `/teleop/head_pose` `/teleop/left_ee_pose` `/teleop/right_ee_pose` `/teleop/controller_state` `/teleop/thumbstick_axes` `/teleop/trigger_values` | 来自 `fa_teleop` 的 XR 桥接 |
+| 订阅 | `/teleop/control_input` | 键盘手柄输入（`Inputs`） |
+| 订阅 | `/teleop/head_pose` `/teleop/left_ee_pose` `/teleop/right_ee_pose` `/teleop/controller_state` `/teleop/thumbstick_axes` `/teleop/trigger_values` | 来自 `teleop_app` 的 XR 桥接 |

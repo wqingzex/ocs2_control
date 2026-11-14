@@ -161,7 +161,7 @@ namespace ocs2::arm_mpc
         }
         if (traj_record_enabled_update.has_value())
         {
-            robot_controller_core::TrajectoryRecorder::instance()
+            trajectory_manager::TrajectoryRecorder::instance()
                 .setEnabled(*traj_record_enabled_update, traj_record_dir_);
             RCLCPP_INFO(node_->get_logger(), "traj_record_enabled=%d, dir=%s",
                         *traj_record_enabled_update, traj_record_dir_.c_str());
@@ -448,12 +448,12 @@ namespace ocs2::arm_mpc
             visualizer_->publishEndEffectorTrajectory(node_->now());
         }
 
-        auto& rec = robot_controller_core::TrajectoryRecorder::instance();
+        auto& rec = trajectory_manager::TrajectoryRecorder::instance();
         if (rec.enabled())
         {
             const double t = obs.time;
             const vector_t lp = visualizer_->computeEndEffectorPose(obs.state);
-            robot_controller_core::TrajSample ls;
+            trajectory_manager::TrajSample ls;
             ls.stamp_sec = t;
             ls.position = {lp(0), lp(1), lp(2)};
             ls.quat_xyzw = {lp(3), lp(4), lp(5), lp(6)};
@@ -461,7 +461,7 @@ namespace ocs2::arm_mpc
             if (dual_arm_mode_)
             {
                 const vector_t rp = visualizer_->computeRightEndEffectorPose(obs.state);
-                robot_controller_core::TrajSample rs;
+                trajectory_manager::TrajSample rs;
                 rs.stamp_sec = t;
                 rs.position = {rp(0), rp(1), rp(2)};
                 rs.quat_xyzw = {rp(3), rp(4), rp(5), rp(6)};
@@ -470,7 +470,7 @@ namespace ocs2::arm_mpc
 
             if (snap.has_pred && snap.pred_state.size() > 0)
             {
-                robot_controller_core::TrajSample lps;
+                trajectory_manager::TrajSample lps;
                 lps.stamp_sec = snap.pred_time;
                 const vector_t lpe = visualizer_->computeEndEffectorPose(snap.pred_state);
                 lps.position = {lpe(0), lpe(1), lpe(2)};
@@ -478,7 +478,7 @@ namespace ocs2::arm_mpc
                 rec.appendPred("left", lps);
                 if (dual_arm_mode_)
                 {
-                    robot_controller_core::TrajSample rps;
+                    trajectory_manager::TrajSample rps;
                     rps.stamp_sec = snap.pred_time;
                     const vector_t rpe = visualizer_->computeRightEndEffectorPose(snap.pred_state);
                     rps.position = {rpe(0), rpe(1), rpe(2)};

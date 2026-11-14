@@ -9,4 +9,4 @@ MOVEJ 状态用的轨迹管理，依赖 `robot_dynamics`（运动学、限位）
 | 腰升降规划 | `WaistLiftingPlanner.h` |
 | 停止规划、轨迹记录 | `JointSpeedStopPlanner.h`、`TrajectoryRecorder.h` |
 
-头文件用 `#include <trajectory_manager/JointTrajectoryManager.h>`，命名空间是 `robot_controller_core`（和核心共用，暂未拆开）。`motion_planning` 现在是必需依赖；原来的可选开关 `HAS_MOTION_PLANNING` 宏暂时保留（恒为启用）。
+头文件用 `#include <trajectory_manager/JointTrajectoryManager.h>`，命名空间是 `trajectory_manager`。`motion_planning` 现在是必需依赖。

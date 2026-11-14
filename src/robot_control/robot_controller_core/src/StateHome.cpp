@@ -25,7 +25,7 @@ namespace robot_controller_core
     }
 
     StateHome::StateHome(CtrlInterfaces& ctrl_interfaces,
-                         const std::shared_ptr<GravityCompensation>& gravity_compensation,
+                         const std::shared_ptr<robot_dynamics::GravityCompensation>& gravity_compensation,
                          const std::shared_ptr<rclcpp_lifecycle::LifecycleNode>& node,
                          const FsmFlavor flavor)
         : FSMState(FSMStateName::HOME, "home", ctrl_interfaces),
@@ -56,7 +56,7 @@ namespace robot_controller_core
         std::lock_guard<std::mutex> lock(limits_mutex_);
         joint_names_ = joint_names;
         // Replace the snapshot so malformed/new descriptions cannot retain stale limits.
-        joint_limits_ = std::make_unique<JointLimitsManager>(node_->get_logger());
+        joint_limits_ = std::make_unique<robot_dynamics::JointLimitsManager>(node_->get_logger());
         joint_limits_->parseFromURDF(description, joint_names_);
     }
 
@@ -85,7 +85,7 @@ namespace robot_controller_core
                 RCLCPP_ERROR(node_->get_logger(), "HOME target rejected: %s is not finite", name.c_str());
                 return false;
             }
-            if (limits.motion_type == JointMotionType::CONTINUOUS)
+            if (limits.motion_type == robot_dynamics::JointMotionType::CONTINUOUS)
                 continue;
             if (!limits.initialized || !std::isfinite(limits.lower) ||
                 !std::isfinite(limits.upper) || limits.lower > limits.upper)
@@ -223,7 +223,7 @@ namespace robot_controller_core
             }
         }
 
-        if (interpolation_type_ == InterpolationType::NONE)
+        if (interpolation_type_ == trajectory_manager::InterpolationType::NONE)
         {
             RCLCPP_INFO(node_->get_logger(),
                         "Direct home target selected: configuration %zu (no interpolation)",
@@ -306,7 +306,7 @@ namespace robot_controller_core
             // If trajectory manager returns empty, maintain current position or use target
             if (!trajectory_manager_.isInitialized())
             {
-                RCLCPP_WARN_THROTTLE(node_->get_logger(), steadyLogClock(), 5000,
+                RCLCPP_WARN_THROTTLE(node_->get_logger(), robot_dynamics::steadyLogClock(), 5000,
                                      "Trajectory manager not initialized, maintaining current position");
             }
             // Hold last commanded position (avoid jumping to current_target_ mid-motion)
@@ -321,7 +321,7 @@ namespace robot_controller_core
         }
         else
         {
-            RCLCPP_WARN_THROTTLE(node_->get_logger(), steadyLogClock(), 5000,
+            RCLCPP_WARN_THROTTLE(node_->get_logger(), robot_dynamics::steadyLogClock(), 5000,
                                  "Trajectory manager returned positions with size mismatch: got %zu, expected %zu",
                                  next_positions.size(), ctrl_interfaces_.joint_position_command_interface_.size());
         }
@@ -395,7 +395,7 @@ namespace robot_controller_core
         for (const auto& name : joint_names_)
         {
             const auto limits = limits_manager->getJointLimits(name);
-            if (limits.motion_type == JointMotionType::CONTINUOUS)
+            if (limits.motion_type == robot_dynamics::JointMotionType::CONTINUOUS)
             {
                 lower.push_back(-std::numeric_limits<double>::infinity());
                 upper.push_back(std::numeric_limits<double>::infinity());
@@ -550,7 +550,7 @@ namespace robot_controller_core
 
         // Update interpolation_type from node parameter
         std::string interpolation_type_str = node_->get_parameter("home_interpolation_type").as_string();
-        interpolation_type_ = parseInterpolationType(interpolation_type_str, InterpolationType::LINEAR);
+        interpolation_type_ = trajectory_manager::parseInterpolationType(interpolation_type_str, trajectory_manager::InterpolationType::LINEAR);
 
         const double speed_warn = node_->get_parameter("home_speed_warn").as_double();
         if (speed_warn > 0.0 && std::isfinite(speed_warn))
@@ -662,7 +662,7 @@ namespace robot_controller_core
             );
             publishCurrentTargetJoint(current_target_);
 
-            if (interpolation_type_ == InterpolationType::NONE)
+            if (interpolation_type_ == trajectory_manager::InterpolationType::NONE)
             {
                 RCLCPP_INFO(node_->get_logger(),
                             "Direct home target selected: configuration %zu (no interpolation)",

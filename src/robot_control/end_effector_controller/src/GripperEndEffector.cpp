@@ -90,7 +90,7 @@ namespace end_effector_controller
         class GripperEndEffector final : public EndEffector
         {
         public:
-            void declareParameters(joint_controller::JointController& c) override
+            void declareParameters(EndEffectorController& c) override
             {
                 if (c.joints().size() != 1)
                 {
@@ -131,9 +131,9 @@ namespace end_effector_controller
                             use_effort_ ? "requested" : "off", force_threshold_, force_ratio_);
             }
 
-            void setupCommands(joint_controller::JointController& c) override
+            void setupCommands(EndEffectorController& c) override
             {
-                joint_controller::JointController* controller = &c;
+                EndEffectorController* controller = &c;
                 const auto node = c.node();
 
                 const std::string position_topic = joint_ + "/position_command";   // relative: follows the namespace
@@ -189,7 +189,7 @@ namespace end_effector_controller
                              position_topic.c_str(), c.name().c_str(), c.name().c_str());
             }
 
-            void onAfterFsmStarted(joint_controller::JointController& c) override
+            void onAfterFsmStarted(EndEffectorController& c) override
             {
                 has_effort_ = use_effort_ && !c.interfaces().joint_force_state_interface_.empty();
                 if (use_effort_ && !has_effort_)
@@ -209,7 +209,7 @@ namespace end_effector_controller
             }
 
             // Real-time thread, after MOVEJ wrote its command: apply the force feedback.
-            void onCommandWritten(joint_controller::JointController& c) override
+            void onCommandWritten(EndEffectorController& c) override
             {
                 if (!force_armed_.load() || force_triggered_.load() || !has_effort_)
                 {
@@ -241,7 +241,7 @@ namespace end_effector_controller
             }
 
         private:
-            static double currentPosition(joint_controller::JointController& c)
+            static double currentPosition(EndEffectorController& c)
             {
                 auto& interfaces = c.interfaces();
                 if (interfaces.joint_position_state_interface_.empty())
@@ -253,7 +253,7 @@ namespace end_effector_controller
             }
 
             // Sets the MOVEJ target; ignored unless the controller is active in MOVEJ.
-            void applyTarget(joint_controller::JointController& c, double position, bool with_force_feedback)
+            void applyTarget(EndEffectorController& c, double position, bool with_force_feedback)
             {
                 auto logger = c.node()->get_logger();
                 if (!is_ready_)

@@ -96,7 +96,7 @@ namespace robot_controller_core
     StateMoveJ::StateMoveJ(CtrlInterfaces& ctrl_interfaces,
                            const std::shared_ptr<rclcpp_lifecycle::LifecycleNode>& node,
                            const std::vector<std::string>& joint_names,
-                           const std::shared_ptr<GravityCompensation>& gravity_compensation)
+                           const std::shared_ptr<robot_dynamics::GravityCompensation>& gravity_compensation)
         : FSMState(FSMStateName::MOVEJ, "movej", ctrl_interfaces),
           node_(node),
           gravity_compensation_(gravity_compensation),
@@ -104,7 +104,7 @@ namespace robot_controller_core
           joint_limit_checker_(nullptr),
           trajectory_manager_(node->get_logger())
     {
-        joint_limits_manager_ = std::make_shared<JointLimitsManager>(node_->get_logger());
+        joint_limits_manager_ = std::make_shared<robot_dynamics::JointLimitsManager>(node_->get_logger());
         joint_limits_manager_->setJointNames(joint_names_);
         last_waist_factor_ = 0.0;
         last_waist_turning_factor_ = 0.0;
@@ -136,7 +136,7 @@ namespace robot_controller_core
         c.enabled = std::find(joint_names_.begin(), joint_names_.end(), c.yaw_joint) != joint_names_.end() &&
                     std::find(joint_names_.begin(), joint_names_.end(), c.pitch_joint) != joint_names_.end();
         read("enabled", c.enabled);
-        head_joint_indices_ = findHeadJointIndices(c, joint_names_);
+        head_joint_indices_ = robot_dynamics::findHeadJointIndices(c, joint_names_);
         if (c.enabled)
             RCLCPP_INFO(node_->get_logger(),
                 "Head coupling enabled for direct doubles/linear/tanh position targets");
@@ -145,7 +145,7 @@ namespace robot_controller_core
     void StateMoveJ::validateHeadCouplingSetup() const
     {
         if (!head_coupling_config_.enabled) return;
-        const auto indices = findHeadJointIndices(head_coupling_config_, joint_names_).value();
+        const auto indices = robot_dynamics::findHeadJointIndices(head_coupling_config_, joint_names_).value();
         for (size_t index : {indices.yaw, indices.pitch})
         {
             if (index >= ctrl_interfaces_.joint_position_state_interface_.size() ||
@@ -159,7 +159,7 @@ namespace robot_controller_core
         const auto pitch = joint_limits_manager_->getJointLimits(head_coupling_config_.pitch_joint);
         if (!yaw.initialized || !pitch.initialized)
             throw std::invalid_argument("Head coupling requires URDF position limits before activation");
-        const HeadCouplingLimits limits(head_coupling_config_, {yaw.lower, yaw.upper},
+        const robot_dynamics::HeadCouplingLimits limits(head_coupling_config_, {yaw.lower, yaw.upper},
                                         {pitch.lower, pitch.upper});
         (void)limits;
     }
@@ -167,12 +167,12 @@ namespace robot_controller_core
     bool StateMoveJ::headCouplingApplies() const
     {
         return head_coupling_config_.enabled && head_joint_indices_ &&
-               (interpolation_type_ == InterpolationType::DOUBLES ||
-                interpolation_type_ == InterpolationType::LINEAR ||
-                interpolation_type_ == InterpolationType::TANH);
+               (interpolation_type_ == trajectory_manager::InterpolationType::DOUBLES ||
+                interpolation_type_ == trajectory_manager::InterpolationType::LINEAR ||
+                interpolation_type_ == trajectory_manager::InterpolationType::TANH);
     }
 
-    HeadCouplingLimits StateMoveJ::headCouplingLimits() const
+    robot_dynamics::HeadCouplingLimits StateMoveJ::headCouplingLimits() const
     {
         const auto yaw = joint_limits_manager_->getJointLimits(head_coupling_config_.yaw_joint);
         const auto pitch = joint_limits_manager_->getJointLimits(head_coupling_config_.pitch_joint);
@@ -180,10 +180,10 @@ namespace robot_controller_core
         {
             throw std::invalid_argument("Head coupling requires URDF limits");
         }
-        return HeadCouplingLimits(head_coupling_config_, {yaw.lower, yaw.upper}, {pitch.lower, pitch.upper});
+        return robot_dynamics::HeadCouplingLimits(head_coupling_config_, {yaw.lower, yaw.upper}, {pitch.lower, pitch.upper});
     }
 
-    HeadPose StateMoveJ::measuredHeadPose() const
+    robot_dynamics::HeadPose StateMoveJ::measuredHeadPose() const
     {
         const auto indices = head_joint_indices_.value();
         const auto read = [this](size_t index) {
@@ -210,7 +210,7 @@ namespace robot_controller_core
         const std::vector<double>& requested,
         const std::vector<bool>& mask,
         std::vector<double>& effective,
-        std::unique_ptr<JointTrajectoryManager::HeadTimedCandidate>& candidate) const
+        std::unique_ptr<trajectory_manager::JointTrajectoryManager::HeadTimedCandidate>& candidate) const
     {
         try
         {
@@ -270,7 +270,7 @@ namespace robot_controller_core
             effective[indices.pitch] = clipped.value;
 
             // 沿用当前控制器的插值模式、时长和运动限制。
-            JointTrajectoryManager::HeadCandidateOptions options;
+            trajectory_manager::JointTrajectoryManager::HeadCandidateOptions options;
             options.duration = duration_;
             options.type = interpolation_type_;
             options.frequency = ctrl_interfaces_.frequency_;
@@ -303,7 +303,7 @@ namespace robot_controller_core
         const auto indices = head_joint_indices_.value();
         if (!mask[indices.yaw] && !mask[indices.pitch]) return false;
         std::vector<double> effective;
-        std::unique_ptr<JointTrajectoryManager::HeadTimedCandidate> candidate;
+        std::unique_ptr<trajectory_manager::JointTrajectoryManager::HeadTimedCandidate> candidate;
         if (!prepareHeadTarget(requested, mask, effective, candidate)) return true;
         if (head_execution_active_ && !stop_to_zero_active_ && joint_mask_ == mask &&
             areJointPositionsSame(target_pos_, effective)) return true;
@@ -312,7 +312,7 @@ namespace robot_controller_core
         requestMotionOrDefer([this, requested, mask]() {
             // 起点可能因停止而改变，必须从最后下发位置重新规划。
             std::vector<double> final_target;
-            std::unique_ptr<JointTrajectoryManager::HeadTimedCandidate> planned;
+            std::unique_ptr<trajectory_manager::JointTrajectoryManager::HeadTimedCandidate> planned;
             if (!headCouplingApplies() ||
                 !prepareHeadTarget(requested, mask, final_target, planned))
             {
@@ -381,9 +381,9 @@ namespace robot_controller_core
             }
             if (!head_waiting_) return false;
             const bool arrived = std::abs(measured.yaw - head_final_endpoint_.yaw) <=
-                                     HeadCouplingConfig::position_tolerance &&
+                                     robot_dynamics::HeadCouplingConfig::position_tolerance &&
                                  std::abs(measured.pitch - head_final_endpoint_.pitch) <=
-                                     HeadCouplingConfig::position_tolerance;
+                                     robot_dynamics::HeadCouplingConfig::position_tolerance;
             if (arrived)
             {
                 head_waiting_ = false;
@@ -396,7 +396,7 @@ namespace robot_controller_core
             else
             {
                 head_wait_elapsed_ += period.seconds();
-                if (head_wait_elapsed_ >= HeadCouplingConfig::transition_timeout)
+                if (head_wait_elapsed_ >= robot_dynamics::HeadCouplingConfig::transition_timeout)
                     throw std::invalid_argument("Head position arrival timeout");
             }
             // Keep the final command; arrival uses position feedback only.
@@ -431,8 +431,8 @@ namespace robot_controller_core
     {
         const auto previous_type = interpolation_type_;
         duration_ = node_->get_parameter("movej_duration").as_double();
-        interpolation_type_ = parseInterpolationType(node_->get_parameter("movej_interpolation_type").as_string(),
-                                                     InterpolationType::TANH);
+        interpolation_type_ = trajectory_manager::parseInterpolationType(node_->get_parameter("movej_interpolation_type").as_string(),
+                                                     trajectory_manager::InterpolationType::TANH);
         tanh_scale_ = node_->get_parameter("movej_tanh_scale").as_double();
 
         trajectory_manager_.setTrajectoryDuration(node_->get_parameter("movej_trajectory_duration").as_double());
@@ -448,7 +448,7 @@ namespace robot_controller_core
             has_target_ = false;
         }
         if (previous_type != interpolation_type_ &&
-            (previous_type == InterpolationType::SERVO || interpolation_type_ == InterpolationType::SERVO))
+            (previous_type == trajectory_manager::InterpolationType::SERVO || interpolation_type_ == trajectory_manager::InterpolationType::SERVO))
         {
             servo_initialized_ = false;
             // Single-position interpolation is rebuilt on the next update.
@@ -464,7 +464,7 @@ namespace robot_controller_core
 
     bool StateMoveJ::canUpdateServoTarget() const
     {
-        return interpolation_type_ == InterpolationType::SERVO &&
+        return interpolation_type_ == trajectory_manager::InterpolationType::SERVO &&
                !stop_to_zero_active_ && !trajectory_manager_.isInitialized() &&
                !move_cartesian_active_ && !waist_lifting_active_ && !waist_turning_active_ &&
                !joint_trajectory_action_active_ && !linear_action_active_ && !circle_action_active_;
@@ -473,7 +473,7 @@ namespace robot_controller_core
     void StateMoveJ::initializeServo(const std::vector<double>& positions)
     {
         const auto command = ctrl_interfaces_.getCommandMotionState();
-        servo_filters_.assign(positions.size(), JointServoFilter{});
+        servo_filters_.assign(positions.size(), robot_dynamics::JointServoFilter{});
         for (size_t i = 0; i < positions.size(); ++i)
         {
             auto& filter = servo_filters_[i];
@@ -514,7 +514,7 @@ namespace robot_controller_core
                     filter.reset(previous_position);
                     break;
                 }
-                if (limits.motion_type != JointMotionType::CONTINUOUS)
+                if (limits.motion_type != robot_dynamics::JointMotionType::CONTINUOUS)
                 {
                     const double bounded = std::clamp(filter.q, limits.lower, limits.upper);
                     if (bounded != filter.q)
@@ -571,7 +571,7 @@ namespace robot_controller_core
         const std::vector<double>& target_pos,
         double requested) const
     {
-        if (!movej_auto_extend_duration_ || interpolation_type_ == InterpolationType::NONE)
+        if (!movej_auto_extend_duration_ || interpolation_type_ == trajectory_manager::InterpolationType::NONE)
         {
             return requested;
         }
@@ -586,7 +586,7 @@ namespace robot_controller_core
         }
 
         double t_min = 0.0;
-        if (interpolation_type_ == InterpolationType::TANH)
+        if (interpolation_type_ == trajectory_manager::InterpolationType::TANH)
         {
             const double scale = tanh_scale_ > 0.0 ? tanh_scale_ : 3.0;
             t_min = scale * max_delta / vmax;
@@ -612,7 +612,7 @@ namespace robot_controller_core
         const std::vector<double>& start_pos,
         const std::vector<double>& target_pos)
     {
-        if (interpolation_type_ == InterpolationType::NONE)
+        if (interpolation_type_ == trajectory_manager::InterpolationType::NONE)
         {
             return trajectory_manager_.initSingleNode(
                 start_pos, target_pos, duration_, interpolation_type_,
@@ -620,8 +620,8 @@ namespace robot_controller_core
                 movej_max_velocity_, movej_max_acceleration_, movej_max_jerk_);
         }
 
-        if (interpolation_type_ == InterpolationType::DOUBLES &&
-            JointTrajectoryManager::isDoublesAvailable())
+        if (interpolation_type_ == trajectory_manager::InterpolationType::DOUBLES &&
+            trajectory_manager::JointTrajectoryManager::isDoublesAvailable())
         {
             return trajectory_manager_.initSingleNode(
                 start_pos, target_pos, duration_, interpolation_type_,
@@ -771,7 +771,6 @@ namespace robot_controller_core
             state_active_ = true;
         }
 
-
         // Get current joint positions as starting positions
         start_pos_.clear();
         for (auto i : ctrl_interfaces_.joint_position_state_interface_)
@@ -792,7 +791,7 @@ namespace robot_controller_core
         // Check if we have a target position
         std::lock_guard lock(target_mutex_);
         servo_initialized_ = false;
-        if (interpolation_type_ == InterpolationType::SERVO)
+        if (interpolation_type_ == trajectory_manager::InterpolationType::SERVO)
         {
             start_pos_ = ctrl_interfaces_.last_sent_joint_positions_;
             initializeServo(start_pos_);
@@ -1084,7 +1083,6 @@ namespace robot_controller_core
                 std::vector<double> full_joint_pos = mapToFullJointPositions(
                     move_cartesian_joint_names_, next_joint_pos);
 
-
                 // 检查 next_joint_pos 的大小是否正确
                 size_t expected_size = ctrl_interfaces_.joint_position_command_interface_.size();
 
@@ -1150,7 +1148,6 @@ namespace robot_controller_core
             return; // MoveL 优先级高于 MOVEJ
         }
 
-
         if (joint_trajectory_action_active_ && active_joint_trajectory_goal_ &&
             active_joint_trajectory_goal_->is_canceling())
         {
@@ -1184,13 +1181,13 @@ namespace robot_controller_core
             maintainCommandFromLastSent();
             return;
         }
-        else if (interpolation_type_ == InterpolationType::SERVO)
+        else if (interpolation_type_ == trajectory_manager::InterpolationType::SERVO)
         {
             if (!servo_initialized_)
                 initializeServo(ctrl_interfaces_.last_sent_joint_positions_);
             interpolation_active_ = true;
         }
-        else if (interpolation_type_ == InterpolationType::NONE)
+        else if (interpolation_type_ == trajectory_manager::InterpolationType::NONE)
         {
             if (hold_positions_.size() != ctrl_interfaces_.joint_position_command_interface_.size())
             {
@@ -1280,9 +1277,9 @@ namespace robot_controller_core
 
         // Get next trajectory point from unified manager (works for both single and multi-node)
         double runtime_step = period.seconds();
-        const bool servo_step = interpolation_type_ == InterpolationType::SERVO &&
+        const bool servo_step = interpolation_type_ == trajectory_manager::InterpolationType::SERVO &&
                                 !trajectory_manager_.isInitialized();
-        JointTrajectoryManager::TimedPoint head_point;
+        trajectory_manager::JointTrajectoryManager::TimedPoint head_point;
         std::vector<double> next_positions;
         if (head_execution_active_)
         {
@@ -1312,7 +1309,7 @@ namespace robot_controller_core
             if (trajectory_manager_.isInitialized())
             {
                 // Trajectory is initialized but returned empty - this shouldn't happen normally
-                RCLCPP_WARN_THROTTLE(node_->get_logger(), steadyLogClock(), 5000,
+                RCLCPP_WARN_THROTTLE(node_->get_logger(), robot_dynamics::steadyLogClock(), 5000,
                                      "Trajectory manager returned empty positions (trajectory may be completed or error occurred)");
 
                 //实时更新当前位置，避免起点和当前点不一致
@@ -1341,7 +1338,7 @@ namespace robot_controller_core
 
         if (next_positions.size() != ctrl_interfaces_.joint_position_command_interface_.size())
         {
-            RCLCPP_WARN_THROTTLE(node_->get_logger(), steadyLogClock(), 5000,
+            RCLCPP_WARN_THROTTLE(node_->get_logger(), robot_dynamics::steadyLogClock(), 5000,
                                  "Trajectory manager returned positions with size mismatch: expected %zu, got %zu",
                                  ctrl_interfaces_.joint_position_command_interface_.size(),
                                  next_positions.size());
@@ -1707,7 +1704,7 @@ namespace robot_controller_core
         for (const auto& name : joint_names_)
         {
             const auto limits = limits_manager->getJointLimits(name);
-            if (limits.motion_type == JointMotionType::CONTINUOUS)
+            if (limits.motion_type == robot_dynamics::JointMotionType::CONTINUOUS)
             {
                 lower.push_back(-std::numeric_limits<double>::infinity());
                 upper.push_back(std::numeric_limits<double>::infinity());
@@ -1728,7 +1725,7 @@ namespace robot_controller_core
             {
                 const auto limits = headCouplingLimits();
                 const auto indices = head_joint_indices_.value();
-                const HeadPose commanded{command.positions[indices.yaw], command.positions[indices.pitch]};
+                const robot_dynamics::HeadPose commanded{command.positions[indices.yaw], command.positions[indices.pitch]};
                 const auto measured = measuredHeadPose();
                 if (!limits.containsMeasured(measured))
                 {
@@ -1744,14 +1741,14 @@ namespace robot_controller_core
                 const auto pitch = limits.pitchRange(commanded.yaw);
                 lower[indices.pitch] = std::max(lower[indices.pitch], pitch.lower);
                 upper[indices.pitch] = std::min(upper[indices.pitch], pitch.upper);
-                if (commanded.pitch > HeadCouplingConfig::pitch_side_upper)
+                if (commanded.pitch > robot_dynamics::HeadCouplingConfig::pitch_side_upper)
                 {
-                    lower[indices.yaw] = std::max(lower[indices.yaw], -HeadCouplingConfig::yaw_boundary);
-                    upper[indices.yaw] = std::min(upper[indices.yaw], HeadCouplingConfig::yaw_boundary);
+                    lower[indices.yaw] = std::max(lower[indices.yaw], -robot_dynamics::HeadCouplingConfig::yaw_boundary);
+                    upper[indices.yaw] = std::min(upper[indices.yaw], robot_dynamics::HeadCouplingConfig::yaw_boundary);
                 }
                 else
                 {
-                    upper[indices.pitch] = std::min(upper[indices.pitch], HeadCouplingConfig::pitch_side_upper);
+                    upper[indices.pitch] = std::min(upper[indices.pitch], robot_dynamics::HeadCouplingConfig::pitch_side_upper);
                 }
             }
             catch (const std::exception& error)
@@ -1879,7 +1876,7 @@ namespace robot_controller_core
             if (std::find(joint_names_.begin(), joint_names_.end(), names[i]) == joint_names_.end() ||
                 std::find(names.begin(), names.begin()+i, names[i]) != names.begin()+i ||
                 !std::isfinite(positions[i]) ||
-                (limits.motion_type != JointMotionType::CONTINUOUS &&
+                (limits.motion_type != robot_dynamics::JointMotionType::CONTINUOUS &&
                  (!limits.initialized || !std::isfinite(limits.lower) || !std::isfinite(limits.upper) ||
                   limits.lower > limits.upper || positions[i] < limits.lower || positions[i] > limits.upper)))
             {
@@ -1918,7 +1915,7 @@ namespace robot_controller_core
         updateParam();
         if (state_active_ && headCouplingApplies() &&
             submitHeadTarget(target_pos, std::vector<bool>(joint_names_.size(), true))) return;
-        if (interpolation_type_ != InterpolationType::SERVO && interpolation_active_ &&
+        if (interpolation_type_ != trajectory_manager::InterpolationType::SERVO && interpolation_active_ &&
             !stop_to_zero_active_ && has_target_ && areJointPositionsSame(target_pos_, target_pos)) return;
 
         if (!state_active_)
@@ -1968,7 +1965,7 @@ namespace robot_controller_core
             }
         }
 
-        if (is_same_target && interpolation_active_ && interpolation_type_ != InterpolationType::SERVO)
+        if (is_same_target && interpolation_active_ && interpolation_type_ != trajectory_manager::InterpolationType::SERVO)
         {
             RCLCPP_DEBUG(node_->get_logger(), "Received same target position, skipping re-interpolation");
             return;
@@ -1977,7 +1974,7 @@ namespace robot_controller_core
         target_pos_ = applyJointLimits(target_pos, "target position");
         has_target_ = true;
         publishCurrentTargetJoint(target_pos_);
-        if (interpolation_type_ == InterpolationType::SERVO)
+        if (interpolation_type_ == trajectory_manager::InterpolationType::SERVO)
             return;
         interpolation_active_ = false;
         trajectory_manager_.reset();
@@ -2013,7 +2010,7 @@ namespace robot_controller_core
             }
             if (submitHeadTarget(full_target, mask)) return;
         }
-        if (interpolation_type_ != InterpolationType::SERVO && interpolation_active_ &&
+        if (interpolation_type_ != trajectory_manager::InterpolationType::SERVO && interpolation_active_ &&
             !stop_to_zero_active_ && has_target_ && areJointPositionsSame(previous_target, target_pos)) return;
 
         if (!state_active_)
@@ -2091,7 +2088,7 @@ namespace robot_controller_core
 
         has_target_ = true;
         publishCurrentTargetJoint(target_pos_);
-        if (interpolation_type_ == InterpolationType::SERVO)
+        if (interpolation_type_ == trajectory_manager::InterpolationType::SERVO)
         {
             // Each prefix updates only its targets; other joints keep tracking theirs.
             use_prefix_filter_ = false;
@@ -2107,7 +2104,7 @@ namespace robot_controller_core
 
     void StateMoveJ::setJointNames(const std::vector<std::string>& joint_names)
     {
-        const auto head_indices = findHeadJointIndices(head_coupling_config_, joint_names);
+        const auto head_indices = robot_dynamics::findHeadJointIndices(head_coupling_config_, joint_names);
         joint_names_ = joint_names;
         head_joint_indices_ = head_indices;
 
@@ -2319,7 +2316,6 @@ namespace robot_controller_core
         }
     }
 
-
     std::vector<double> StateMoveJ::applyJointLimits(const std::vector<double>& target_pos,
                                                      const std::string& log_message)
     {
@@ -2357,7 +2353,7 @@ namespace robot_controller_core
         if (!trajectory.points.empty()) ctrl_interfaces_.recordTarget(trajectory.points.back().positions, 0);   // where it ends
         updateParam();
 
-        if (interpolation_type_ == InterpolationType::SERVO)
+        if (interpolation_type_ == trajectory_manager::InterpolationType::SERVO)
         {
             RCLCPP_WARN(node_->get_logger(), "servo accepts joint_target_position, not timed trajectories");
             return;
@@ -2376,7 +2372,7 @@ namespace robot_controller_core
 
     void StateMoveJ::setTrajectoryImpl(const trajectory_msgs::msg::JointTrajectory& trajectory)
     {
-        if (interpolation_type_ == InterpolationType::SERVO) return;
+        if (interpolation_type_ == trajectory_manager::InterpolationType::SERVO) return;
         // 2. Map joint names
         std::vector<size_t> joint_indices = mapJointNames(trajectory.joint_names);
         if (joint_indices.empty())
@@ -2465,8 +2461,8 @@ namespace robot_controller_core
         std::vector<double> durations;
         double trajectory_duration = trajectory_manager_.getTrajectoryDuration();
 
-        if (interpolation_type_ != InterpolationType::DOUBLES ||
-            !JointTrajectoryManager::isDoublesAvailable())
+        if (interpolation_type_ != trajectory_manager::InterpolationType::DOUBLES ||
+            !trajectory_manager::JointTrajectoryManager::isDoublesAvailable())
         {
             // Basic mode: manually calculate segment durations
             durations = calculateSegmentDurations(waypoints, trajectory_duration);
@@ -3387,7 +3383,7 @@ namespace robot_controller_core
 
         if (!waist_turning_planner_)
         {
-            waist_turning_planner_ = std::make_shared<robot_controller_core::WaistLiftingPlanner>();
+            waist_turning_planner_ = std::make_shared<trajectory_manager::WaistLiftingPlanner>();
             waist_turning_planner_->setBodyJointThreeJointType(false);
         }
 
@@ -3396,7 +3392,7 @@ namespace robot_controller_core
             const std::string& turning_joint_name = joint_names_[waist_turning_joint_index_];
             if (joint_limits_manager_->hasLimits(turning_joint_name))
             {
-                JointLimits limits = joint_limits_manager_->getJointLimits(turning_joint_name);
+                robot_dynamics::JointLimits limits = joint_limits_manager_->getJointLimits(turning_joint_name);
                 waist_turning_planner_->setSingleJointLimit(limits.lower, limits.upper);
             }
         }
@@ -3463,7 +3459,7 @@ namespace robot_controller_core
 
     void StateMoveJ::setWaistLiftingPlanner()
     {
-        waist_lifting_planner_ = std::make_shared<robot_controller_core::WaistLiftingPlanner>();
+        waist_lifting_planner_ = std::make_shared<trajectory_manager::WaistLiftingPlanner>();
 
         try
         {
@@ -3613,7 +3609,7 @@ namespace robot_controller_core
                 const std::string& joint_name = waist_joint_names_[i];
                 if (joint_limits_manager_->hasLimits(joint_name))
                 {
-                    JointLimits limits = joint_limits_manager_->getJointLimits(joint_name);
+                    robot_dynamics::JointLimits limits = joint_limits_manager_->getJointLimits(joint_name);
                     lower(i) = limits.lower;
                     upper(i) = limits.upper;
                 }
@@ -3638,7 +3634,7 @@ namespace robot_controller_core
             const std::string& lift_joint_name = joint_names_[waist_lift_joint_index_];
             if (joint_limits_manager_->hasLimits(lift_joint_name))
             {
-                JointLimits limits = joint_limits_manager_->getJointLimits(lift_joint_name);
+                robot_dynamics::JointLimits limits = joint_limits_manager_->getJointLimits(lift_joint_name);
                 waist_lifting_planner_->setSingleJointLimit(limits.lower, limits.upper);
                 RCLCPP_INFO(node_->get_logger(),
                             "Waist lifting limits updated from joint limits manager (SINGLE_JOINT lift)");
@@ -3650,7 +3646,7 @@ namespace robot_controller_core
                 const std::string& pitch_joint_name = joint_names_[waist_pitch_joint_index_];
                 if (joint_limits_manager_->hasLimits(pitch_joint_name))
                 {
-                    JointLimits limits = joint_limits_manager_->getJointLimits(pitch_joint_name);
+                    robot_dynamics::JointLimits limits = joint_limits_manager_->getJointLimits(pitch_joint_name);
                     waist_lifting_planner_->setSingleJointPitchLimit(limits.lower, limits.upper);
                     RCLCPP_INFO(node_->get_logger(),
                                 "Waist pitch limits updated from joint limits manager (SINGLE_JOINT pitch)");
@@ -3706,7 +3702,7 @@ namespace robot_controller_core
                 const std::string& lift_joint_name = joint_names_[waist_lift_joint_index_];
                 if (joint_limits_manager_->hasLimits(lift_joint_name))
                 {
-                    JointLimits limits = joint_limits_manager_->getJointLimits(lift_joint_name);
+                    robot_dynamics::JointLimits limits = joint_limits_manager_->getJointLimits(lift_joint_name);
                     if (clamped_positions[0] < limits.lower)
                     {
                         RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
@@ -3730,7 +3726,7 @@ namespace robot_controller_core
                 const std::string& pitch_joint_name = joint_names_[waist_pitch_joint_index_];
                 if (joint_limits_manager_->hasLimits(pitch_joint_name))
                 {
-                    JointLimits limits = joint_limits_manager_->getJointLimits(pitch_joint_name);
+                    robot_dynamics::JointLimits limits = joint_limits_manager_->getJointLimits(pitch_joint_name);
                     if (clamped_positions[1] < limits.lower)
                     {
                         RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
@@ -3764,7 +3760,7 @@ namespace robot_controller_core
 
             if (joint_limits_manager_->hasLimits(joint_name))
             {
-                JointLimits limits = joint_limits_manager_->getJointLimits(joint_name);
+                robot_dynamics::JointLimits limits = joint_limits_manager_->getJointLimits(joint_name);
 
                 if (clamped_positions[i] < limits.lower)
                 {
@@ -3955,8 +3951,8 @@ namespace robot_controller_core
         (void)goal;
 
         std::lock_guard lock(target_mutex_);
-        if (parseInterpolationType(node_->get_parameter("movej_interpolation_type").as_string()) ==
-            InterpolationType::SERVO)
+        if (trajectory_manager::parseInterpolationType(node_->get_parameter("movej_interpolation_type").as_string()) ==
+            trajectory_manager::InterpolationType::SERVO)
         {
             RCLCPP_WARN(node_->get_logger(), "Joint trajectory actions do not support servo");
             return rclcpp_action::GoalResponse::REJECT;
@@ -4151,7 +4147,7 @@ namespace robot_controller_core
             message = "Invalid joint trajectory request"; planned_duration = 0.0; return false;
         }
         updateParam();
-        if (interpolation_type_ == InterpolationType::SERVO)
+        if (interpolation_type_ == trajectory_manager::InterpolationType::SERVO)
         {
             message = "servo accepts joint_target_position, not timed trajectories";
             planned_duration = 0.0;
@@ -4194,7 +4190,7 @@ namespace robot_controller_core
 
         updateParam();
 
-        if (interpolation_type_ == InterpolationType::SERVO)
+        if (interpolation_type_ == trajectory_manager::InterpolationType::SERVO)
         {
             message = "servo accepts joint_target_position, not timed trajectories";
             planned_duration = 0.0;
@@ -4247,7 +4243,7 @@ namespace robot_controller_core
         // All planners use controller joint order and full command dimension.
         // Keep a single snapshot for all unspecified joints across every waypoint.
         const bool use_doubles = trajectory_manager_.isDoublesAvailable() &&
-                                 interpolation_type_ == InterpolationType::DOUBLES;
+                                 interpolation_type_ == trajectory_manager::InterpolationType::DOUBLES;
         std::vector<double> current_positions;
         std::vector<robot_control_msgs::msg::JointWaypoint> full_waypoints;
         const auto joint_indices = mapJointNames(request_joint_names);
@@ -4414,7 +4410,6 @@ namespace robot_controller_core
             message = "Multi-point trajectory accepted";
             planned_duration = trajectory_manager_.getPlanningTime();
 
-
             RCLCPP_INFO(node_->get_logger(),
                         "Joint trajectory service (multi): %zu waypoints, %zu joints, total_time=%.3f",
                         num_waypoints, num_joints, planned_duration);
@@ -4520,7 +4515,7 @@ namespace robot_controller_core
         joint_trajectory_planned_duration_ = 0.0;
     }
 
-    void StateMoveJ::setKinematicsSolver(const std::shared_ptr<ArmKinematics>& kinematics)
+    void StateMoveJ::setKinematicsSolver(const std::shared_ptr<robot_dynamics::ArmKinematics>& kinematics)
     {
         cartesian_manager_.setKinematicsSolver(kinematics);
     }
@@ -4555,14 +4550,9 @@ namespace robot_controller_core
 
     void StateMoveJ::setCartesianTfBuffer(std::shared_ptr<tf2_ros::Buffer> buffer)
     {
-#ifdef HAS_MOTION_PLANNING
         cartesian_tf_buffer_ = std::move(buffer);
-#else
-        (void)buffer;
-#endif
     }
 
-#ifdef HAS_MOTION_PLANNING
     bool StateMoveJ::transformCartesianPoseStamped(
         const geometry_msgs::msg::PoseStamped& in,
         geometry_msgs::msg::PoseStamped& out)
@@ -4702,17 +4692,6 @@ namespace robot_controller_core
                      "MOVEJ dual stamped MoveL accepted, estimated_duration=%.3f",
                      estimated_duration);
     }
-#else
-    void StateMoveJ::handleCartesianStampedTarget(
-        const std::string& /*arm_name*/,
-        const geometry_msgs::msg::PoseStamped& /*pose_stamped*/)
-    {
-    }
-
-    void StateMoveJ::handleDualCartesianStampedTarget(const nav_msgs::msg::Path& /*path*/)
-    {
-    }
-#endif
 
     rclcpp_action::GoalResponse StateMoveJ::handleLinearGoal(
         const rclcpp_action::GoalUUID& uuid,
@@ -4837,7 +4816,6 @@ namespace robot_controller_core
             estimated_duration = 0.0;
             return false;
         }
-
 
         message = "MoveL deferred until stop-to-zero completes";
         estimated_duration = 0.0;
@@ -5121,7 +5099,6 @@ namespace robot_controller_core
         return true;
     }
 
-
     void StateMoveJ::setupCircleTrajectoryService(const std::string& service_name)
     {
         std::string full_service_name = node_->get_name() + std::string("/") + service_name;
@@ -5274,7 +5251,6 @@ namespace robot_controller_core
             estimated_duration = 0.0;
             return false;
         }
-
 
         message = "MoveC deferred until stop-to-zero completes";
         estimated_duration = 0.0;

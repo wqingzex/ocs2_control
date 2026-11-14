@@ -52,7 +52,7 @@ namespace teleop_command
         }
 
         // 初始化头部关节限位管理器
-        head_limits_manager_ = std::make_shared<robot_controller_core::JointLimitsManager>(node_->get_logger());
+        head_limits_manager_ = std::make_shared<robot_dynamics::JointLimitsManager>(node_->get_logger());
 
         // 读取头部link名称配置
         node_->declare_parameter<std::string>("head_link_name", "head_link2");
@@ -201,7 +201,7 @@ namespace teleop_command
         tf2::Matrix3x3(tf_quat).getRPY(roll, pitch, yaw);
 
         // 使用通用工具类 unwrap 保持角度连续性，避免跳变
-        robot_controller_core::AngleUtils::unwrapRPY(
+        robot_dynamics::AngleUtils::unwrapRPY(
             roll, pitch, yaw, last_head_rpy_, last_head_rpy_initialized_);
 
         // 应用旋转轴方向系数
@@ -283,7 +283,7 @@ namespace teleop_command
         tf2::Matrix3x3(tf_quat).getRPY(roll, pitch, yaw);
 
         // 使用通用工具类 unwrap 保持角度连续性，避免跳变
-        robot_controller_core::AngleUtils::unwrapRPY(
+        robot_dynamics::AngleUtils::unwrapRPY(
             roll, pitch, yaw, last_head_rpy_, last_head_rpy_initialized_);
 
         // 应用旋转轴方向系数，得到关节角度

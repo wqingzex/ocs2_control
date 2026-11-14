@@ -10,7 +10,7 @@
 
 | 类型 | 名称 | 用途 |
 |---|---|---|
-| msg | `Inputs` | 键盘/手柄的位姿增量输入（`control_input` 话题） |
+| msg | `Inputs` | 键盘/手柄的位姿增量输入（`/teleop/control_input` 话题） |
 | msg | `WholeBodyCapability` | 全身控制器支持哪些约束（躯干竖直、腰锁定、头耦合、双臂耦合等） |
 | msg | `WholeBodyCurrentState` | 全身控制器当前的底盘、躯干等状态；RViz 面板据此生成身体模式下拉框 |
 | msg | `LinearMessage` `CircleMessage` `JointWaypoint` | 直线、圆弧、关节路点，作为下面服务和 action 的字段 |

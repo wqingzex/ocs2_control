@@ -138,7 +138,7 @@ int main(int argc, char** argv)
 
         // 创建 control input 订阅器（用于增量控制）
         auto control_subscription = node->create_subscription<robot_control_msgs::msg::Inputs>(
-            "control_input", 10,
+            "/teleop/control_input", 10,
             [control_handler_ptr = control_handler.get()](
             const robot_control_msgs::msg::Inputs::ConstSharedPtr msg)
             {

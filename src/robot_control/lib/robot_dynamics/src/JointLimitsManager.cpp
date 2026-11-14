@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace robot_controller_core
+namespace robot_dynamics
 {
     JointLimitsManager::JointLimitsManager(rclcpp::Logger logger)
         : logger_(logger)
@@ -272,4 +272,4 @@ namespace robot_controller_core
     {
         return getInitializedCount() > 0;
     }
-} // namespace robot_controller_core
+} // namespace robot_dynamics

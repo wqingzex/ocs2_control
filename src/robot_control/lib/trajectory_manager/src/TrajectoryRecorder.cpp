@@ -7,7 +7,7 @@
 #include <iomanip>
 #include <iostream>
 
-namespace robot_controller_core
+namespace trajectory_manager
 {
 TrajectoryRecorder& TrajectoryRecorder::instance()
 {
@@ -161,4 +161,4 @@ void TrajectoryRecorder::flushToDiskLocked()
         writeCsv(out_dir_ + "/real_right.csv", real_right_);
     }
 }
-}  // namespace robot_controller_core
+}  // namespace trajectory_manager

@@ -4,12 +4,15 @@ controller_manager:
     update_rate: 100  # Hz
 
     hand_controller:
-      type: adaptive_gripper_controller/AdaptiveGripperController
+      type: end_effector_controller/GripperController
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
 hand_controller:
   ros__parameters:
-    joint: gripper_joint
+    joints: [gripper_joint]
+    command_interfaces: [position]
+    state_interfaces: [position]
     use_effort_interface: false
+    movej_interpolation_type: none   # write the target directly, like the old gripper plugin

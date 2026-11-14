@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <memory>
 
-namespace robot_controller_core
+namespace trajectory_manager
 {
     // Common progress preserves joint velocity ratios during braking. If the
     // initial accelerations are incompatible, first release them over a shared

@@ -11,7 +11,7 @@
 #include <memory>
 #include <rclcpp/rclcpp.hpp>
 
-namespace robot_controller_core
+namespace robot_dynamics
 {
     /**
      * @brief URDF joint motion type for controllable joints
@@ -191,4 +191,4 @@ namespace robot_controller_core
         std::unordered_map<std::string, JointLimits> joint_limits_;
         std::vector<std::string> joint_names_;  // Order of joints for applyLimits()
     };
-} // namespace robot_controller_core
+} // namespace robot_dynamics

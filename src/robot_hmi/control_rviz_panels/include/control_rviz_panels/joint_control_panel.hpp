@@ -117,7 +117,7 @@ namespace control_rviz_panels
         std::shared_future<std::vector<rclcpp::Parameter>> head_parameter_future_;
         std::chrono::steady_clock::time_point head_parameter_requested_at_;
         std::string head_parameter_context_;
-        std::optional<robot_controller_core::HeadCouplingConfig> head_panel_config_;
+        std::optional<robot_dynamics::HeadCouplingConfig> head_panel_config_;
         bool head_send_pending_{false};
         bool head_range_updates_suspended_{false};
         bool refreshJointMetadataFromCache();
@@ -238,7 +238,7 @@ namespace control_rviz_panels
         uint8_t head_state_ = 0;  // WholeBodyCurrentState::head_state（1 = HEAD_TRACKING）
 
         // Joint limits manager
-        std::shared_ptr<robot_controller_core::JointLimitsManager> joint_limits_manager_;
+        std::shared_ptr<robot_dynamics::JointLimitsManager> joint_limits_manager_;
         std::string robot_description_cache_;
         bool robot_description_received_ = false;
         bool joint_types_ready_ = false;

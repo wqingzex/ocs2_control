@@ -10,7 +10,7 @@
 #include <tf2/LinearMath/Quaternion.hpp>
 #include <tf2/LinearMath/Matrix3x3.hpp>
 
-namespace robot_controller_core
+namespace robot_dynamics
 {
     /**
      * @brief Angle utilities for handling angle unwrapping and quaternion operations
@@ -173,5 +173,5 @@ namespace robot_controller_core
             return {roll, pitch, yaw};
         }
     };
-} // namespace robot_controller_core
+} // namespace robot_dynamics
 

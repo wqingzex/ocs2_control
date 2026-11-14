@@ -14,7 +14,7 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include "robot_control_msgs/srv/kinematics_service.hpp"
 
-namespace robot_controller_core
+namespace robot_dynamics
 {
     // 末端执行器位姿结构体
     struct EndEffectorPose
@@ -451,4 +451,4 @@ namespace robot_controller_core
                           std::string arm_type,
                           const EndEffectorPose& target);
     };
-} // namespace robot_controller_core
+} // namespace robot_dynamics

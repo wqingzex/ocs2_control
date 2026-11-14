@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace robot_controller_core
+namespace robot_dynamics
 {
     namespace
     {

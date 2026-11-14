@@ -313,7 +313,7 @@ namespace control_rviz_panels
         node_ = this->getDisplayContext()->getRosNodeAbstraction().lock()->get_raw_node();
 
         // Create joint limits manager
-        joint_limits_manager_ = std::make_shared<robot_controller_core::JointLimitsManager>(
+        joint_limits_manager_ = std::make_shared<robot_dynamics::JointLimitsManager>(
             node_->get_logger());
 
         // Subscribe to robot_description topic to load joint limits from URDF
@@ -1967,19 +1967,19 @@ namespace control_rviz_panels
                         parameters[2].get_type() != ParameterType::PARAMETER_STRING ||
                         parameters[3].get_type() != ParameterType::PARAMETER_STRING)
                         throw std::runtime_error("invalid coupling parameter types");
-                    const auto type = robot_controller_core::parseInterpolationType(parameters[3].as_string());
-                    if (type == robot_controller_core::InterpolationType::SERVO ||
-                        type == robot_controller_core::InterpolationType::NONE)
+                    const auto type = trajectory_manager::parseInterpolationType(parameters[3].as_string());
+                    if (type == trajectory_manager::InterpolationType::SERVO ||
+                        type == trajectory_manager::InterpolationType::NONE)
                     {
                         // SERVO/NONE keep their original behavior.
                     }
                     else
                     {
-                        robot_controller_core::HeadCouplingConfig config;
+                        robot_dynamics::HeadCouplingConfig config;
                         config.enabled = true;
                         config.yaw_joint = parameters[1].as_string();
                         config.pitch_joint = parameters[2].as_string();
-                        robot_controller_core::validateHeadCouplingConfig(config);
+                        robot_dynamics::validateHeadCouplingConfig(config);
                         head_panel_config_ = config;
                     }
                 }
@@ -2012,19 +2012,19 @@ namespace control_rviz_panels
             !joint_types_ready_ || !joint_limits_manager_) return;
         try
         {
-            const auto indices = robot_controller_core::findHeadJointIndices(*head_panel_config_, joint_names_).value();
+            const auto indices = robot_dynamics::findHeadJointIndices(*head_panel_config_, joint_names_).value();
             if (indices.yaw >= joint_spinboxes_.size() || indices.pitch >= joint_spinboxes_.size())
                 throw std::runtime_error("head input fields unavailable");
             const auto yaw = joint_limits_manager_->getJointLimits(head_panel_config_->yaw_joint);
             const auto pitch = joint_limits_manager_->getJointLimits(head_panel_config_->pitch_joint);
             if (!yaw.initialized || !pitch.initialized)
                 throw std::runtime_error("head URDF limits unavailable");
-            const robot_controller_core::HeadCouplingLimits limits(
+            const robot_dynamics::HeadCouplingLimits limits(
                 *head_panel_config_, {yaw.lower, yaw.upper}, {pitch.lower, pitch.upper});
             const QSignalBlocker yaw_blocker(joint_spinboxes_[indices.yaw].get());
             const QSignalBlocker pitch_blocker(joint_spinboxes_[indices.pitch].get());
             const auto yaw_range = limits.yawRange();
-            const auto display_range = [this](const robot_controller_core::HeadAngleRange& range,
+            const auto display_range = [this](const robot_dynamics::HeadAngleRange& range,
                                                const QDoubleSpinBox* spinbox) {
                 const double factor = std::pow(10.0, spinbox->decimals());
                 return std::pair<double, double>{

@@ -62,10 +62,10 @@ namespace robot_controller_core
 
             createTask();
 
-            std::shared_ptr<GravityCompensation> gravity_compensation = nullptr;
+            std::shared_ptr<robot_dynamics::GravityCompensation> gravity_compensation = nullptr;
             if (const auto* model = planningModel())
             {
-                gravity_compensation = std::make_shared<GravityCompensation>(*model);
+                gravity_compensation = std::make_shared<robot_dynamics::GravityCompensation>(*model);
                 RCLCPP_INFO(get_node()->get_logger(), "Gravity compensation initialized from OCS2 Pinocchio model");
             }
             onTaskCreated(gravity_compensation);

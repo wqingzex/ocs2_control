@@ -5,12 +5,10 @@
 #include <vector>
 
 // Optional dependency: motion_planning
-#ifdef HAS_MOTION_PLANNING
 #include "motion_planning/path_planner/movej.h"
 #include "motion_planning/path_planner/speedj.h"
-#endif
 
-namespace robot_controller_core
+namespace trajectory_manager
 {
     // 升降与俯仰共用此规划器：两者都是腰部平面位姿 (x, z, phi) 的变化，
     // 三关节结构下使用同一组腰部关节及同一套正逆运动学、关节限位。
@@ -97,22 +95,18 @@ namespace robot_controller_core
         {
             if (type_speed_)
             {
-#ifdef HAS_MOTION_PLANNING
                 if (speedj_planner_)
                 {
                     return speedj_planner_->isMotionOver();
                 }
-#endif
                 return speed_plan_state_.motion_over;
             }
             else
             {
-#ifdef HAS_MOTION_PLANNING
                 if (movej_planner_)
                 {
                     return movej_planner_->isMotionOver();
                 }
-#endif
                 return speed_plan_state_.motion_over;
             }
         }
@@ -229,13 +223,11 @@ namespace robot_controller_core
         bool resolveFeasibleSingleJointPhi(double requested_phi, double& feasible_phi);
 
         /*由于只升降腰部，就使用简单的movej单关节*/
-#ifdef HAS_MOTION_PLANNING
         std::unique_ptr<planning::moveJ> movej_planner_;
 
         /*假如需要手柄操作或者是按下按钮上升或者下降，松手停止，使用speedj*/
 
         std::unique_ptr<planning::SpeedJ> speedj_planner_;
-#endif
 
         double min_val = 1.0e-9;
         double last_planned_lifting_length_{0.0};
@@ -263,4 +255,4 @@ namespace robot_controller_core
             bool motion_over{true};
         } speed_plan_state_;
     };
-} // namespace robot_controller_core
+} // namespace trajectory_manager
