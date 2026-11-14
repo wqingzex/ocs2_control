@@ -47,7 +47,7 @@ if (flight) flight->record(kCtlTargetIn, positions.data(), positions.size(), /*a
 ./scripts/start.sh diag [--minutes N] [原因]     # 默认汇总出错前 10 分钟
 ```
 
-它做的事（`python/robot_log_tools/evidence.py`，由 `fa_teleop_runtime/diag.py` 打包）：
+它做的事（`python/robot_log_tools/evidence.py`，由 `teleop_app/diag.py` 打包）：
 1. 取各单元日志里最近 N 分钟的行（日志每行带时间；没有时间的，如 PC Service，取最后 300 行）。
 2. 统计这段时间里出现的**故障码**（停机类在前，每个码按单元给次数、首次和最后一次时间）。
 3. 统计这段时间里的 **`[HEALTH]` 行**（每个组件：周期是否迟到、速率范围、最长间隔，有 WARN 的窗口会标出）。

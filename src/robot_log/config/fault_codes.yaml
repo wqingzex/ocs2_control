@@ -21,14 +21,14 @@
   title: 连接 XRoboToolkit PC Service 失败
   behavior: 记 ERROR 并按 reconnect_interval_s 定期重试，XR 桥不发布数据，机械臂不受影响
   check: "pgrep RoboticsService 看 PC Service 是否在跑；xr.start_pc_service 是否为 true；头显是否已连上 PC Service"
-  source: {file: src/robot_teleop/fa_teleop/src/xr_bridge_node.cpp, match: "连接 XRoboToolkit PC Service 失败"}
+  source: {file: src/robot_payload/input/xr_teleop/src/xr_bridge_node.cpp, match: "连接 XRoboToolkit PC Service 失败"}
 
 - code: XR-002
   class: M
   title: PC Service 断开，重新初始化 SDK
   behavior: 记 WARN，重新初始化 XRoboToolkit SDK 并重连
   check: PC Service 是否被别人停掉或崩溃；同一台机器上是否有两个程序在抢它
-  source: {file: src/robot_teleop/fa_teleop/src/xr_bridge_node.cpp, match: "PC Service 未连接，重新初始化 XRoboToolkit SDK"}
+  source: {file: src/robot_payload/input/xr_teleop/src/xr_bridge_node.cpp, match: "PC Service 未连接，重新初始化 XRoboToolkit SDK"}
 
 - code: XR-003
   class: M
@@ -36,21 +36,21 @@
   behavior: 记 WARN，停止发布 /xr/*，机械臂保持最后一个目标；数据恢复后记 INFO 并继续发布
   check: 头显是否休眠或离线；Wi-Fi 信号和延迟；PC Service 是否还在收数据（XR-001、XR-002）
   escalation: 在运动中持续断线超过 T 秒（候选 5 秒）应切 HOLD；现在只是保持最后目标
-  source: {file: src/robot_teleop/fa_teleop/src/xr_bridge_node.cpp, match: "未收到头显数据：停止发布，机械臂保持最后目标"}
+  source: {file: src/robot_payload/input/xr_teleop/src/xr_bridge_node.cpp, match: "未收到头显数据：停止发布，机械臂保持最后目标"}
 
 - code: XR-004
   class: M
   title: 头显数据解析失败
   behavior: 记 WARN 并累计次数，丢弃这一帧
   check: PC Service 和头显固件版本是否匹配；是否持续出现（偶发可忽略）
-  source: {file: src/robot_teleop/fa_teleop/src/xr_bridge_node.cpp, match: "头显数据解析失败"}
+  source: {file: src/robot_payload/input/xr_teleop/src/xr_bridge_node.cpp, match: "头显数据解析失败"}
 
 - code: XR-005
   class: S2
   title: PC Service 没装或起不来
   behavior: supervisor 启动 pc_service 模块时报错，XR 模块不会启动，遥操作不可用（机器人不会动）
   check: "ls /opt/apps/roboticsservice/runService.sh；桌面版需要 DISPLAY；或把 xr.start_pc_service 设为 false 后手动启动"
-  source: {file: src/robot_teleop/fa_teleop/fa_teleop_runtime/pc_service.py, match: "XRoboToolkit PC Service not found"}
+  source: {file: src/robot_payload/input/xr_teleop/xr_teleop/pc_service.py, match: "XRoboToolkit PC Service not found"}
 
 - code: XR-006
   class: M
@@ -58,7 +58,7 @@
   behavior: 记 WARN，[HEALTH] 行里的 received_gap_max_ms 就是最长间隔；数据照常发布，机械臂会因为目标更新有空洞而卡顿
   check: 头显的 Wi-Fi 信号和延迟；PC 的网卡和 PC Service 的 CPU 占用；received_hz 是否低于预期；是否伴随 XR-003（超过 frame_timeout_ms 就成了断线）
   escalation: 间隔持续接近 frame_timeout_ms 时可以提前预警；现在只记录。阈值 health_gap_warn_ms 默认 100 ms，可用参数调
-  source: {file: src/robot_teleop/fa_teleop/src/xr_bridge_node.cpp, match: "[XR-006]"}
+  source: {file: src/robot_payload/input/xr_teleop/src/xr_bridge_node.cpp, match: "[XR-006]"}
 
 - code: TEL-001
   class: M
@@ -146,7 +146,7 @@
   check: 往上翻同一个模块日志里第一条 ERROR；控制器 yaml 的 type 是否写对；planning_urdf_path 是否生成
   external: ros2_control（controller_manager 的 Failed loading controller 等）；supervisor 在 last_error() 里按 process has died 识别
   untagged: 日志文本来自 ros2_control，不是我们写的，只能在 supervisor 里识别
-  source: {file: src/robot_teleop/fa_teleop/fa_teleop_runtime/supervisor.py, match: "process has died"}
+  source: {file: src/robot_runtime/robot_runtime/supervisor.py, match: "process has died"}
 
 - code: CTL-011
   class: M
@@ -264,4 +264,4 @@
   title: 录制磁盘空间不足
   behavior: 拒绝开始新的录制（已有的不受影响）
   check: 磁盘剩余空间；清理 logs/、旧录制和诊断包
-  source: {file: src/robot_teleop/fa_teleop/fa_teleop_runtime/recording.py, match: "磁盘剩余空间不足"}
+  source: {file: src/robot_teleop/teleop_app/teleop_app/recording.py, match: "磁盘剩余空间不足"}

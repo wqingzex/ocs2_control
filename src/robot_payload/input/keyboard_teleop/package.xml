@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>keyboard_teleop</name>
+  <version>1.2.0</version>
+  <description>Keyboard teleoperation: turns key presses into arm increments, chassis and waist commands</description>
+  <maintainer email="biao876990970@hotmail.com">Huang Zhenbiao</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>robot_control_msgs</depend>
+  <depend>teleop_command</depend>
+  <depend>rcutils</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
