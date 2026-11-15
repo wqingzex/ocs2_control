@@ -56,7 +56,7 @@ namespace teleop_command
                 latest_current_pose_ = *msg;
                 has_latest_current_pose_ = true;
 
-                // 先通知外部收到原始消息（如 VRInputHandler）
+                // 先通知外部收到原始消息（如 XrInputHandler）
                 if (current_pose_callback_)
                 {
                     current_pose_callback_(msg);

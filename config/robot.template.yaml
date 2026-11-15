@@ -1,5 +1,5 @@
 # 本机配置模板：复制成 config/robot.local.yaml 后修改（./scripts/start.sh / ./scripts/setup.sh 默认读取本文件，遥操作和推理都用）。
-# 上半部分：启动什么（机型、手、真机 / 仿真、相机）；字段说明和默认值见 src/robot_teleop/teleop_app/config/teleop.yaml，
+# 上半部分：启动什么（机型、手、真机 / 仿真、相机）；字段说明和默认值见 src/robot_hmi/teleop_app/config/teleop.yaml，
 # 只写与默认值不同的项即可。下半部分：这台机器的硬件参数（platform / defaults / hardware / control），由 ROS 启动文件读取。
 # 首次使用：./scripts/setup.sh cam 弹窗确认相机画面与左右位置；./scripts/setup.sh hand 确认左右手。
 
@@ -45,6 +45,8 @@ defaults:
   right_dyn_param: []
 
 hardware:
+  # marvin_firmware: 343     # 天机臂 SDK 版本：338（38 版固件）| 343（43 版及以上），要和臂的控制器固件一致，选错驱动会急停；
+                            # 留空时 ./scripts/setup.sh 会询问并写在这里（./scripts/setup.sh marvin 重新选择）
   max_joint_speed: 100
   max_joint_acceleration: 100
   body_can_interface: can0     # 腰、头（Juxie）的 CAN FD 接口；改它之后重新运行 ./scripts/setup.sh host，让免密 sudo 规则用同一个名字

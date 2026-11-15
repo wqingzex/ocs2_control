@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# 在宿主机运行：在持久容器 w2-ocs2 里执行命令（真机运控、仿真、RViz、测试都用它）。
+# 在宿主机运行：在持久容器 ocs2_control 里执行命令（真机运控、仿真、RViz、测试都用它）。
 #   ./docker/run.sh                          进入容器 shell
 #   ./docker/run.sh ./scripts/setup.sh       首次：依赖、编译、相机、手、XR 配对
-#   ./docker/run.sh ./scripts/start.sh       启动运控、VR、相机（Ctrl+C 停止）
+#   ./docker/run.sh ./scripts/start.sh       启动运控、XR、相机（Ctrl+C 停止）
 #   ./docker/run.sh xeyes                    验证 X11；RViz 等 ROS 程序先进 shell（./docker/run.sh），或用 start.sh --rviz
 #   ./docker/run.sh docker/run-tests.sh      跑 colcon test（要先编译，且编译时打开 BUILD_TESTING）
 #
 # 仓库以和宿主机相同的绝对路径挂进容器，容器里改的代码就是宿主机上的文件；build/、install/ 里记录的绝对路径
 # （CMake 缓存、install/setup.bash）在宿主机和容器里都有效。
-# 容器是持久的：setup.sh 装的依赖、编译结果（仓库里的 build/、install/）都保留；停掉用 docker stop w2-ocs2，
-# 删掉重建用 W2_RECREATE=1 ./docker/run.sh（装过的依赖会丢，要重新 setup.sh deps）。
-# 环境变量：IMAGE（默认 w2-ocs2）、CONTAINER（默认 w2-ocs2）、DISPLAY（默认 :1）。
+# 容器是持久的：setup.sh 装的依赖、编译结果（仓库里的 build/、install/）都保留；停掉用 docker stop ocs2_control，
+# 删掉重建用 OCS2_CONTROL_RECREATE=1 ./docker/run.sh（装过的依赖会丢，要重新 setup.sh deps）。
+# 环境变量：IMAGE（默认 ocs2_control）、CONTAINER（默认 ocs2_control）、DISPLAY（默认 :1）。
 set -Eeuo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO="$(cd -- "${HERE}/.." && pwd -P)"
-IMAGE="${IMAGE:-w2-ocs2}"
-CONTAINER="${CONTAINER:-w2-ocs2}"
+IMAGE="${IMAGE:-ocs2_control}"
+CONTAINER="${CONTAINER:-ocs2_control}"
 DISPLAY="${DISPLAY:-:1}"
-X11_DIR="/tmp/w2-ocs2-x11"          # 固定目录挂进容器；每次运行刷新里面的 cookie（容器是持久的，不能每次换挂载）
+X11_DIR="/tmp/fiveages_w2-ocs2-x11"          # 固定目录挂进容器；每次运行刷新里面的 cookie（容器是持久的，不能每次换挂载）
 
 (( $# )) || set -- bash
 
@@ -34,7 +34,7 @@ xauth -f "${SOURCE_AUTH}" nlist "${DISPLAY}" | sed -e 's/^..../ffff/' | xauth -f
 chmod 600 "${X11_DIR}/xauth"
 
 # ---- 容器：不存在就创建（带齐真机需要的权限），停着就启动 ----------------------------------------------------------------
-[[ -z "${W2_RECREATE:-}" ]] || docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+[[ -z "${OCS2_CONTROL_RECREATE:-}" ]] || docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
 
 if ! docker container inspect "${CONTAINER}" >/dev/null 2>&1; then
   create_args=(
@@ -46,7 +46,7 @@ if ! docker container inspect "${CONTAINER}" >/dev/null 2>&1; then
     --cap-add SYS_NICE
     -v "${REPO}:${REPO}" -w "${REPO}" -e WS="${REPO}"
     -v /tmp/.X11-unix:/tmp/.X11-unix:rw
-    -v "${X11_DIR}:/tmp/w2-x11"
+    -v "${X11_DIR}:/tmp/fiveages_w2-x11"
     -e QT_X11_NO_MITSHM=1
     # 沿用宿主机的通信环境（仓库里 config/ros_env.sh 写的仍然优先，entrypoint 会 source 它）
     -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
@@ -66,5 +66,5 @@ tty_flags=()
 [[ -t 0 && -t 1 ]] && tty_flags=(-it)
 
 exec docker exec "${tty_flags[@]}" \
-  -e DISPLAY="${DISPLAY}" -e XAUTHORITY=/tmp/w2-x11/xauth \
-  "${CONTAINER}" bash -c '. ~/.w2_env.sh; exec "$@"' w2 "$@"
+  -e DISPLAY="${DISPLAY}" -e XAUTHORITY=/tmp/fiveages_w2-x11/xauth \
+  "${CONTAINER}" bash -c '. ~/.fiveages_w2_env.sh; exec "$@"' ocs2_control "$@"

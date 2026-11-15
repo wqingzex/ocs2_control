@@ -12,7 +12,7 @@
 ros2 launch robot_visualize humanoid.launch.py    robot:=fiveages_w2 type:=linkerhand_l6
 ros2 launch robot_visualize manipulator.launch.py robot:=m6_ccs type:=dual
 ros2 launch robot_visualize hand.launch.py        hand:=xhand1
-ros2 launch robot_visualize component.launch.py   robot:=w2_body
+ros2 launch robot_visualize component.launch.py   robot:=fiveages_w2_body
 ros2 launch robot_visualize visualize.launch.py   robot:=<名字>
 ```
 

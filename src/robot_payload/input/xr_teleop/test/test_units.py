@@ -63,3 +63,12 @@ def test_the_bridge_does_not_inherit_a_proxy():
     from xr_teleop.units import xr_units
     units = xr_units({"xr": dict(DEFAULTS["xr"])})
     assert {"http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"} <= set(units["xr"].unset_env)
+
+
+def test_the_bridge_gets_no_key_scheme_parameter():
+    """One key table: the bridge has no control_scheme parameter any more."""
+    from xr_teleop.config import DEFAULTS
+    from xr_teleop.units import xr_units
+    cmd = xr_units({"xr": dict(DEFAULTS["xr"])})["xr"].cmd
+    assert not any("control_scheme" in arg for arg in cmd)
+    assert "control_scheme" not in DEFAULTS["xr"]

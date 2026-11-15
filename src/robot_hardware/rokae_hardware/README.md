@@ -1,6 +1,6 @@
 # rokae_hardware
 
-珞石 Rokae 机械臂的 `ros2_control` 驱动（xCoreSDK）。插件 `rokae_hardware/RokaeHardware`。本仓库的 W2 / M6 不使用，用于 Rokae 机型。
+珞石 Rokae 机械臂的 `ros2_control` 驱动（xCoreSDK）。插件 `rokae_hardware/RokaeHardware`。本仓库现有的 fiveages_w2 和 M6 都不使用，用于 Rokae 机型。
 
 ## 使用
 

@@ -30,7 +30,7 @@ def die(message):
 
 
 rclpy.init()
-node = Node("w2_nudge")
+node = Node("ocs2_nudge")
 joints, state = {}, {}
 node.create_subscription(JointState, "/joint_states", lambda m: joints.update(zip(m.name, m.position)), 10)
 node.create_subscription(Int32, "/fsm_state", lambda m: state.update(value=m.data),

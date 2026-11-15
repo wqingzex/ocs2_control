@@ -69,10 +69,10 @@ private:
     // 相邻两帧指令速度(delta)的最大变化量（nct/cycle²）；0 表示关闭加速度限幅。
     int32_t max_position_accel_nct_ = 5;
 
-    // What was read from and written to the motors in each cycle, for the diagnosis (docs/日志.md).
+    // What was read from and written to the motors in each cycle, for the diagnosis (src/robot_log/README.md).
     std::shared_ptr<robot_log::FlightRecorder> flight_;
 
-    // Health of the read / write cycles (docs/日志.md): filled by read() and write(), reported once per window by
+    // Health of the read / write cycles (src/robot_log/README.md): filled by read() and write(), reported once per window by
     // health_timer_ while the hardware is active.
     robot_log::CycleStats read_stats_;
     robot_log::CycleStats write_stats_;

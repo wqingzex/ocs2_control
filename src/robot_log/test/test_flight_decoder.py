@@ -73,7 +73,7 @@ def test_csv_has_one_row_per_record_and_names_the_type(tmp_path):
     assert flight.write_csv(flight.read_ring(str(path)), out) == 2
     lines = out.getvalue().strip().splitlines()
     assert lines[0].startswith("module,index,wall_time,wall_ns,steady_ms,type,aux,v0")
-    assert ",tel_vr_in,1,0.1," in lines[1]
+    assert ",tel_xr_in,1,0.1," in lines[1]
     assert ",type_999,0,5.0" in lines[2]
 
 

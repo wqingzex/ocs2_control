@@ -18,14 +18,13 @@
 #include <robot_log/health.hpp>
 
 #include "xr_teleop/button_event_encoder.hpp"
-#include "xr_teleop/simple_button_encoder.hpp"
 #include "xr_teleop/xr_pose_converter.hpp"
 #include "xr_teleop/xr_sdk_client.hpp"
 #include "xr_teleop/xr_device_selector.hpp"
 
 namespace xr_teleop
 {
-    /// XRoboToolkit (Pico App + PC Service) -> /xr/* topics consumed by VRInputHandler (list: docs).
+    /// XRoboToolkit (Pico App + PC Service) -> /xr/* topics consumed by XrInputHandler (list: docs).
     /// One message set per new headset frame; none for frame_timeout_ms -> connection_status false.
     /// The SDK is re-initialised after the PC Service link is down for reconnect_interval_s.
     class XrBridgeNode : public rclcpp::Node
@@ -67,7 +66,7 @@ namespace xr_teleop
         std::atomic<bool> server_connected_{false};
         std::atomic<uint64_t> parse_errors_{0};
 
-        // Health of this hop (docs/日志.md): frames accepted from the headset (SDK thread) and frames published,
+        // Health of this hop (src/robot_log/README.md): frames accepted from the headset (SDK thread) and frames published,
         // reported once per window by health_timer_.
         void reportHealth();
         void recordFrameIn(const XrFrame& frame);
@@ -83,9 +82,7 @@ namespace xr_teleop
         // Timer-thread state
         XrSdkClient sdk_;
         XrPoseConverter pose_converter_;
-        ButtonEventEncoder encoder_;               ///< control_scheme:=legacy
-        SimpleButtonEncoder simple_encoder_;       ///< control_scheme:=simple
-        bool simple_scheme_ = false;
+        ButtonEventEncoder encoder_;
         int64_t last_timestamp_ns_ = 0;
         bool connected_ = false;
         uint64_t published_frames_ = 0;

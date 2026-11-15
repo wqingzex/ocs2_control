@@ -21,7 +21,7 @@ from .config import EXTENSION
 from .units import xr_units
 from .xr_network import arm_ip, network_addresses, without_arm_link
 
-# ---- VR --------------------------------------------------------------------------------------------
+# ---- XR --------------------------------------------------------------------------------------------
 
 def host_ips() -> List[str]:
     return [f"{entry.address} ({entry.interface})" for entry in network_addresses()]
@@ -132,7 +132,7 @@ def xr_status(raw) -> Tuple[bool, str]:
     """(needs pairing, reason): nothing to do when XR is off or a headset id is already saved."""
     xr = raw.get("xr") or {}
     if xr.get("enable") is False:
-        return False, "VR 已关闭（xr.enable: false）"
+        return False, "XR 已关闭（xr.enable: false）"
     if xr.get("device_id"):
         return False, f"已绑定头显 {xr['device_id']}"
     return True, "头显尚未配对"

@@ -249,7 +249,7 @@ namespace teleop_command
         // 状态检查回调（用于检查是否允许自动更新）
         StateCheckCallback state_check_callback_;
         
-        // Current pose 原始消息回调（用于通知外部收到原始消息，如 VRInputHandler）
+        // Current pose 原始消息回调（用于通知外部收到原始消息，如 XrInputHandler）
         CurrentPoseCallback current_pose_callback_;
         
         // 节流管理（每个 marker 独立管理）

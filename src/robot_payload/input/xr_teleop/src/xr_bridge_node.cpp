@@ -36,8 +36,8 @@ namespace xr_teleop
         }
     } // namespace
 
-    // Node name kept as "xr_target_node": VRInputHandler enables VR control only while a node with
-    // this exact name exists (VRInputHandler::XR_NODE_NAME).
+    // Node name kept as "xr_target_node": XrInputHandler enables XR control only while a node with
+    // this exact name exists (XrInputHandler::XR_NODE_NAME).
     XrBridgeNode::XrBridgeNode(const rclcpp::NodeOptions& options) : Node("xr_target_node", options)
     {
         robot_log::applyLogMode();  // debug mode of this run, applied once
@@ -49,12 +49,6 @@ namespace xr_teleop
         {
             throw std::invalid_argument("xr_bridge: poll_rate_hz, frame_timeout_ms and publish_queue_depth must be > 0");
         }
-        const std::string scheme = declare_parameter<std::string>("control_scheme", "legacy");
-        if (scheme != "legacy" && scheme != "simple")
-        {
-            throw std::invalid_argument("xr_bridge: control_scheme must be 'legacy' or 'simple', got '" + scheme + "'");
-        }
-        simple_scheme_ = scheme == "simple";
         const auto target_id = declare_parameter<std::string>("device_id", "");
         device_selector_ = XrDeviceSelector(target_id);
 
@@ -92,9 +86,7 @@ namespace xr_teleop
         RCLCPP_INFO(get_logger(), "断线判定：%ld ms 无新帧；PC Service 断开 %.1f s 后自动重连",
                     static_cast<long>(frame_timeout_.count()), reconnect_interval_.count());
         RCLCPP_INFO(get_logger(), "头显选择：%s", target_id.empty() ? "等待首台发送追踪数据的头显" : target_id.c_str());
-        RCLCPP_INFO(get_logger(), "按键方案: %s", simple_scheme_
-            ? "simple（A/X 状态机，Y+B 15，Y+A 54，B 录制开始/停止，长按 Y 删除，右摇杆 干预）"
-            : "legacy（与原 xr_target_node 一致）");
+        RCLCPP_INFO(get_logger(), "按键：右 A 状态机前进，左 X 状态机后退，右摇杆按下 跟随/停止；扳机按比例开合手");
         std_msgs::msg::Bool status;
         status.data = false;
         pub_connection_->publish(status);
@@ -201,8 +193,7 @@ namespace xr_teleop
         }
         const auto& poses = pose_converter_.update(frame);
         const TeleState tele = toTeleState(frame.left, frame.right);
-        const EncodedControls controls =
-            simple_scheme_ ? simple_encoder_.update(tele, frame.timestamp_ns) : encoder_.update(tele);
+        const EncodedControls controls = encoder_.update(tele);
 
         pub_head_->publish(toMsg(poses.head));
         pub_left_->publish(toMsg(poses.left));

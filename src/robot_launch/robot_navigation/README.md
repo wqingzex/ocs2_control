@@ -25,4 +25,4 @@ ros2 launch robot_navigation navigation_isaac_gt.launch.py robot:=fiveages_w2 na
 3. `<robot>_description`
 4. 本包（只带通用的 `config/nav2/nav2_params_isaac_gt.yaml`，不带地图）
 
-W2 的地图和参数在 `fiveages_w2_description`。`nav2_profile:=map_only` 取 `nav2_params_isaac_gt_map_only.yaml`。
+fiveages_w2 的地图和参数在 `fiveages_w2_description`。`nav2_profile:=map_only` 取 `nav2_params_isaac_gt_map_only.yaml`。

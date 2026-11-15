@@ -6,17 +6,15 @@
     # 角度控制缩放因子（用于手柄/键盘控制）
     angular_scale: 0.025
     
-    # VR更新频率（Hz）
-    vr_update_rate: 500.0
+    # XR更新频率（Hz）
+    xr_update_rate: 500.0
 
     marker_fixed_frame: base_footprint
-    # 是否启用VR输入处理
-    enable_vr: true
-    # VR 按键方案：legacy（旧方案，29 个事件）| simple（握把按住跟随/松开停止，见 docs/VR遥操作.md）
-    vr_control_scheme: legacy
+    # 是否启用XR输入处理
+    enable_xr: true
     # 头显 yaw 对齐：true 时以操作员面朝方向为机器人 +X，不受 Pico 房间原点/手柄倾角影响
-    # 真机首次开启时请降低 vr_pose_scale 并在 mock/Isaac 先验证方向
-    vr_align_head_yaw: false
+    # 真机首次开启时请降低 xr_pose_scale 并在 mock/Isaac 先验证方向
+    xr_align_head_yaw: false
     enable_head_control: false
     
     # 头部关节映射配置（可选）

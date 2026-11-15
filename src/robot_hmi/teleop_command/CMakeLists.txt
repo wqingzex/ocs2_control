@@ -33,7 +33,7 @@ add_library(${PROJECT_NAME} SHARED
         src/TeleopCommand.cpp
         src/MarkerFactory.cpp
         src/ControlInputHandler.cpp
-        src/VRInputHandler.cpp
+        src/XrInputHandler.cpp
         src/marker/HeadMarker.cpp
         src/marker/ArmMarker.cpp
         src/marker/BodyMarker.cpp
@@ -101,9 +101,12 @@ install(
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
-  ament_add_gtest(test_vr_alignment test/test_vr_alignment.cpp)
-  target_include_directories(test_vr_alignment PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-  target_link_libraries(test_vr_alignment Eigen3::Eigen)
+  ament_add_gtest(test_xr_alignment test/test_xr_alignment.cpp)
+  target_include_directories(test_xr_alignment PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_xr_alignment Eigen3::Eigen)
+  # XrInputHandler in one process: headset topics in, /fsm_command, arm targets and hand percentages out.
+  ament_add_gtest(test_xr_input_handler test/test_xr_input_handler.cpp TIMEOUT 120)
+  target_link_libraries(test_xr_input_handler ${PROJECT_NAME})
 endif()
 
 ament_export_dependencies(${TARGET_MANAGER_INCLUDE_DEPENDS})

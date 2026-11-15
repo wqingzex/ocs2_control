@@ -1,7 +1,7 @@
 """Offline tools of the logging system: the fault code registry and the flight recorder decoder.
 
 They read files only (config tables, ring files, logs), need no ROS, and serve the whole chain, not one package.
-Design: docs/日志.md.
+Design: src/robot_log/README.md.
 """
 import os
 from typing import Optional

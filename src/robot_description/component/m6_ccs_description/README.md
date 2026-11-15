@@ -1,6 +1,6 @@
 # m6_ccs_description
 
-天机 Marvin M6-S CCS 双臂的描述包，同时是**末端和 `ros2_control` 共享宏**的所在：W2 的双臂和末端也复用这里。
+天机 Marvin M6-S CCS 双臂的描述包，同时是**末端和 `ros2_control` 共享宏**的所在：fiveages_w2 的双臂和末端也复用这里。
 
 ![Marvin M6 CCS](../../../../docs/images/description/m6_ccs.png)
 
@@ -17,7 +17,7 @@ ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs hardware:=real type:=
 | 单臂 | `type:=left` 或 `type:=right` |
 | 末端 | `type:=<键>`；左右不同用 `left_type` / `right_type`，此时不要再传 `type` |
 | 展台 | `variant:=desktop`（臂间距 ±0.12 m，OCS2 `desktop.info`），与末端正交，见 [docs/m6_ccs_dual_desktop.md](docs/m6_ccs_dual_desktop.md) |
-| 臂外观 | `skin:=fiveages_w2` 用 W2 的外观网格；碰撞始终用 `meshes/link*.glb` |
+| 臂外观 | `skin:=fiveages_w2` 用 fiveages_w2 的外观网格；碰撞始终用 `meshes/link*.glb` |
 
 `robot.local.yaml` 也可配 `defaults.end_effectors.left` / `.right`。
 

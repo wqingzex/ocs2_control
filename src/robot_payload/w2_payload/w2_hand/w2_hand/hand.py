@@ -167,7 +167,7 @@ class Arm485Transport:
             pass
         library = next((p for p in paths if p.is_file()), None)
         if library is None:
-            raise RuntimeError('未找到机械臂末端 SDK，请先运行 ./scripts/setup.sh build-workspace')
+            raise RuntimeError('未找到机械臂末端 SDK，请先运行 ./scripts/setup.sh build')
         self.sdk = ctypes.CDLL(str(library))
         self.sdk.OnLinkTo.argtypes, self.sdk.OnLinkTo.restype = [ctypes.c_ubyte] * 4, ctypes.c_bool
         self.sdk.OnRelease.restype = ctypes.c_bool

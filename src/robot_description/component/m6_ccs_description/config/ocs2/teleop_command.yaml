@@ -6,6 +6,6 @@
     # 角度控制缩放因子（用于手柄/键盘控制）
     angular_scale: 0.05
     
-    # 是否启用VR输入处理
-    enable_vr: true
+    # 是否启用XR输入处理
+    enable_xr: true
 

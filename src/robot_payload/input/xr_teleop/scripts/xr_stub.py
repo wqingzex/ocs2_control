@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Headset-free stand-in for xr_target_node (same node name, which VRInputHandler requires).
+"""Headset-free stand-in for xr_target_node (same node name, which XrInputHandler requires).
 
-    ros2 run xr_teleop xr_stub.py [--script steps.json] [--silent]   # timeline format: docs/VR遥操作.md section 8"""
+    ros2 run xr_teleop xr_stub.py [--script steps.json] [--silent]   # timeline format: docs/使用手册.md section 6.4"""
 import argparse
 import json
 import math

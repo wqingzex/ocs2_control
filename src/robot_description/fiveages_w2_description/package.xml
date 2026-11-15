@@ -13,8 +13,8 @@
 
   <exec_depend>nav2_smac_planner</exec_depend>
   <exec_depend>linkhou_s2_description</exec_depend>
-  <exec_depend>w2_body_description</exec_depend>
-  <exec_depend>w2_head_description</exec_depend>
+  <exec_depend>fiveages_w2_body_description</exec_depend>
+  <exec_depend>fiveages_w2_head_description</exec_depend>
 
   <exec_depend>sensor_models</exec_depend>
   <exec_depend>m6_ccs_description</exec_depend>

@@ -1,7 +1,7 @@
 /**
  * Minimal C++ example: connect to Marvin robot and initialize dual LinkerHand (dexterous hand) for testing.
  *
- * Build from workspace (fa_w2_ws):
+ * Build from workspace (fiveages_w2_ws):
  *   colcon build --packages-select marvin_hardware
  *
  * Run (ensure robot is at 192.168.1.190 with hands on channel A/B):

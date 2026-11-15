@@ -6,11 +6,11 @@ JX 电机的 `ros2_control` 驱动，CAN FD 通信，循环同步位置（CSP）
 
 ## 作用
 
-W2 的腰（`body_joint1~4`）和头（`head_joint1~2`）用它，URDF 里是独立的 `juxie_body` system。最多 8 个电机，1 Mbps 仲裁段、5 Mbps 数据段。
+fiveages_w2 的腰（`body_joint1~4`）和头（`head_joint1~2`）用它，URDF 里是独立的 `juxie_body` system。最多 8 个电机，1 Mbps 仲裁段、5 Mbps 数据段。
 
 ## 使用
 
-由机器人 xacro 配置，W2 见 `fiveages_w2_description/xacro/ros2_control/robot.xacro`。参数：
+由机器人 xacro 配置，fiveages_w2 见 `fiveages_w2_description/xacro/ros2_control/robot.xacro`。参数：
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
@@ -28,7 +28,7 @@ W2 的腰（`body_joint1~4`）和头（`head_joint1~2`）用它，URDF 里是独
 
 ## 稳定性统计
 
-驱动会数自己的运行情况，用来在真机上判断速度和稳定性。在 W2 上把 `config/robot.local.yaml` 的 `hardware:` 下 `body_can_stats_period_s` 设成比如 `10`，每 10 秒打印一行（也可以直接在驱动参数里写 `stats_log_period_s`）：
+驱动会数自己的运行情况，用来在真机上判断速度和稳定性。在 fiveages_w2 上把 `config/robot.local.yaml` 的 `hardware:` 下 `body_can_stats_period_s` 设成比如 `10`，每 10 秒打印一行（也可以直接在驱动参数里写 `stats_log_period_s`）：
 
 ```
 Control loop stats (10.0 s): 5000 cycles, wake-up lateness mean 52.1 us / max 180.4 us, 0 late (> half a period),

@@ -6,7 +6,7 @@
 #include <std_msgs/msg/int32.hpp>
 #include "teleop_command/TeleopCommand.h"
 #include "teleop_command/ControlInputHandler.h"
-#include "teleop_command/VRInputHandler.h"
+#include "teleop_command/XrInputHandler.h"
 #include <robot_log/log_mode.hpp>
 
 using namespace teleop_command;
@@ -27,13 +27,11 @@ int main(int argc, char** argv)
     std::string body_controller_name = node->declare_parameter("body_controller_name", "body_joint_controller");
     double linear_scale = node->declare_parameter("linear_scale", 0.005);
     double angular_scale = node->declare_parameter("angular_scale", 0.05);
-    double vr_thumbstick_linear_scale = node->declare_parameter("vr_thumbstick_linear_scale", 0.005);
-    double vr_thumbstick_angular_scale = node->declare_parameter("vr_thumbstick_angular_scale", 0.05);
-    double vr_pose_scale = node->declare_parameter("vr_pose_scale", 1.0);
-    // VR/头显参考link（通常为机器人头部link），可在各机器人teleop_command.yaml中配置
+    double xr_pose_scale = node->declare_parameter("xr_pose_scale", 1.0);
+    // XR/头显参考link（通常为机器人头部link），可在各机器人teleop_command.yaml中配置
     std::string reference_link = node->declare_parameter("reference_link", "head_link2");
 
-    bool enable_vr = node->declare_parameter("enable_vr", true);
+    bool enable_xr = node->declare_parameter("enable_xr", true);
 
     // 获取 hand_controllers 参数（用于自动检测和验证）
     std::vector<std::string> hand_controllers = node->declare_parameter("hand_controllers", std::vector<std::string>());
@@ -85,23 +83,20 @@ int main(int argc, char** argv)
                 linear_scale, angular_scale);
 
     RCLCPP_INFO(node->get_logger(),
-            "VR control: enabled=%s",
-            enable_vr ? "true" : "false");
-    if (enable_vr)
+            "XR control: enabled=%s",
+            enable_xr ? "true" : "false");
+    if (enable_xr)
     {
         RCLCPP_INFO(node->get_logger(),
-                    "VR thumbstick scales: linear=%.3f, angular=%.3f (from teleop_command.yaml)",
-                    vr_thumbstick_linear_scale, vr_thumbstick_angular_scale);
+                    "XR pose scale: %.3f (xr_pose_scale in teleop_command.yaml)", xr_pose_scale);
         RCLCPP_INFO(node->get_logger(),
-                    "VR pose scale: left=1.0, right=1.0 (fixed, not configurable)");
-        RCLCPP_INFO(node->get_logger(),
-                    "VR reference_link: %s (from teleop_command.yaml, default=head_link2)",
+                    "XR reference_link: %s (from teleop_command.yaml, default=head_link2)",
                     reference_link.c_str());
     }
 
     try
     {
-        // 创建统一的目标位姿发布器（在所有模块之前创建，供 ArmMarker 和 VRInputHandler 共享）
+        // 创建统一的目标位姿发布器（在所有模块之前创建，供 ArmMarker 和 XrInputHandler 共享）
         // 队列长度统一为 1，只关心最新的目标位姿
         auto pub_left_target = node->create_publisher<geometry_msgs::msg::Pose>("left_target", 1);
         auto pub_left_target_stamped = node->create_publisher<geometry_msgs::msg::PoseStamped>("left_target/stamped", 1);
@@ -122,18 +117,15 @@ int main(int argc, char** argv)
         auto control_handler = std::make_unique<ControlInputHandler>(
             node, teleop_command.get(), linear_scale, angular_scale, hand_controllers);
 
-        // 创建VRInputHandler（如果启用，传入统一的发布器、hand_controllers 及 teleop_command.yaml 的 scale 参数）
-        std::unique_ptr<VRInputHandler> vr_handler = nullptr;
-        if (enable_vr)
+        // 创建XrInputHandler（如果启用，传入统一的发布器、hand_controllers 及 teleop_command.yaml 的 xr_pose_scale）
+        std::unique_ptr<XrInputHandler> xr_handler = nullptr;
+        if (enable_xr)
         {
-            // VR 手柄位姿缩放因子固定为 1.0（左右手独立），不再通过参数配置
-            vr_handler = std::make_unique<VRInputHandler>(
+            xr_handler = std::make_unique<XrInputHandler>(
                 node, teleop_command.get(), pub_left_target, pub_right_target, hand_controllers,
-                vr_thumbstick_linear_scale, vr_thumbstick_angular_scale,
-                vr_pose_scale, reference_link);
-            // 头显 yaw 对齐与按键方案（默认保持旧行为，见 VRInputHandler.h）
-            vr_handler->setAlignHeadYaw(node->declare_parameter("vr_align_head_yaw", false));
-            vr_handler->setControlScheme(node->declare_parameter("vr_control_scheme", std::string("legacy")));
+                xr_pose_scale, reference_link);
+            // 头显 yaw 对齐（默认保持旧行为，见 XrInputHandler.h）
+            xr_handler->setAlignHeadYaw(node->declare_parameter("xr_align_head_yaw", false));
         }
 
         // 创建 control input 订阅器（用于增量控制）
@@ -150,10 +142,10 @@ int main(int argc, char** argv)
             });
 
         // 创建 FSM 命令订阅器（用于状态切换和 marker 形态更新）
-        // 统一处理 TeleopCommand 和 VRInputHandler 的 FSM 状态更新，避免重复订阅冲突
+        // 统一处理 TeleopCommand 和 XrInputHandler 的 FSM 状态更新，避免重复订阅冲突
         auto fsm_command_subscription = node->create_subscription<std_msgs::msg::Int32>(
             "/fsm_command", 10,
-            [teleop_command_ptr = teleop_command.get(), vr_handler_ptr = vr_handler.get()](
+            [teleop_command_ptr = teleop_command.get(), xr_handler_ptr = xr_handler.get()](
             const std_msgs::msg::Int32::ConstSharedPtr msg)
             {
                 // 处理 FSM 状态切换 - TeleopCommand
@@ -162,28 +154,28 @@ int main(int argc, char** argv)
                     teleop_command_ptr->fsmCommandCallback(msg);
                 }
                 
-                // 处理 FSM 状态切换 - VRInputHandler（如果启用）
-                if (vr_handler_ptr)
+                // 处理 FSM 状态切换 - XrInputHandler（如果启用）
+                if (xr_handler_ptr)
                 {
-                    // 转换为 SharedPtr 以匹配 VRInputHandler 的回调签名
+                    // 转换为 SharedPtr 以匹配 XrInputHandler 的回调签名
                     auto shared_msg = std::const_pointer_cast<std_msgs::msg::Int32>(msg);
-                    vr_handler_ptr->fsmCommandCallback(shared_msg);
+                    xr_handler_ptr->fsmCommandCallback(shared_msg);
                 }
             });
 
-        // 设置 current_pose 回调（用于 VRInputHandler，通过 ArmMarker 的回调机制避免重复订阅）
-        // ArmMarker 内部订阅了 current_pose，通过回调机制将原始消息转发给 VRInputHandler
-        if (enable_vr && vr_handler)
+        // 设置 current_pose 回调（用于 XrInputHandler，通过 ArmMarker 的回调机制避免重复订阅）
+        // ArmMarker 内部订阅了 current_pose，通过回调机制将原始消息转发给 XrInputHandler
+        if (enable_xr && xr_handler)
         {
             // 左臂 current_pose 回调
             teleop_command->setCurrentPoseCallback("left",
-                [vr_handler_ptr = vr_handler.get()](const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg)
+                [xr_handler_ptr = xr_handler.get()](const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg)
                 {
-                    if (vr_handler_ptr)
+                    if (xr_handler_ptr)
                     {
-                        // 转换为 SharedPtr 以匹配 VRInputHandler 的回调签名
+                        // 转换为 SharedPtr 以匹配 XrInputHandler 的回调签名
                         auto shared_msg = std::const_pointer_cast<geometry_msgs::msg::PoseStamped>(msg);
-                        vr_handler_ptr->robotLeftPoseCallback(shared_msg);
+                        xr_handler_ptr->robotLeftPoseCallback(shared_msg);
                     }
                 });
 
@@ -191,13 +183,13 @@ int main(int argc, char** argv)
             if (dual_arm_mode)
             {
                 teleop_command->setCurrentPoseCallback("right",
-                    [vr_handler_ptr = vr_handler.get()](const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg)
+                    [xr_handler_ptr = xr_handler.get()](const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg)
                     {
-                        if (vr_handler_ptr)
+                        if (xr_handler_ptr)
                         {
-                            // 转换为 SharedPtr 以匹配 VRInputHandler 的回调签名
+                            // 转换为 SharedPtr 以匹配 XrInputHandler 的回调签名
                             auto shared_msg = std::const_pointer_cast<geometry_msgs::msg::PoseStamped>(msg);
-                            vr_handler_ptr->robotRightPoseCallback(shared_msg);
+                            xr_handler_ptr->robotRightPoseCallback(shared_msg);
                         }
                     });
             }
@@ -206,9 +198,9 @@ int main(int argc, char** argv)
         RCLCPP_INFO(node->get_logger(), "TeleopCommand is ready!");
         RCLCPP_INFO(node->get_logger(), "Use RViz to interact with the markers.");
         RCLCPP_INFO(node->get_logger(), "Control input handler is ready for joystick/keyboard control!");
-        if (enable_vr)
+        if (enable_xr)
         {
-            RCLCPP_INFO(node->get_logger(), "VR input handler is ready for VR control!");
+            RCLCPP_INFO(node->get_logger(), "XR input handler is ready for XR control!");
         }
 
         // 保持节点运行

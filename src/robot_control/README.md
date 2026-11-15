@@ -1,9 +1,9 @@
 # robot_control
 
-W2 / M6 的控制栈：从末端目标到关节指令。控制器都是 ros2_control 的 `ControllerInterface` 插件，由 `controller_manager` 加载。
+双臂和 fiveages_w2 的控制栈：从末端目标到关节指令。控制器都是 ros2_control 的 `ControllerInterface` 插件，由 `controller_manager` 加载。
 
 ```
-目标（robot_hmi 的 teleop_command：RViz marker / VR / 手柄）
+目标（robot_hmi 的 teleop_command：RViz marker / XR / 手柄）
    → 控制器（MPC 或关节插值，ros2_control 插件）
    → src/robot_hardware 里的硬件插件 → 真机
 ```
@@ -29,7 +29,7 @@ W2 / M6 的控制栈：从末端目标到关节指令。控制器都是 ros2_con
 colcon build --packages-up-to arm_controller
 ```
 
-整个工作区用 `./scripts/setup.sh build-workspace`。依赖：OCS2（`src/third_party/ocs2_ros2` 子模块）、Pinocchio。
+整个工作区用 `./scripts/setup.sh build`。依赖：OCS2（`src/third_party/ocs2_ros2` 子模块）、Pinocchio。
 
 ## 约定
 

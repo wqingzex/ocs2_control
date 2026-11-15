@@ -1,7 +1,7 @@
 /**
  * Minimal C++ example: connect to Marvin robot and initialize dual Changingtek 90D gripper.
  *
- * Build from workspace (fa_w2_ws):
+ * Build from workspace (fiveages_w2_ws):
  *   colcon build --packages-select marvin_hardware --cmake-args -DMARVIN_BUILD_EXAMPLE=ON
  *
  * Run (ensure robot is at 192.168.1.190):

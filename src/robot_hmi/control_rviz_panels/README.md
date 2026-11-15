@@ -33,5 +33,5 @@ ros2 run rviz2 rviz2
 | 发布 | `/fsm_command` | `std_msgs/Int32`（1 HOME、2 HOLD、3 OCS2、4 MOVEJ） |
 | 发布 | `mode_command` | `std_msgs/String`（身体模式） |
 | 发布 | `<控制器>/target_percent` 等 | 夹爪、腰的命令 |
-| 订阅 | `/fsm_command` | 同步其他来源（遥操作、VR）切换的状态 |
+| 订阅 | `/fsm_command` | 同步其他来源（遥操作、XR）切换的状态 |
 | 订阅 | WBC 能力与状态话题 | `WholeBodyCapability`、`WholeBodyCurrentState` |

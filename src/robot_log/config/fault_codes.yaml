@@ -62,17 +62,10 @@
 
 - code: TEL-001
   class: M
-  title: 找不到 xr_target_node，VR 控制关闭
-  behavior: 记日志并关闭 VR 控制，机械臂不响应 VR
-  check: xr 模块是否在运行（控制台“VR”）；节点名是否仍是 xr_target_node
-  source: {file: src/robot_hmi/teleop_command/src/VRInputHandler.cpp, match: "xr_target_node not found, VR control DISABLED"}
-
-- code: TEL-002
-  class: M
-  title: vr_control_scheme 配置值不认识
-  behavior: 记 ERROR，保持原来的方案不变
-  check: config/robot.local.yaml 里 xr.control_scheme 只能是 legacy 或 simple
-  source: {file: src/robot_hmi/teleop_command/src/VRInputHandler.cpp, match: "未知的 vr_control_scheme"}
+  title: 找不到 xr_target_node，XR 控制关闭
+  behavior: 记日志并关闭 XR 控制，机械臂不响应 XR
+  check: xr 模块是否在运行（控制台“XR”）；节点名是否仍是 xr_target_node
+  source: {file: src/robot_hmi/teleop_command/src/XrInputHandler.cpp, match: "xr_target_node not found, XR control DISABLED"}
 
 - code: CTL-001
   class: M
@@ -264,4 +257,4 @@
   title: 录制磁盘空间不足
   behavior: 拒绝开始新的录制（已有的不受影响）
   check: 磁盘剩余空间；清理 logs/、旧录制和诊断包
-  source: {file: src/robot_teleop/teleop_app/teleop_app/recording.py, match: "磁盘剩余空间不足"}
+  source: {file: src/robot_hmi/teleop_app/teleop_app/recording.py, match: "磁盘剩余空间不足"}

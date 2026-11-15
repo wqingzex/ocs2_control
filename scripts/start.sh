@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# W2 命令行启动入口：读 config/robot.local.yaml，前台启动模块。
+# ocs2_control 命令行启动入口：读 config/robot.local.yaml，前台启动模块。
 # 用法见 ./scripts/start.sh help。
 set -Eeuo pipefail
 
 usage() {
   cat <<'EOF_USAGE'
-W2 命令行入口（面向专业人员）
+ocs2_control 命令行入口（面向专业人员）
 首次使用：先运行 ./scripts/setup.sh。
 
 启动
-  ./scripts/start.sh                      按配置启动运控、VR 和相机，Ctrl+C 停止
+  ./scripts/start.sh                      按配置启动运控、XR 和相机，Ctrl+C 停止
   ./scripts/start.sh sim | isaac          同上，硬件改为仿真（mock_components）/ Isaac
   ./scripts/start.sh viz                  只在 RViz 里看机器人模型（带关节滑块，不启动控制）
   ./scripts/start.sh up|down|restart|status|logs [模块]   按模块管理（status --hz 看话题频率）
@@ -19,7 +19,7 @@ W2 命令行入口（面向专业人员）
   ./scripts/start.sh console              Web 控制台，前台运行（Ctrl+C 停止）
   ./scripts/start.sh console start|stop|restart|status [--port N] [--host H]
                                           后台启动 / 停止 / 重启 / 查看控制台（默认端口 8765）
-  ./scripts/start.sh console --open       后台启动并用浏览器打开（双击 W2控制台 用的就是它）
+  ./scripts/start.sh console --open       后台启动并用浏览器打开（双击 ocs2_control控制台 用的就是它）
 录制与回放
   ./scripts/start.sh record [名称] [--topics joint|xr|collect|/a,/b]   默认只录关节
   ./scripts/start.sh play 名称 [--rate 0.5] [--loop] [--paused] [--start 秒] [--xr]
@@ -67,7 +67,7 @@ check_config() {
 }
 
 cmd_build() {
-  exec "${WS_DIR}/scripts/setup.sh" build-workspace "$@"  # 包清单只在 setup.sh 里维护
+  exec "${WS_DIR}/scripts/setup.sh" build "$@"  # 包清单只在 setup.sh 里维护
 }
 
 cmd_check() {
@@ -101,14 +101,14 @@ cmd_start() {
 console_notify() {
   printf '%s\n' "$1" >&2
   if command -v notify-send >/dev/null 2>&1; then
-    notify-send "W2 遥操作控制台" "$1" || true
+    notify-send "ocs2_control 控制台" "$1" || true
   elif command -v zenity >/dev/null 2>&1; then
-    zenity --error --title="W2 遥操作控制台" --text="$1" || true
+    zenity --error --title="ocs2_control 控制台" --text="$1" || true
   fi
 }
 
 console_port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
-# 端口上是不是 W2 控制台本身：只看"端口能连上"会把别的程序（例如本机代理占着 8080）当成控制台；
+# 端口上是不是 ocs2_control 控制台本身：只看"端口能连上"会把别的程序（例如本机代理占着 8080）当成控制台；
 # 控制台的状态接口返回含 units 的 JSON。环境里的 http_proxy 不能拦截本机请求，所以不走代理。
 console_is_up() {
   python3 -c '
@@ -211,7 +211,7 @@ cmd_open_console() {
   [[ "${port}" =~ ^[0-9]{1,5}$ ]] && (( 10#${port} > 0 && 10#${port} <= 65535 )) \
     || die "无效端口号: ${port}"
   local cfg log_dir="${WS_DIR}/logs/console"
-  local page="${XDG_RUNTIME_DIR:-${HOME}}/.w2_console_open.html"
+  local page="${XDG_RUNTIME_DIR:-${HOME}}/.ocs2_control_console_open.html"
   cfg="$(resolve_config "${CONFIG_ARG}")"
 
   # 先打开等待页，避免加载 ROS 时双击没有反馈。
@@ -225,7 +225,7 @@ page, port, logfile = sys.argv[1:]
 url = json.dumps(f"http://127.0.0.1:{port}/")
 message = json.dumps(f"控制台没有启动，日志见 {logfile}", ensure_ascii=True)
 os.umask(0o077)
-Path(page).write_text('''<!doctype html><meta charset="utf-8"><title>W2 遥操作控制台</title>
+Path(page).write_text('''<!doctype html><meta charset="utf-8"><title>ocs2_control 控制台</title>
 <body style="font:16px sans-serif;padding:2em"><p id="m">正在启动控制台…</p>
 <script>
 const url = ''' + url + ''', base = url;
@@ -331,7 +331,7 @@ parse_options "$@"
 set -- ${REST[@]+"${REST[@]}"}
 
 case "${1:-}" in
-  build-workspace|build) shift; cmd_build "$@" ;;
+  build) shift; cmd_build "$@" ;;
   check) shift; cmd_check "${1:-${CONFIG_ARG}}" ;;
   record|play|bags) recording "$@" ;;
   nav) shift; cmd_nav "$@" ;;

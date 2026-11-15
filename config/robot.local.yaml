@@ -26,6 +26,7 @@ platform:
   arm_ctrl_mode: joint_impedance      # position | joint_impedance（和旧工作区一致）
 
 hardware:
+  marvin_firmware: 338       # 天机臂 SDK 版本，要和臂的控制器固件一致（./scripts/setup.sh marvin 重新选择）
   max_joint_speed: 100
   max_joint_acceleration: 100
   body_can_interface: can0     # 腰、头（Juxie）的 CAN FD 接口；改它之后重新运行 ./scripts/setup.sh host，让免密 sudo 规则用同一个名字

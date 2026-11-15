@@ -1,5 +1,5 @@
 ; m6_ccs_description：单臂精定位
-; 参数基准：W2 的 fixed_base.info，仅提取手臂适用项。
+; 参数基准：fiveages_w2 的 fixed_base.info，仅提取手臂适用项。
 ; 状态与输入为 7 维：[joint1~7]。
 ; 保留本模型的基座和末端坐标系；规划 xacro 固定末端执行器关节。
 

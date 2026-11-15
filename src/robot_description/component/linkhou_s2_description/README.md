@@ -1,6 +1,6 @@
 # linkhou_s2_description
 
-W2 的轮式底盘 Linkhou S2，两个型号：`linkhou_s2`（旧款）和 `linkhou_s2_v2`（默认）。
+fiveages_w2 的轮式底盘 Linkhou S2，两个型号：`linkhou_s2`（旧款）和 `linkhou_s2_v2`（默认）。
 
 ## 作用
 

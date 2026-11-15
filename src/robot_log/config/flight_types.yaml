@@ -29,7 +29,7 @@
   fields: [age_ms, event]   # age_ms：这一帧从收到到发布隔了多久；event：按键事件编码
 
 - id: 201
-  name: tel_vr_in
+  name: tel_xr_in
   module: teleop_command
   aux: "0 左手，1 右手"
   fields: [x, y, z, qw, qx, qy, qz]

@@ -44,7 +44,7 @@ def ws_root(tmp_path):
     return tmp_path
 
 
-# --- VR step --------------------------------------------------------------------------------------------
+# --- XR step --------------------------------------------------------------------------------------------
 
 def test_xr_step_reports_missing_pc_service(ws_root):
     path = ws_root / "config" / "robot.local.yaml"

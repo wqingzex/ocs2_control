@@ -1,6 +1,6 @@
 # jodell_description
 
-Jodell（钧舵）夹爪的描述：**RG75-300**（平行夹爪）和 ERG32（旋转夹爪）。来自真机部署包 `fa-deploy-ws` 的 `robot-descriptions-common/gripper/jodell_description`，W2 的部署预设里左手默认就是 RG75。
+Jodell（钧舵）夹爪的描述：**RG75-300**（平行夹爪）和 ERG32（旋转夹爪）。来自真机部署包 `fa-deploy-ws` 的 `robot-descriptions-common/gripper/jodell_description`，fiveages_w2 的部署预设里左手默认就是 RG75。
 
 | 文件 | 内容 |
 |---|---|
@@ -13,7 +13,7 @@ Jodell（钧舵）夹爪的描述：**RG75-300**（平行夹爪）和 ERG32（�
 
 ## 在整机上用
 
-W2 和 M6 的类型解析认 `rg75`：
+fiveages_w2 和 M6 的类型解析认 `rg75`：
 
 ```bash
 ros2 launch robot_bringup split_body.launch.py robot:=fiveages_w2 hardware:=mock_components type:=rg75

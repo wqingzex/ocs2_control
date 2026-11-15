@@ -113,7 +113,7 @@ public:
 
     /**
      * Coupled leadership: record that the left arm just commanded.
-     * Call when entering BIMANUAL_COUPLED so VR right packets cannot steal leadership
+     * Call when entering BIMANUAL_COUPLED so XR right packets cannot steal leadership
      * before the first left heartbeat.
      */
     void markLeftCouplingCommand();

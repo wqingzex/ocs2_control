@@ -1,6 +1,6 @@
 # xr_teleop
 
-XR 头显（Pico + XRoboToolkit PC Service）的遥操作输入：把头显和手柄数据发布成 `/teleop/*`，由 `teleop_command` 的 `VRInputHandler` 接收。
+XR 头显（Pico + XRoboToolkit PC Service）的遥操作输入：把头显和手柄数据发布成 `/teleop/*`，由 `teleop_command` 的 `XrInputHandler` 接收。
 
 ## 组成
 
@@ -15,8 +15,8 @@ XR 头显（Pico + XRoboToolkit PC Service）的遥操作输入：把头显和�
 | `xr_teleop/probe.py` | 只订阅 `/teleop/connection_status` 和 `/teleop/device_id` 的小探针，配对用 |
 | `scripts/xr_stub.py` | 无头显联调，模拟 XR 数据：`ros2 run xr_teleop xr_stub.py [--script steps.json] [--silent]` |
 
-编译 `xr_bridge` 需要 PC Service 的 SDK（`/opt/apps/roboticsservice/SDK`，或设置 `XRT_SDK_DIR`）；没有时只编译核心库和测试。用法、配对、故障排查见 [`docs/VR遥操作.md`](../../../../docs/VR遥操作.md)。
+编译 `xr_bridge` 需要 PC Service 的 SDK（`/opt/apps/roboticsservice/SDK`，或设置 `XRT_SDK_DIR`）；没有时只编译核心库和测试。用法、配对、故障排查见 [`docs/使用手册.md`](../../../../docs/使用手册.md)。
 
 ## 测试
 
-`colcon test --packages-select xr_teleop`。C++ 位姿和按键的单元测试用 `test/data/*.csv` 作为与旧 Python 实现逐帧一致的基准。
+`colcon test --packages-select xr_teleop`。位姿和摇杆、扳机、握把模拟量的单元测试用 `test/data/*.csv` 作为与旧 Python 实现逐帧一致的基准；按键编码（右 A = 1，左 X = 2，右摇杆按下 = 3，见 `docs/使用手册.md` 第 6.1 节）有单独的用例。

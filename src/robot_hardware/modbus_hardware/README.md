@@ -4,7 +4,7 @@
 
 ## 作用
 
-`hardware:=real_usb` 时，W2 / M6 的末端手走这里（URDF 里的 `external_ee_systems`），串口默认左 `/dev/ttyUSB0`、右 `/dev/ttyUSB2`。臂体上的 RS485 末端走 [`marvin_hardware`](../marvin_hardware/README.md)。
+`hardware:=real_usb` 时，双臂和 fiveages_w2 的末端手走这里（URDF 里的 `external_ee_systems`），串口默认左 `/dev/ttyUSB0`、右 `/dev/ttyUSB2`。臂体上的 RS485 末端走 [`marvin_hardware`](../marvin_hardware/README.md)。
 
 ## 插件
 

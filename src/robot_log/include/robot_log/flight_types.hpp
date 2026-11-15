@@ -11,7 +11,7 @@ namespace robot_log::flight
     inline constexpr std::uint16_t kXrFrameIn = 101;      // an accepted headset frame
     inline constexpr std::uint16_t kXrPublish = 102;      // that frame published
     // 2xx: teleop_command
-    inline constexpr std::uint16_t kTelVrIn = 201;        // a VR pose received
+    inline constexpr std::uint16_t kTelXrIn = 201;        // a XR pose received
     inline constexpr std::uint16_t kTelTargetOut = 202;   // a target pose published to a controller
     // 3xx: controllers
     inline constexpr std::uint16_t kCtlTargetIn = 301;    // a joint target received

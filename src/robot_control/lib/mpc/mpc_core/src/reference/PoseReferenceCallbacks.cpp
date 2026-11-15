@@ -178,7 +178,7 @@ namespace ocs2::mpc_core
         }
         if (isWholeBodyBimanualCoupled() && isCoupledLeftLeaderFresh())
         {
-            // Left still owns coupling (VR both-hands heartbeat, or recent left teleop).
+            // Left still owns coupling (XR both-hands heartbeat, or recent left teleop).
             // Do not inverse-sync or push a second trajectory from right_target.
             return;
         }

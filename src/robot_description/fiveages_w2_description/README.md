@@ -1,6 +1,6 @@
 # fiveages_w2_description
 
-第五纪 W2（轮式人形）整机描述：xacro 模型、`ros2_control` 配置、OCS2 配置、导航路由。
+第五纪 fiveages_w2（轮式人形）整机描述：xacro 模型、`ros2_control` 配置、OCS2 配置、导航路由。
 
 ![FiveAges W2](../../../docs/images/fiveages_w2_description/fiveages_w2.png)
 
@@ -11,7 +11,7 @@
 | 部分 | 来源 |
 |---|---|
 | 底盘（`linkhou_s2_v2`，默认；或 `linkhou_s2`） | [`linkhou_s2_description`](../component/linkhou_s2_description/README.md)，参数 `chassis` |
-| 躯干、头 | [`w2_body_description`](../component/w2_body_description/README.md)、[`w2_head_description`](../component/w2_head_description/README.md)，参数 `variant`（头限位：`stand` / `v1.5`） |
+| 躯干、头 | [`fiveages_w2_body_description`](../component/fiveages_w2_body_description/README.md)、[`fiveages_w2_head_description`](../component/fiveages_w2_head_description/README.md)，参数 `variant`（头限位：`stand` / `v1.5`） |
 | 双臂（`skin:=fiveages_w2`）、末端、`ros2_control` 宏 | [`m6_ccs_description`](../component/m6_ccs_description/README.md) |
 
 规划 URDF 默认冻结底盘轮关节和末端关节。

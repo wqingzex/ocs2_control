@@ -223,8 +223,8 @@ def percentile(values: Sequence[float], fraction: float) -> float:
 
 # (source stream, sink stream, title, match the hand/arm side of the two)
 HOPS = (("xr_bridge/xr_frame_in", "xr_bridge/xr_publish", "headset frame received -> published", False),
-        ("xr_bridge/xr_publish", "teleop_command/tel_vr_in", "published by the bridge -> seen by teleop_command", False),
-        ("teleop_command/tel_vr_in", "teleop_command/tel_target_out", "VR pose in -> target out (same hand)", True))
+        ("xr_bridge/xr_publish", "teleop_command/tel_xr_in", "published by the bridge -> seen by teleop_command", False),
+        ("teleop_command/tel_xr_in", "teleop_command/tel_target_out", "XR pose in -> target out (same hand)", True))
 
 
 def hop_table(streams: Sequence[Stream]) -> List[Tuple[str, List[float]]]:

@@ -15,16 +15,11 @@ DEFAULTS: Dict[str, Any] = {
         "pc_service_script": "/opt/apps/roboticsservice/runService.sh",
         "frame_timeout_ms": 300,
         "reconnect_interval_s": 3.0,
-        # legacy: same events as the former xr_target_node | simple: single keys, use together
-        # with vr_control_scheme: simple in the robot's teleop_command.yaml (grip clutch)
-        "control_scheme": "legacy",
         "network_mode": "ethernet",
         "network_interface": "",
         "device_id": "",
     },
 }
-# Renamed fields: old configs keep working (xr.button_profile is now xr.control_scheme).
-RENAMED = {"xr": {"button_profile": "control_scheme"}}
 
 
 def _check_xr(cfg: Dict[str, Any]) -> None:
@@ -35,8 +30,6 @@ def _check_xr(cfg: Dict[str, Any]) -> None:
            "'xr.device_id' contains control characters")
     expect(xr["frame_timeout_ms"] > 0, "'xr.frame_timeout_ms' must be > 0")
     expect(xr["reconnect_interval_s"] > 0, "'xr.reconnect_interval_s' must be > 0")
-    expect(xr["control_scheme"] in ("legacy", "simple"),
-           f"'xr.control_scheme' must be 'legacy' or 'simple', got {xr['control_scheme']!r}")
 
 
-EXTENSION = Extension(defaults=DEFAULTS, renamed=RENAMED, checks=(_check_xr,))
+EXTENSION = Extension(defaults=DEFAULTS, checks=(_check_xr,))

@@ -774,7 +774,7 @@ void WholeBodyMpcTask::applyArmTransitionHoldToCommands() {
             if (hardwareIndex >= joint_names_.size()) {
                 continue;
             }
-            // FA_W2 POSITION mode: position only, no effort write. MIX mode: additionally zero the
+            // fiveages_w2 POSITION mode: position only, no effort write. MIX mode: additionally zero the
             // velocity command for held joints; static torque/effort is left as written by the
             // normal output path above.
             ctrl_interfaces_.setJointPositionCommand(hardwareIndex, hold.heldCommandPositions[local]);

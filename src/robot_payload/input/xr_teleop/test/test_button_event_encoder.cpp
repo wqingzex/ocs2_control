@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <map>
+#include <vector>
 
 #include "xr_teleop/button_event_encoder.hpp"
 #include "golden_csv.hpp"
@@ -39,97 +39,107 @@ namespace
         return xr_teleop::toTeleState(left, right);
     }
 
-    /// Helper for hand-written sequences: only the buttons that matter.
-    struct Buttons
+    /// Only the inputs that matter for a hand-written sequence.
+    struct Keys
     {
-        bool x = false, y = false, a = false, b = false;
-        bool lgrip = false, rgrip = false, lstick = false, rstick = false;
-        double ltrig = 0.0;
+        bool a = false, b = false, x = false, y = false;
+        bool lstick = false, rstick = false, lgrip = false, rgrip = false;
+        double ltrig = 0.0, rtrig = 0.0, lax = 0.0, ray = 0.0;
     };
 
-    int tick(ButtonEventEncoder& enc, const Buttons& in)
+    int tick(ButtonEventEncoder& enc, const Keys& k)
     {
         ControllerSample l, r;
-        l.primary_button = in.x;
-        l.secondary_button = in.y;
-        r.primary_button = in.a;
-        r.secondary_button = in.b;
-        l.grip = in.lgrip ? 1.0 : 0.0;
-        r.grip = in.rgrip ? 1.0 : 0.0;
-        l.axis_click = in.lstick;
-        r.axis_click = in.rstick;
-        l.trigger = in.ltrig;
+        r.primary_button = k.a;
+        r.secondary_button = k.b;
+        l.primary_button = k.x;
+        l.secondary_button = k.y;
+        l.axis_click = k.lstick;
+        r.axis_click = k.rstick;
+        l.grip = k.lgrip ? 1.0 : 0.0;
+        r.grip = k.rgrip ? 1.0 : 0.0;
+        l.trigger = k.ltrig;
+        r.trigger = k.rtrig;
+        l.axis_x = k.lax;
+        r.axis_y = k.ray;
         return enc.update(xr_teleop::toTeleState(l, r)).event;
     }
 } // namespace
 
-TEST(ButtonEventEncoderGolden, matchesPythonReferenceFrameByFrame)
+TEST(ButtonEventEncoder, eventCodesStartAtOneAfterNoEvent)
 {
-    const auto rows = xr_teleop::test::readCsv(xr_teleop::test::dataPath("xr_buttons_golden.csv"));
-    ASSERT_GT(rows.size(), 1000u);
-
-    ButtonEventEncoder enc;
-    std::map<int, int> coverage;
-    for (size_t i = 0; i < rows.size(); ++i)
-    {
-        const auto& r = rows[i];
-        ASSERT_EQ(r.size(), static_cast<size_t>(kCols)) << "row " << i;
-        const auto out = enc.update(stateFromRow(r));
-        coverage[out.event]++;
-        ASSERT_EQ(out.event, static_cast<int>(r[kEvent])) << "frame " << i;
-        const double th[6] = {r[kThLx], r[kThLy], r[kThLz], r[kThAx], r[kThAy], r[kThAz]};
-        for (int k = 0; k < 6; ++k)
-        {
-            ASSERT_NEAR(out.thumbstick[k], th[k], 1e-9) << "frame " << i << " axis " << k;
-        }
-        ASSERT_NEAR(out.left_trigger_pull, r[kTrigL], 1e-9) << "frame " << i;
-        ASSERT_NEAR(out.right_trigger_pull, r[kTrigR], 1e-9) << "frame " << i;
-        ASSERT_NEAR(out.left_grip_value, r[kGripL], 1e-9) << "frame " << i;
-        ASSERT_NEAR(out.right_grip_value, r[kGripR], 1e-9) << "frame " << i;
-    }
-    // The trace must exercise every legacy event code.
-    for (int code : {0, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 20, 21, 22, 23, 24, 25, 26, 27, 28,
-                     29, 50, 51, 52, 53, 54})
-    {
-        EXPECT_GT(coverage[code], 0) << "event " << code << " not covered by the golden trace";
-    }
+    EXPECT_EQ(ev::kNone, 0);
+    EXPECT_EQ(ev::kFsmForward, 1);
+    EXPECT_EQ(ev::kFsmBack, 2);
+    EXPECT_EQ(ev::kToggleFollow, 3);
 }
 
-TEST(ButtonEventEncoder, leftYRightAChordConsumesYAndDoesNotRepeat)
+TEST(ButtonEventEncoder, rightAIsFsmForwardOnPressOnly)
 {
     ButtonEventEncoder enc;
-    EXPECT_EQ(tick(enc, {.y = true}), ev::kNone);
-    EXPECT_EQ(tick(enc, {.y = true, .a = true}), ev::kLeftYRightA);
-    EXPECT_EQ(tick(enc, {.y = true, .a = true}), ev::kNone);
-    EXPECT_EQ(tick(enc, {}), ev::kNone);  // no standalone Y (3) on release
-    EXPECT_EQ(tick(enc, {.a = true}), ev::kRightA);
+    EXPECT_EQ(tick(enc, {.a = true}), ev::kFsmForward);
+    EXPECT_EQ(tick(enc, {.a = true}), ev::kNone);  // held: no repeat
+    EXPECT_EQ(tick(enc, {}), ev::kNone);           // release: nothing
+    EXPECT_EQ(tick(enc, {.a = true}), ev::kFsmForward);
 }
 
-TEST(ButtonEventEncoder, standaloneYFiresOnReleaseOnly)
+TEST(ButtonEventEncoder, leftXIsFsmBackOnPressOnly)
 {
     ButtonEventEncoder enc;
-    EXPECT_EQ(tick(enc, {.y = true}), ev::kNone);
-    EXPECT_EQ(tick(enc, {.y = true}), ev::kNone);
-    EXPECT_EQ(tick(enc, {}), ev::kLeftY);
-}
-
-TEST(ButtonEventEncoder, gripReleasedAfterChordDoesNotFireStandaloneGrip)
-{
-    ButtonEventEncoder enc;
-    EXPECT_EQ(tick(enc, {.lgrip = true}), ev::kNone);
-    EXPECT_EQ(tick(enc, {.lgrip = true, .ltrig = 1.0}), ev::kLeftGripTrigger);
+    EXPECT_EQ(tick(enc, {.x = true}), ev::kFsmBack);
+    EXPECT_EQ(tick(enc, {.x = true}), ev::kNone);
     EXPECT_EQ(tick(enc, {}), ev::kNone);
-    // A plain press/release of the grip afterwards is a standalone grip event again.
-    EXPECT_EQ(tick(enc, {.lgrip = true}), ev::kNone);
-    EXPECT_EQ(tick(enc, {}), ev::kLeftGrip);
 }
 
-TEST(ButtonEventEncoder, yBChordWithBothGripsHasPriority)
+TEST(ButtonEventEncoder, rightStickClickTogglesFollowOnPressNotOnRelease)
 {
     ButtonEventEncoder enc;
-    EXPECT_EQ(tick(enc, {.lgrip = true, .rgrip = true}), ev::kNone);
-    EXPECT_EQ(tick(enc, {.y = true, .lgrip = true, .rgrip = true}), ev::kLeftGripLeftY);
-    EXPECT_EQ(tick(enc, {.y = true, .b = true, .lgrip = true, .rgrip = true}), ev::kBothGripsYB);
+    EXPECT_EQ(tick(enc, {.rstick = true}), ev::kToggleFollow);
+    EXPECT_EQ(tick(enc, {.rstick = true}), ev::kNone);
+    EXPECT_EQ(tick(enc, {}), ev::kNone);
+}
+
+TEST(ButtonEventEncoder, everyOtherInputProducesNoEvent)
+{
+    ButtonEventEncoder enc;
+    const std::vector<Keys> others = {
+        {.b = true}, {.y = true}, {.lstick = true}, {.lgrip = true}, {.rgrip = true},
+        {.ltrig = 1.0}, {.rtrig = 1.0}, {.lax = 1.0}, {.ray = -1.0},
+        {.b = true, .y = true, .lstick = true, .lgrip = true, .rgrip = true, .ltrig = 1.0, .rtrig = 1.0},
+    };
+    for (const auto& keys : others)
+    {
+        EXPECT_EQ(tick(enc, keys), ev::kNone);
+        EXPECT_EQ(tick(enc, {}), ev::kNone);  // releasing them is silent as well
+    }
+}
+
+TEST(ButtonEventEncoder, commandKeysStillFireWhileOtherInputsAreHeld)
+{
+    // No chords any more: a held grip or trigger never changes what A, X or the right stick mean.
+    ButtonEventEncoder enc;
+    EXPECT_EQ(tick(enc, {.lgrip = true, .rtrig = 1.0}), ev::kNone);
+    EXPECT_EQ(tick(enc, {.a = true, .lgrip = true, .rtrig = 1.0}), ev::kFsmForward);
+    EXPECT_EQ(tick(enc, {.lgrip = true, .rtrig = 1.0}), ev::kNone);
+    EXPECT_EQ(tick(enc, {.rstick = true, .rgrip = true}), ev::kToggleFollow);
+}
+
+TEST(ButtonEventEncoder, oneEventPerFrameWhenKeysArePressedTogether)
+{
+    // One Int32 per frame: A wins over X, X over the right stick; the others are not replayed later.
+    ButtonEventEncoder enc;
+    EXPECT_EQ(tick(enc, {.a = true, .x = true, .rstick = true}), ev::kFsmForward);
+    EXPECT_EQ(tick(enc, {.a = true, .x = true, .rstick = true}), ev::kNone);
+    EXPECT_EQ(tick(enc, {}), ev::kNone);
+    EXPECT_EQ(tick(enc, {.x = true, .rstick = true}), ev::kFsmBack);
+}
+
+TEST(ButtonEventEncoder, resetForgetsHeldKeys)
+{
+    ButtonEventEncoder enc;
+    EXPECT_EQ(tick(enc, {.a = true}), ev::kFsmForward);
+    enc.reset();
+    EXPECT_EQ(tick(enc, {.a = true}), ev::kFsmForward);  // still held, but seen as a new press after reset
 }
 
 TEST(ButtonEventEncoder, thumbstickYIsFlippedAndDeadzoned)
@@ -141,4 +151,29 @@ TEST(ButtonEventEncoder, thumbstickYIsFlippedAndDeadzoned)
     const auto out = enc.update(xr_teleop::toTeleState(l, r));
     EXPECT_DOUBLE_EQ(out.thumbstick[1], -0.5);
     EXPECT_DOUBLE_EQ(out.thumbstick[0], 0.0);
+}
+
+TEST(ButtonEventEncoderGolden, analogOutputsMatchPythonReferenceFrameByFrame)
+{
+    // The trace was recorded from the former Python node; its event column belongs to the old key
+    // scheme and is not compared any more. Thumbsticks, triggers and grips are unchanged.
+    const auto rows = xr_teleop::test::readCsv(xr_teleop::test::dataPath("xr_buttons_golden.csv"));
+    ASSERT_GT(rows.size(), 1000u);
+
+    ButtonEventEncoder enc;
+    for (size_t i = 0; i < rows.size(); ++i)
+    {
+        const auto& r = rows[i];
+        ASSERT_EQ(r.size(), static_cast<size_t>(kCols)) << "row " << i;
+        const auto out = enc.update(stateFromRow(r));
+        const double th[6] = {r[kThLx], r[kThLy], r[kThLz], r[kThAx], r[kThAy], r[kThAz]};
+        for (int k = 0; k < 6; ++k)
+        {
+            ASSERT_NEAR(out.thumbstick[k], th[k], 1e-9) << "frame " << i << " axis " << k;
+        }
+        ASSERT_NEAR(out.left_trigger_pull, r[kTrigL], 1e-9) << "frame " << i;
+        ASSERT_NEAR(out.right_trigger_pull, r[kTrigR], 1e-9) << "frame " << i;
+        ASSERT_NEAR(out.left_grip_value, r[kGripL], 1e-9) << "frame " << i;
+        ASSERT_NEAR(out.right_grip_value, r[kGripR], 1e-9) << "frame " << i;
+    }
 }

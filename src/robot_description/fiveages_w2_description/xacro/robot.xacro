@@ -41,9 +41,9 @@
         <xacro:linkhou_s2 joints_movable="$(arg chassis_joints_movable)" variant="${platform_variant}" collider="$(arg collider)"/>
     </xacro:if>
 
-    <xacro:include filename="$(find w2_body_description)/xacro/body.xacro"/>
+    <xacro:include filename="$(find fiveages_w2_body_description)/xacro/body.xacro"/>
     <xacro:body variant="${platform_variant}" collider="$(arg collider)"/>
-    <xacro:include filename="$(find w2_head_description)/xacro/head.xacro"/>
+    <xacro:include filename="$(find fiveages_w2_head_description)/xacro/head.xacro"/>
     <xacro:head variant="${platform_variant}" collider="$(arg collider)"/>
 
     <xacro:include filename="$(find m6_ccs_description)/xacro/arm_mount.xacro"/>

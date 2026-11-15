@@ -6,7 +6,7 @@
 
 namespace xr_teleop
 {
-    /// Values published per frame besides poses (the /xr/* contract consumed by VRInputHandler).
+    /// Values published per frame besides poses (the /teleop/* contract consumed by XrInputHandler).
     struct EncodedControls
     {
         int event = 0;                       ///< /teleop/controller_state
@@ -17,67 +17,31 @@ namespace xr_teleop
         double right_grip_value = 0.0;       ///< /teleop/grip_values angular.x
     };
 
-    /// Button event codes (see docs/VR遥操作.md for the full table).
+    /// Button event codes, published every frame on /teleop/controller_state (key table: docs/使用手册.md
+    /// section 6.1). 0 is sent on every frame without a key press, so it can never be a key.
     namespace event
     {
         constexpr int kNone = 0;
-        constexpr int kLeftGrip = 2;
-        constexpr int kLeftY = 3;
-        constexpr int kRightStick = 4;
-        constexpr int kRightGrip = 5;
-        constexpr int kRightB = 6;
-        constexpr int kLeftStick = 7;
-        constexpr int kLeftTrigger = 9;
-        constexpr int kRightTrigger = 10;
-        constexpr int kRightA = 11;
-        constexpr int kLeftX = 12;
-        constexpr int kLeftGripTrigger = 13;
-        constexpr int kRightGripTrigger = 14;
-        constexpr int kLeftYRightB = 15;
-        constexpr int kBothGripsYB = 16;
-        constexpr int kBothSticks = 20;
-        constexpr int kLeftGripUp = 21;   ///< 22 down, 23 left, 24 right
-        constexpr int kRightGripUp = 25;  ///< 26 down, 27 left, 28 right
-        constexpr int kLeftGripLeftStick = 29;
-        constexpr int kLeftGripRightA = 50;
-        constexpr int kLeftGripRightB = 51;
-        constexpr int kRightGripRightStick = 52;
-        constexpr int kLeftGripLeftY = 53;
-        constexpr int kLeftYRightA = 54;
+        constexpr int kFsmForward = 1;   ///< right A: HOME -> HOLD -> OCS2
+        constexpr int kFsmBack = 2;      ///< left X: OCS2 / MOVEJ -> HOLD -> HOME, HOME <-> REST
+        constexpr int kToggleFollow = 3; ///< right stick click: UPDATE (arms follow) <-> STORAGE
     } // namespace event
 
-    /// Legacy encoder, a port of fa-py-libraries xr_target_node.py @041159c (golden-trace tested).
-    /// Chords fire on the rising edge of their last key; modifier keys (grip, stick, Y, B) fire
-    /// on release only if no chord used them during that press.
+    /// The front keys are commands, each on its own key and fired when pressed; grips, triggers and
+    /// sticks are analog inputs only. No chords, so a held grip or trigger never changes a key.
     class ButtonEventEncoder
     {
     public:
         static constexpr double kThumbstickDeadzone = 0.1;
-        static constexpr double kGripDirectionTrigger = 0.7;
-        static constexpr double kGripDirectionReset = 0.3;
 
         EncodedControls update(const TeleState& state);
         void reset() { *this = ButtonEventEncoder{}; }
 
     private:
-        struct Side
-        {
-            bool prev_grip = false;
-            bool prev_stick = false;
-            bool prev_trigger = false;
-            bool prev_primary = false;    ///< X / A
-            bool prev_secondary = false;  ///< Y / B
-            bool grip_consumed = false;
-            bool stick_consumed = false;
-            bool secondary_consumed = false;  ///< Y / B consumed by a chord
-            bool direction_latched = false;
-        };
-
         static double deadzone(double value);
-        /// Candidate grip+stick direction event; latching is applied only when it is published.
-        static int gripDirectionEvent(Side& side, bool grip, double x, double y, int up_event);
 
-        Side left_;
-        Side right_;
+        bool prev_a_ = false;
+        bool prev_x_ = false;
+        bool prev_right_stick_ = false;
     };
 } // namespace xr_teleop

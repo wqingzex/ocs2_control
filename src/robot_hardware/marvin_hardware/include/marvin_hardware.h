@@ -354,8 +354,8 @@ private:
         // 开启后打印 pending/read_gate/RX valid|invalid/rx_drop 等工具帧级日志，便于排查。
         std::atomic<bool> tool_debug_log_{false};
 
-        // Health of the read / write cycles (docs/日志.md): filled by read() and write(), reported by health_timer_.
-        // What was read from and written to the motors in each cycle, for the diagnosis (docs/日志.md).
+        // Health of the read / write cycles (src/robot_log/README.md): filled by read() and write(), reported by health_timer_.
+        // What was read from and written to the motors in each cycle, for the diagnosis (src/robot_log/README.md).
         std::shared_ptr<robot_log::FlightRecorder> flight_;
         robot_log::CycleStats read_stats_;
         robot_log::CycleStats write_stats_;

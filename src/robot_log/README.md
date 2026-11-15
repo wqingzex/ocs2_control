@@ -74,3 +74,48 @@ log.fault(logger, "XR-006", "frames stopped %d ms", 300)   # 带故障码；码�
 ```
 
 Python 的健康统计：`log.RateStats()` 在每次事件时 `record()`（任意线程），`log.HealthReporter(logger, "名字", stats).start()` 每个窗口（normal 10 秒、debug 1 秒）写一行 `[HEALTH] 名字 window=10.0s count=.. rate_hz=.. gap_max_ms=..`，格式和 C++ 的 `health.hpp` 完全一样（测试里对着同一串字面量）；最长间隔超过 `gap_warn_ms` 时升为 WARN 并带故障码。链路上需要健康行的几跳（控制周期、XR、teleop_command、硬件读写）都是 C++，所以现在**还没有 Python 单元在用它**。命令行工具直接给人看的输出仍然用 `print`，不是日志。
+
+## 写日志的规则
+
+- C++ 用 `RCLCPP_*`，不要 `std::cerr`、`std::cout`、`printf`；没有节点用 `rclcpp::get_logger("组件名")`。Python 单元用上面的 `robot_log_tools.log`。命令行工具给人看的输出可以直接打印。
+- 级别：ERROR 动作失败或东西坏了；WARN 劣化迹象还能继续；INFO 状态变化和启动信息，**一次事件一行**；DEBUG 排查细节。不要把正常情况打成 WARN。
+- **控制周期（`update`/`read`/`write`/`run`）、MPC 线程、每帧回调里不许直接打**：状态变化时打一次；要持续提示就限频 `RCLCPP_WARN_THROTTLE(logger, clock, 5000, ...)`（没有节点时钟用 `steadyLogClock()`）；不要用 `static bool warned`；实时线程里不做耗时格式化或 I/O。
+- **故障码**：[`docs/故障码.md`](../../docs/故障码.md) 里登记的故障，日志行以 `[码]` 开头。停机类（S1/S2）每次都记不限频；监控类（M）可限频，但出现和恢复每次都记；健康行只在异常时加码。加新故障或改文案：改 `config/fault_codes.yaml`，再运行 `python3 -m robot_log_tools.fault_codes --markdown > docs/故障码.md`；`test_fault_codes.py` 检查登记的文案和前缀还在代码里、文档和表一致。
+- 消息写清**什么失败了、为什么、怎么处理**，带上关节序号、数值和阈值、文件名；一条日志一件事；要能 `grep`，不靠表情符号和颜色。
+- 格式：supervisor 启动的模块统一 `[级别] [年-月-日 时:分:秒.毫秒] [节点名]: 消息`。
+
+## 三种数据和记录点
+
+| 数据 | 开销 | 去向 | 回答什么 |
+|---|---|---|---|
+| 日志行（含 `[码]`） | 低，只在事件时写（稳态主要是健康行） | `logs/<单元>/<时间>.log` | 出了什么事 |
+| `[HEALTH]` 行，每窗口一行 | 每次记录约 10 ns | 同上，诊断时按窗口汇总 | 这一环平时健不健康 |
+| 飞行记录环，每帧 / 每周期 | 每条约 40 ns | `/dev/shm/robot_flight/<模块>.ring` | 出事前每一环实际收发了什么数值 |
+
+健康行格式 `[HEALTH] <组件> window=10.0s key=value ...`：控制器 `cycles`、`period_avg_ms`、`period_max_ms`、`late`、`duration_*`（迟到升 WARN 带 `[CTL-011]`）；XR bridge `count`、`rate_hz`、`gap_max_ms`、`received_*`、`parse_fail`、`connected`（间隔超过 `health_gap_warn_ms`=100 升 WARN 带 `[XR-006]`）；teleop_command 目标速率和 XR 输入速率；Marvin 和 Juxie 的 `read`/`write`（带 `[HW-013]`）。
+
+| 环节 | 记录点 |
+|---|---|
+| xr_bridge | 101 收到的头显帧、102 发布 |
+| teleop_command | 201 XR 位姿输入、202 目标输出 |
+| 各控制器 | 301 收到的关节目标（MOVEJ；MPC 的末端目标话题还没记）、302 实测关节、303 命令、304 状态机切换 |
+| Marvin / Juxie | 401 读到的关节位置、402 写出的命令 |
+
+## 设计要点
+
+- 采集（C++ header-only）只依赖 rclcpp 和标准库，业务包只通过头文件使用；实时线程里只做原子计数、写环、读时钟，不加锁、不分配、不打日志。
+- 分析（`python/robot_log_tools`）不依赖 ROS，只读文件，事后在任何机器上都能分析。
+- **只记录，不改变停机行为**：新增的故障条件先只打码，要升级为停机单独征得同意。
+- 单一来源，另一处由测试保证一致：故障码 `fault_codes.yaml`（每条有 `source{file,match}` 锚点）；记录类型 `flight_types.yaml` ↔ `flight_types.hpp`；环格式 `flight.hpp` ↔ `flight.py`。
+- 阈值是经验值，没用真机校准；**全部只在仿真里验证过**，真机项目见 [`docs/待办.md`](../../docs/待办.md)。
+
+## 仿真里测到的
+
+`mock_components`、容器里，分体 / 全身 / 双臂三种入口各测 HOLD 和 OCS2 的 60 秒窗口：
+
+- **日志量很小**：稳态里几乎全是 `[HEALTH]` 行；normal 最多约 6 KB/分钟，debug 约 50 KB/分钟，都远低于预算（normal ≤ 100 KB/分钟）。一次完整启动加关闭约 450–540 行。
+- **CPU 没有因日志和记录而变**：与加健康行、环之前的基线一致，在噪声内；CPU 几乎都是 MPC 计算。
+- **内存多约 3–11 MB**：每个控制器一个 4 MB 的环，写满前逐页占用。
+- **故障注入**：停住控制进程 1.5 秒 → 报告里有 `CTL-011`、健康行 `period max 1501 ms`、所有控制器的环在同一时刻断 1.5 秒；`kill -9` 控制进程 → 所有控制器报 `silent`。XR 帧中断没法在仿真里做。
+
+测量脚本已删除（不是运行所需），要重测得重写。

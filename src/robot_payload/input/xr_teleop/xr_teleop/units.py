@@ -41,13 +41,12 @@ def xr_units(cfg: Dict[str, Any]) -> Dict[str, Unit]:
     if xr["enable"]:
         units["xr"] = Unit(
             name="xr",
-            title="VR",
+            title="XR",
             cmd=("ros2", "run", "xr_teleop", "xr_bridge_node", "--ros-args",
                  "-r", "__node:=xr_target_node",
                  "-p", f"frame_timeout_ms:={int(xr['frame_timeout_ms'])}",
                  "-p", f"reconnect_interval_s:={float(xr['reconnect_interval_s'])}",
-                 "-p", f"device_id:={json.dumps(xr['device_id'])}",
-                 "-p", f"control_scheme:={xr['control_scheme']}"),
+                 "-p", f"device_id:={json.dumps(xr['device_id'])}"),
             depends=("pc_service",) if "pc_service" in units else (),
             topics=("/teleop/left_ee_pose", "/teleop/connection_status"),
             # The bridge's gRPC client talks to the PC Service on 127.0.0.1. gRPC obeys http_proxy even for loopback

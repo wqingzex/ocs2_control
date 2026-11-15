@@ -16,10 +16,11 @@ RESET=""   # --reset：dyn 恢复默认负载
 FULL_INIT=""
 
 # 步骤的顺序和标题；序号 i/N 由这张表算出来。SOFT_STEPS 失败时只记录，不中断后面的步骤。
-STEP_ORDER=(deps host build cameras hand dyn xr summary)
+STEP_ORDER=(deps host marvin build cameras hand dyn xr summary)
 declare -A STEP_TITLE=(
   [deps]="依赖：子模块 + rosdep"
   [host]="主机配置：相机 udev、腰部 CAN 免密 sudo、XRoboToolkit PC Service"
+  [marvin]="天机臂 SDK 版本（338 / 343，要和臂的控制器固件一致）"
   [build]="编译整个 ROS 2 工作区（运控、驱动、机器人模型、相机、XR、控制台）"
   [cameras]="相机"
   [hand]="手"
@@ -29,7 +30,7 @@ declare -A STEP_TITLE=(
 )
 SOFT_STEPS=(hand dyn xr summary)
 
-# ocs2_ros2（子模块，src/third_party/ocs2_ros2，固定在 ae75126）带着一批 W2 用不到的示例包：编译和 rosdep 都跳过。
+# ocs2_ros2（子模块，src/third_party/ocs2_ros2，固定在 ae75126）带着一批用不到的示例包：编译和 rosdep 都跳过。
 OCS2_SKIP_PACKAGES=(
   ocs2_ballbot ocs2_ballbot_ros ocs2_ballbot_mpcnet
   ocs2_cartpole ocs2_cartpole_ros
@@ -41,7 +42,10 @@ OCS2_SKIP_PACKAGES=(
   ocs2_quadruped_interface ocs2_quadruped_loopshaping_interface
   ocs2_switched_model_interface ocs2_switched_model_msgs segmented_planes_terrain_model
 )
-# build-workspace --minimal 只编译这些包及其依赖。
+# 天机臂（Marvin）SDK 版本：config 的 hardware.marvin_firmware，编译时传给 marvin_hardware 的 -DMARVIN_FIRMWARE。
+MARVIN_FIRMWARES=(338 343)
+MARVIN_FIRMWARE_DEFAULT=343   # 和 marvin_hardware/CMakeLists.txt 的默认值一致
+# build --minimal 只编译这些包及其依赖。
 MINIMAL_PACKAGES=(
   fiveages_w2_description juxie_hardware marvin_hardware modbus_hardware
   joystick_teleop keyboard_teleop xr_teleop topic_based_hardware teleop_app w2_camera w2_hand
@@ -58,7 +62,6 @@ is_container() { [[ -f /.dockerenv || -f /run/.containerenv || -n "${container:-
 as_root() { if (( EUID == 0 )); then "$@"; else sudo "$@"; fi; }
 step_command() {
   case "$1" in
-    build) printf 'build-workspace' ;;
     cameras) printf 'cam' ;;
     summary) printf 'check' ;;
     *) printf '%s' "$1" ;;
@@ -68,18 +71,19 @@ step_command() {
 usage() {
   cat <<'EOF_USAGE'
 初始化：./scripts/setup.sh
-  依次完成：依赖、主机 / SDK、编译、相机配置、手配置、负载辨识、XR 配对、最终检查。
+  依次完成：依赖、主机 / SDK、天机臂 SDK 版本、编译、相机配置、手配置、负载辨识、XR 配对、最终检查。
   已配置（有确认记录）或默认值可用的步骤会跳过；--force 全部重新配置。
   相机和手会弹出本地配置窗口，确认后保存到 config/robot.local.yaml。
   容器内也保留完整向导；仅不执行物理机的 udev 和 CAN 操作。
 单步重试：./scripts/setup.sh <步骤>，只执行指定步骤：
   cam 相机；hand 手；xr 头显配对；dyn 负载辨识（逐臂询问，默认不辨识；--reset 恢复默认负载）。
-  build-workspace 编译整个 ROS 2 工作区：运控、驱动、机器人模型、相机、XR、控制台。
+  build 编译整个 ROS 2 工作区：运控、驱动、机器人模型、相机、XR、控制台。
         使用增量编译，复用已有结果；不执行设备配置或配对，不启动运控。
+  marvin 选择天机臂 SDK 版本（338 或 343，要和臂的控制器固件一致），写入配置，之后的编译都用它。
   deps 依赖；host 主机 / SDK；check 配置检查。
 从某步继续：./scripts/setup.sh cam --from
   从相机开始，依次执行手、XR 配对和最终检查；其他步骤同样支持 --from。
-可选参数：--yes 使用建议值；--force 重新配置已配置的步骤；--minimal 只编译 W2 必需的包；-c 指定配置文件。
+可选参数：--yes 使用建议值；--force 重新配置已配置的步骤；--minimal 只编译遥操作必需的包；-c 指定配置文件。
 EOF_USAGE
 }
 
@@ -177,7 +181,11 @@ PY
 
 # 只放行 jx_hardware.cpp 实际执行的两条 `sudo ip link set <can> ...`，参数写死、不用通配符
 host_sudoers() {
-  local iface file="/etc/sudoers.d/fa-w2-can"
+  local iface file="/etc/sudoers.d/fiveages_w2-can" legacy="/etc/sudoers.d/fa-w2-can"
+  if sudo test -e "${legacy}"; then  # 旧文件名写入的同一条规则：删掉，只留新文件
+    sudo rm -f "${legacy}"
+    info "已删除旧的 ${legacy}"
+  fi
   iface="$(body_can_iface)"
   local up_args="up type can bitrate 1000000 dbitrate 5000000 restart-ms 100 fd on"
   local cmds=() ip rule tmp
@@ -255,6 +263,69 @@ step_host() {
   host_pc_service
 }
 
+# ---- marvin：天机臂 SDK 版本 -------------------------------------------------------------------------
+# 固件和 SDK 不配套时，驱动连上臂后读不到控制器版本，随即急停（marvin_hardware/CMakeLists.txt）。
+is_marvin_firmware() { [[ " ${MARVIN_FIRMWARES[*]} " == *" $1 "* ]]; }
+
+marvin_firmware_config() {  # 配置里选的版本；没选则为空；不是 338 / 343 时报错退出
+  local value=""
+  if [[ -f "${CONFIG}" ]]; then
+    value="$(python3 - "${CONFIG}" <<'PY' 2>/dev/null || true
+import sys, yaml
+data = yaml.safe_load(open(sys.argv[1])) or {}
+print(str((data.get("hardware") or {}).get("marvin_firmware", "") or "").strip())
+PY
+)"
+  fi
+  [[ -z "${value}" ]] || is_marvin_firmware "${value}" \
+    || die "hardware.marvin_firmware 只能是 338 或 343（${CONFIG} 里是 '${value}'）"
+  printf '%s' "${value}"
+}
+
+marvin_firmware_built() {  # 已有编译结果用的版本（CMake 缓存）；没编译过则为空
+  local cache="${WS_DIR}/build/marvin_hardware/CMakeCache.txt"
+  [[ -f "${cache}" ]] && sed -n 's/^MARVIN_FIRMWARE:STRING=//p' "${cache}" | head -n 1
+  return 0
+}
+
+marvin_firmware_suggestion() {  # 没选时的建议值：沿用已编译的版本，否则用 CMake 默认值
+  local built
+  built="$(marvin_firmware_built)"
+  if is_marvin_firmware "${built}"; then printf '%s' "${built}"; else printf '%s' "${MARVIN_FIRMWARE_DEFAULT}"; fi
+}
+
+marvin_cmake_arg() {  # 编译参数；配置里没选时用建议值并提醒
+  local value
+  value="$(marvin_firmware_config)"
+  if [[ -z "${value}" ]]; then
+    value="$(marvin_firmware_suggestion)"
+    warn "配置里没有选择天机臂 SDK 版本，这次用 ${value}；用 ./scripts/setup.sh marvin 选择并写入配置"
+  fi
+  printf -- '-DMARVIN_FIRMWARE=%s' "${value}"
+}
+
+step_marvin() {
+  local current suggestion choice
+  current="$(marvin_firmware_config)"
+  suggestion="${current:-$(marvin_firmware_suggestion)}"
+  if [[ -n "${YES}" ]]; then
+    choice="${suggestion}"
+  else
+    info "天机臂 SDK 版本要和臂的控制器固件一致：338（38 版固件）或 343（43 版及以上）。"
+    info "选错时驱动连上臂后读不到控制器版本，会立即急停。"
+    read -r -p "选择 338 或 343（回车使用 ${suggestion}）：" choice \
+      || die "没有读到输入；要使用建议值 ${suggestion}，运行 ./scripts/setup.sh marvin --yes"
+    choice="${choice:-${suggestion}}"
+  fi
+  is_marvin_firmware "${choice}" || die "天机臂 SDK 版本只能是 338 或 343，输入的是 '${choice}'"
+  PYTHONPATH="${PAYLOAD_PYTHONPATH}:${PYTHONPATH:-}" python3 - "${CONFIG}" "${choice}" <<'PY'
+import sys
+from w2_payload.config_edit import set_fields
+set_fields(sys.argv[1], "hardware", {"marvin_firmware": int(sys.argv[2])})
+PY
+  info "已写入 hardware.marvin_firmware: ${choice}（之后编译 marvin_hardware 都用这个版本）"
+}
+
 # ---- build ----------------------------------------------------------------------------------------
 step_build() {
   colcon_ignore_marvin_platform
@@ -262,10 +333,11 @@ step_build() {
   cd "${WS_DIR}"
   export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-4}"
   export MAKEFLAGS="${MAKEFLAGS:--j${CMAKE_BUILD_PARALLEL_LEVEL}}"
-  local select=(--packages-skip "${OCS2_SKIP_PACKAGES[@]}")
+  local select=(--packages-skip "${OCS2_SKIP_PACKAGES[@]}") marvin_arg
   [[ -n "${MINIMAL}" ]] && select=(--packages-up-to "${MINIMAL_PACKAGES[@]}")  # 和完整编译用同样的安装方式
+  marvin_arg="$(marvin_cmake_arg)"
   colcon build "${select[@]}" --parallel-workers "${COLCON_PARALLEL_WORKERS:-2}" \
-    --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+    --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF "${marvin_arg}"
 }
 
 # ---- 相机 w2_camera、手 w2_hand、负载辨识 w2_payload；XR 由遥操作模块处理 ---------------------------------
@@ -298,6 +370,11 @@ step_ready() {  # 返回 0 表示不用配置；原因写入 READY_REASON
   local status=0 python_path="${PAYLOAD_PYTHONPATH}:${PYTHONPATH:-}"
   READY_REASON=""
   case "$1" in
+    marvin)
+      local firmware
+      firmware="$(marvin_firmware_config)" || return 1   # 值不对：不跳过，由 step_marvin 报错
+      [[ -n "${firmware}" ]] || return 1
+      READY_REASON="已选择 ${firmware}" ;;
     cameras|hand|dyn)
       READY_REASON="$(PYTHONPATH="${python_path}" python3 -m w2_payload.config_status status --config "${CONFIG}" "$1" 2>/dev/null)" || status=$? ;;
     xr)
@@ -313,6 +390,13 @@ step_summary() {
   source_ros --workspace
   PYTHONPATH="${PAYLOAD_PYTHONPATH}:${PYTHONPATH:-}" \
     python3 -m w2_payload.config_status check "${CONFIG}"
+  local chosen built
+  chosen="$(marvin_firmware_config)"
+  built="$(marvin_firmware_built)"
+  info "天机臂 SDK：配置 ${chosen:-未选择}，已编译 ${built:-未编译}"
+  if [[ -n "${chosen}" && -n "${built}" && "${chosen}" != "${built}" ]]; then
+    warn "天机臂 SDK 的配置和编译结果不一致：运行 ./scripts/setup.sh build 重新编译"
+  fi
 }
 
 # ==================================================================================================
@@ -333,7 +417,6 @@ parse_args() {  # 结果：STEPS（要执行的步骤）、YES、MINIMAL、CONFI
       -h|--help|help) usage; exit 0 ;;
       cam) STEPS+=(cameras) ;;
       check) STEPS+=(summary) ;;
-      build-workspace) STEPS+=(build) ;;
       *) [[ -n "${STEP_TITLE[$1]:-}" ]] || die "未知参数: $1（./scripts/setup.sh help 查看用法）"; STEPS+=("$1") ;;
     esac
     shift

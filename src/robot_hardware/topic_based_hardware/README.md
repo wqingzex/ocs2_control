@@ -4,7 +4,7 @@
 
 ## 作用
 
-对接不在 `ros2_control` 里的另一端，W2 / M6 用它连 **Isaac Sim**：控制器的指令发到话题，仿真器的关节状态从话题读回。上游项目的副本，支持 position、velocity、effort 接口。
+对接不在 `ros2_control` 里的另一端，双臂和 fiveages_w2 用它连 **Isaac Sim**：控制器的指令发到话题，仿真器的关节状态从话题读回。上游项目的副本，支持 position、velocity、effort 接口。
 
 ## 使用
 
