@@ -5,7 +5,7 @@
   <version>2.0.0</version>
   <description>ros2_control hardware interfaces for external end effectors (grippers, dexterous hands, force sensors) on RS485 / Modbus or CAN. Transport is robot_comm_*; each device's protocol lives here.</description>
   
-  <maintainer email="your_email@example.com">Your Name</maintainer>
+  <maintainer email="TODO@email.com"/>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
@@ -15,7 +15,7 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
   <depend>geometry_msgs</depend>
-  <depend>gripper_hardware_common</depend>
+  <depend>robot_comm_core</depend>
   <depend>robot_comm_serial</depend>
   <depend>robot_comm_modbus</depend>
   <depend>robot_comm_can</depend>

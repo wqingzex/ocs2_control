@@ -39,10 +39,6 @@
         <xacro:RG75-300 name="" pad="ptc"/>
     </xacro:if>
 
-    <xacro:if value="${'$(arg type)' == 'ERG32'}">
-        <xacro:include filename="$(find jodell_description)/xacro/ERG32.xacro"/>
-        <xacro:ERG32 name=""/>
-    </xacro:if>
 
 </robot>
 

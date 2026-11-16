@@ -18,8 +18,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Huang Zhenbiao',
-    maintainer_email='biao876990970@hotmail.com',
+    maintainer='',
+    maintainer_email='TODO@email.com',
     description='Shared Python library for robot launch',
     license='BSD-3',
 )

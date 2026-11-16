@@ -4,17 +4,18 @@
   <name>juxie_hardware</name>
   <version>1.0.0</version>
   <description>ROS2 Control Hardware Interface for JX motors via CAN FD (the CAN link is robot_comm_can, the protocol is juxie_protocol)</description>
-  <maintainer email="your_email@example.com">Your Name</maintainer>
+  <maintainer email="TODO@email.com"/>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>robot_log</depend>
+  <depend>robot_utils</depend>
 
   <depend>hardware_interface</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
+  <depend>robot_comm_core</depend>  <!-- robot_comm/ headers (juxie_motor_sim.h) -->
   <depend>robot_comm_can</depend>
 
   <test_depend>ament_cmake_gtest</test_depend>

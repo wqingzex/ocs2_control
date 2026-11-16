@@ -12,7 +12,7 @@ from launch_helpers import create_rmw_zenohd_node
 from launch_helpers.robot.profile import (
     _cli_launch_value,
     create_eef_side_launch_arguments,
-    resolve_side_eef_types,
+    resolve_end_effectors,
 )
 
 
@@ -124,7 +124,12 @@ def create_common_launch_arguments():
         DeclareLaunchArgument(
             'type',
             default_value='',
-            description='Type parameter for xacro (empty means no type parameter passed to xacro)'
+            description="A component xacro's own model key (e.g. hand.launch.py); empty = the xacro default"
+        ),
+        DeclareLaunchArgument(
+            'arms',
+            default_value='',
+            description='Which arms of m6_ccs: dual | left | right (empty = dual)'
         ),
         *create_eef_side_launch_arguments(),
         DeclareLaunchArgument(
@@ -146,7 +151,7 @@ def create_common_launch_arguments():
             'variant',
             default_value='',
             description='Platform sub-variant (robot-specific): e.g. m6_ccs variant:=desktop for booth layout, '
-            'fiveages_w2 head variant:=wheel_V1.0 for the old narrow head limits (default: wide). Empty means no variant passed to xacro.',
+            'fa_w2 head variant:=wheel_V1.0 for the old narrow head limits (default: wide). Empty means no variant passed to xacro.',
         ),
     ]
 
@@ -154,19 +159,17 @@ def create_common_launch_arguments():
 def build_visualization_xacro_mappings(robot_name: str, launch_configurations: dict) -> dict:
     """Xacro mappings for RViz-only launches (no ros2_control / robot_profile)."""
     mappings = {}
-    for key in ("collider", "direction"):
-        value = launch_configurations.get(key, "")
-        if value and str(value).strip():
-            mappings[key] = str(value).strip()
+    # type: a component xacro's own model key (hand.launch.py hand:=xhand1 type:=xhand1); arms: m6_ccs topology
+    for key in ("collider", "direction", "arms", "type"):
+        value = _cli_launch_value(launch_configurations, key)
+        if value:
+            mappings[key] = value
 
-    launch_type = _cli_launch_value(launch_configurations, "type")
-    side_left, side_right = resolve_side_eef_types(launch_configurations, None)
-    if launch_type:
-        mappings["type"] = launch_type
-    if side_left:
-        mappings["left_type"] = side_left
-    if side_right:
-        mappings["right_type"] = side_right
+    left, right = resolve_end_effectors(launch_configurations, None)
+    if left:
+        mappings["left_end_effector"] = left
+    if right:
+        mappings["right_end_effector"] = right
     return mappings
 
 

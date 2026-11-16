@@ -1,0 +1,11 @@
+<?xml version="1.0" ?>
+<robot name="fa_w2_stand" xmlns:xacro="http://www.ros.org/wiki/xacro">
+	<xacro:arg name="variant" default=""/>
+	<xacro:arg name="collider" default="simple"/>
+	<xacro:arg name="isaac" default="true"/>
+
+	<xacro:include filename="$(find fa_w2_stand_description)/xacro/stand.xacro"/>
+	<!-- variant:=v0 locks the lift -->
+	<xacro:property name="lift_movable" value="${'$(arg variant)' != 'v0'}"/>
+	<xacro:stand collider="$(arg collider)" lift_movable="${lift_movable}"/>
+</robot>

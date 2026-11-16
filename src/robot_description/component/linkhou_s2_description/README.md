@@ -1,12 +1,12 @@
 # linkhou_s2_description
 
-fiveages_w2 的轮式底盘 Linkhou S2，两个型号：`linkhou_s2`（旧款）和 `linkhou_s2_v2`（默认）。
+fa_w2 的轮式底盘 Linkhou S2，两个型号：`linkhou_s2`（旧款）和 `linkhou_s2_v2`（默认）。
 
 ## 作用
 
 `xacro/linkhou_s2.xacro`、`xacro/linkhou_s2_v2.xacro` 各定义宏 `linkhou_s2`；网格在 `meshes/`，雷达和超声波模型来自 [`sensor_models`](../sensor_models/README.md)。
 
-整机在 [`fiveages_w2_description`](../../fiveages_w2_description/README.md) 里组装；单独看这个部件：
+整机在 [`fa_w2_description`](../../fa_w2_description/README.md) 里组装；单独看这个部件：
 
 ```bash
 ros2 launch robot_visualize component.launch.py robot:=linkhou_s2 chassis:=linkhou_s2    # 旧款；默认是 linkhou_s2_v2

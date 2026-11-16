@@ -63,7 +63,7 @@ resolve_config() {
 }
 
 check_config() {
-  python3 -m teleop_app.check "$1" "${WS_DIR}" ${SET_ARGS[@]+"${SET_ARGS[@]}"} || die "配置校验失败（见上方提示）"
+  python3 -m robot_app.check "$1" "${WS_DIR}" ${SET_ARGS[@]+"${SET_ARGS[@]}"} || die "配置校验失败（见上方提示）"
 }
 
 cmd_build() {
@@ -84,7 +84,7 @@ units() {
   local cfg args=("$@")
   cfg="$(resolve_config "${CONFIG_ARG}")"
   if [[ "${1:-}" == "up" ]]; then args=(up ${WITH_ARGS[@]+"${WITH_ARGS[@]}"} "${@:2}"); fi
-  exec python3 -m teleop_app.units_cli --config "${cfg}" --ws-root "${WS_DIR}" \
+  exec python3 -m robot_app.units_cli --config "${cfg}" --ws-root "${WS_DIR}" \
     ${SET_ARGS[@]+"${SET_ARGS[@]}"} "${args[@]}"
 }
 
@@ -93,7 +93,7 @@ cmd_start() {
   local cfg
   cfg="$(resolve_config "${CONFIG_ARG}")"
   check_config "${cfg}"
-  exec python3 -m teleop_app.units_cli --config "${cfg}" --ws-root "${WS_DIR}" \
+  exec python3 -m robot_app.units_cli --config "${cfg}" --ws-root "${WS_DIR}" \
     ${SET_ARGS[@]+"${SET_ARGS[@]}"} up --foreground ${WITH_ARGS[@]+"${WITH_ARGS[@]}"}
 }
 
@@ -127,7 +127,7 @@ CONSOLE_DEFAULT_PORT="${FA_CONSOLE_PORT:-8765}"
 # 本环境（宿主机或容器，PID 空间不同）里监听该端口的控制台进程号。
 console_pids() {
   local port="$1" pid cmd
-  for pid in $(pgrep -f "python3 -m teleop_app.console" || true); do
+  for pid in $(pgrep -f "python3 -m robot_app.console" || true); do
     cmd="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null)" || continue
     if [[ "${cmd}" == *"--port ${port} "* || "${cmd}" == *"--port ${port}" ]] \
        || { [[ "${cmd}" != *"--port "* && "${port}" == "${CONSOLE_DEFAULT_PORT}" ]]; }; then
@@ -275,13 +275,13 @@ cmd_console() {
     cmd_open_console ${args[@]+"${args[@]}"}
   else
     source_ros --workspace
-    exec python3 -m teleop_app.console --config "$(resolve_config "${CONFIG_ARG}")" --ws-root "${WS_DIR}" ${args[@]+"${args[@]}"}
+    exec python3 -m robot_app.console --config "$(resolve_config "${CONFIG_ARG}")" --ws-root "${WS_DIR}" ${args[@]+"${args[@]}"}
   fi
 }
 
 cmd_nav() {
   source_ros --workspace
-  exec python3 -m teleop_app.navigation --config "$(resolve_config "${CONFIG_ARG}")" --ws-root "${WS_DIR}" "$@"
+  exec python3 -m robot_app.navigation --config "$(resolve_config "${CONFIG_ARG}")" --ws-root "${WS_DIR}" "$@"
 }
 
 cmd_dyn_identify() {
@@ -303,10 +303,10 @@ cmd_dyn_identify() {
   exec ros2 run marvin_hardware tool_dyn_identify_wizard
 }
 
-# 录制、回放、录包列表：逻辑在 teleop_app.recording。
+# 录制、回放、录包列表：逻辑在 robot_app.recording。
 recording() {
   source_ros --workspace
-  exec python3 -m teleop_app.recording --config "$(resolve_config "${CONFIG_ARG}")" --ws-root "${WS_DIR}" \
+  exec python3 -m robot_app.recording --config "$(resolve_config "${CONFIG_ARG}")" --ws-root "${WS_DIR}" \
     ${SET_ARGS[@]+"${SET_ARGS[@]}"} "$@"
 }
 

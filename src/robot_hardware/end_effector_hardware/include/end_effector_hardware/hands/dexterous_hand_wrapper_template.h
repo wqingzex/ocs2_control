@@ -2,7 +2,7 @@
 
 #include "end_effector_hardware/hands/dexterous_hand_base.h"
 #include "robot_comm/modbus.h"
-#include "gripper_hardware_common/utils/ModbusConfig.h"
+#include "end_effector_hardware/gripper_protocol/utils/ModbusConfig.h"
 #include <unordered_map>
 #include <memory>
 #include <array>
@@ -11,7 +11,7 @@
 namespace end_effector_hardware
 {
     // Scoped to this namespace so that the directive does not leak into every file that includes this header.
-    using namespace gripper_hardware_common;
+    using namespace gripper_protocol;
     namespace DexterousHand = ModbusConfig::DexterousHand;
 
     /**
@@ -19,9 +19,7 @@ namespace end_effector_hardware
      */
     enum class DexterousHandProduct
     {
-        O7,  // 7-DOF hand
-        O6,  // 6-DOF hand
-        L6,  // 6-DOF hand (different model)
+        L6,  // LinkerHand L6 (6-DOF), the only LinkerHand model in the robot descriptions
     };
 
     /**
@@ -36,75 +34,9 @@ namespace end_effector_hardware
     struct DexterousHandProductTraits;
 
     /**
-     * @brief O7 hand traits (7-DOF)
-     */
-    template<>
-    struct DexterousHandProductTraits<DexterousHandProduct::O7>
-    {
-        static constexpr size_t JOINT_COUNT = 7;
-        static constexpr uint16_t JOINT_POSITION_REG_START = 0;
-        static constexpr uint16_t TORQUE_REG_START = 7;
-        static constexpr uint16_t SPEED_REG_START = 14;
-        static constexpr const char* PRODUCT_NAME = "O7";
-        
-        /**
-         * @brief Map joint name to Modbus register index for O7 hand
-         * 
-         * Register mapping:
-         * 0: Thumb_Pitch (thumb_joint3)
-         * 1: Thumb_Yaw (thumb_joint2)
-         * 2: Index_Pitch
-         * 3: Middle_Pitch
-         * 4: Ring_Pitch
-         * 5: Little_Pitch
-         * 6: Thumb_Roll (thumb_joint1)
-         */
-        static int getModbusRegisterIndex(const std::string& joint_name);
-    };
-
-    /**
-     * @brief O6 hand traits (6-DOF)
-     * 
-     * Modbus protocol mapping (Function Code 04: Read Input Registers):
-     * Address 0-5: Current Joint Position (Read-Only Input Registers)
-     * Address 0-5: Target Joint Position (Write Holding Registers, Function Code 16)
-     */
-    template<>
-    struct DexterousHandProductTraits<DexterousHandProduct::O6>
-    {
-        static constexpr size_t JOINT_COUNT = 6;
-        static constexpr uint16_t JOINT_POSITION_REG_START = 0;  // Input Registers 0-5 for position
-        static constexpr uint16_t TORQUE_REG_START = 6;
-        static constexpr uint16_t SPEED_REG_START = 12;
-        static constexpr const char* PRODUCT_NAME = "O6";
-        
-        /**
-         * @brief Map joint name to Modbus register index for O6 hand
-         * 
-         * Register mapping (according to Modbus protocol and URDF definition):
-         * Protocol: Address 0=Current_Thumb_Pitch, Address 1=Current_Thumb_Yaw
-         * URDF mapping: thumb_joint1 (第一个关节) -> Address 0 (Current_Thumb_Pitch - 大拇指弯曲)
-         *               thumb_joint2 (第二个关节) -> Address 1 (Current_Thumb_Yaw - 大拇指横摆)
-         * 
-         * Address 0: Current_Thumb_Pitch (thumb_joint1) - 大拇指弯曲
-         * Address 1: Current_Thumb_Yaw (thumb_joint2) - 大拇指横摆
-         * Address 2: Current_Index_Pitch (index_joint) - 食指弯曲
-         * Address 3: Current_Middle_Pitch (middle_joint) - 中指弯曲
-         * Address 4: Current_Ring_Pitch (ring_joint) - 无名指弯曲
-         * Address 5: Current_Little_Pitch (pinky_joint) - 小拇指弯曲
-         * 
-         * Value range: 0-255 (0 = bend/close, 255 = straight/open)
-         * Read: Function Code 04 (Read Input Registers)
-         * Write: Function Code 16 (Write Multiple Holding Registers)
-         */
-        static int getModbusRegisterIndex(const std::string& joint_name);
-    };
-
-    /**
      * @brief L6 hand traits (6-DOF)
      * 
-     * L6 is a different 6-DOF hand model. If it has the same register mapping as O6,
-     * you can reuse O6's mapping. Otherwise, customize it here.
+     * Modbus: FC04 reads input registers, FC16 writes holding registers; position 0-5, torque 6-11, speed 12-17.
      */
     template<>
     struct DexterousHandProductTraits<DexterousHandProduct::L6>
@@ -118,15 +50,13 @@ namespace end_effector_hardware
         /**
          * @brief Map joint name to Modbus register index for L6 hand
          * 
-         * Register mapping (customize if different from O6):
+         * Register mapping:
          * 0: Thumb_Pitch
          * 1: Thumb_Yaw
          * 2: Index_Pitch
          * 3: Middle_Pitch
          * 4: Ring_Pitch
          * 5: Little_Pitch
-         * 
-         * Note: Currently using same mapping as O6. Modify if L6 has different mapping.
          */
         static int getModbusRegisterIndex(const std::string& joint_name);
     };
@@ -134,10 +64,10 @@ namespace end_effector_hardware
     /**
      * @brief Template-based dexterous hand wrapper
      * 
-     * Common implementation for all dexterous hand products (O7, O6, L6, etc.).
+     * Implementation for the LinkerHand L6.
      * Configuration is specified as a template parameter from DexterousHandProduct.
      * 
-     * @tparam Product Product type (O7, O6, L6, etc.)
+     * @tparam Product Product type (L6)
      */
     template<DexterousHandProduct Product>
     class DexterousHandWrapperTemplate : public DexterousHandBase
@@ -212,8 +142,6 @@ namespace end_effector_hardware
     };
 
     // Type aliases for convenience
-    using SimpleDexterousHandWrapper = DexterousHandWrapperTemplate<DexterousHandProduct::O7>;  // O7 hand (7-DOF)
-    using O6DexterousHandWrapper = DexterousHandWrapperTemplate<DexterousHandProduct::O6>;      // O6 hand (6-DOF)
     using L6DexterousHandWrapper = DexterousHandWrapperTemplate<DexterousHandProduct::L6>;      // L6 hand (6-DOF)
 } // namespace end_effector_hardware
 

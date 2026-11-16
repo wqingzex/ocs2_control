@@ -4,7 +4,7 @@
 
 | 目录 | 内容 |
 |---|---|
-| [`w2_payload/`](w2_payload/README.md) | W2 机器人上的设备：Orbbec 相机、LinkerHand 灵巧手，以及它们共用的配置框架 |
+| [`fa_w2_payload/`](fa_w2_payload/README.md) | W2 机器人上的设备：Orbbec 相机、LinkerHand 灵巧手，以及它们共用的配置框架 |
 | [`input/`](input/README.md) | 操作员的输入设备：XR 头显、手柄、键盘，与机器人型号无关 |
 
-遥操作应用（[`teleop_app`](../robot_hmi/teleop_app/README.md)）和推理程序共用这里，这里不依赖它们。
+遥操作应用（[`robot_app`](../robot_hmi/robot_app/README.md)）和推理程序共用这里，这里不依赖它们。

@@ -9,16 +9,18 @@
 | `TJ_FX_ROBOT_CONTRL_SDK_338` / `_343` | 天机 Marvin 臂 SDK（38 版 / 43 版及以上固件） | 子模块 | `1fa6cc6` / `02440e8` | `marvin_hardware` |
 | `kh_ucanfd_sdk` | 腰部 USB-CANFD 适配器驱动 | 直接放入 | — | 宿主机内核模块（`scripts/setup.sh`） |
 | `wuji-sdk-c` | 舞肌 Wuji Hand 2 C SDK（`libwuji_sdk_c`，MIT） | 直接放入官方发布包 | `2026.8.31` | `wuji_hardware` |
-| `dexcap-sdk-cpp` | DexCap V4 C++ SDK（`libDexCap` 及其自带的 libserial / libusb / libudev / yaml-cpp，**仅 x86_64**） | 直接放入（暂时） | V2.1.0 | `dexcap_teleop` |
+| `dexcap-sdk-cpp` | DexCap V4 C++ SDK（DexRobot/dexcap-sdk-cpp：`libDexCap` 及其自带的 libserial / libusb / libudev / yaml-cpp，**仅 x86_64**） | 子模块 | `fc6590e` | `dexcap_teleop` |
 
 子模块初始化：`git submodule update --init --recursive --depth 1`。
 
 ## dexcap-sdk-cpp
 
-从 ctrl 的 `dexcap_ros2_control`（`00d4b56`）的 `external/dexcap-sdk-cpp` 原样拷来。没有独立的上游仓库，暂时直接放在这里；有了 SDK 仓库后换成子模块（路径不变，`dexcap_teleop` 的 `DEXCAP_SDK_ROOT` 默认就指向这里）。头文件需要系统的 `libserial-dev`（`dexcap_teleop` 的 `package.xml` 已声明，`./scripts/setup.sh deps` 经 rosdep 安装）。
+上游 [DexRobot/dexcap-sdk-cpp](https://github.com/DexRobot/dexcap-sdk-cpp)，固定在 `fc6590e`（2026-07-07，"C interfaces updated"，Ubuntu 22 RC1）：这一版的 `libs/linux/` 和头文件与 `dexcap_teleop` 开发时用的拷贝逐字节一致。之后的上游提交把库挪到了 `libs/linux/x86_64/`、`aarch64/` 并换了 `libDexCap.so`，升级要改 `dexcap_teleop/CMakeLists.txt` 的 `DEXCAP_SDK_LIB_DIR` 并重新验证。
+
+目录里没有要编译的东西（`examples/` 是要 Qt6 的厂家示例 `DexGloveDemo`，`urdf/` 是 ROS 1 catkin 包），`./scripts/setup.sh deps` / `build` 会在子模块根放 `COLCON_IGNORE`，colcon 整个跳过。头文件需要系统的 `libserial-dev`（`dexcap_teleop` 的 `package.xml` 已声明，`./scripts/setup.sh deps` 经 rosdep 安装）。
 
 ## wuji-sdk-c
 
-官方 [wuji-technology/wuji-sdk](https://github.com/wuji-technology/wuji-sdk) 的发布包，只有预编译库，没有源码仓库可做子模块，所以直接放 `x86_64` 和 `aarch64` 两个 `tar.gz`（`v2026.8.31`，即 `wuji_hardware` 驱动最后一次修改时的最新版）。`wuji_hardware` 的 CMake 在配置时解压对应架构的那一个，不联网。
+官方 [wuji-technology/wuji-sdk](https://github.com/wuji-technology/wuji-sdk) 的 Release 附件（sha256 与官方一致）。该仓库本身只有示例和文档，库只在 Release 附件里，做成子模块拿不到库，所以直接放 `x86_64` 和 `aarch64` 两个 `tar.gz`（`v2026.8.31`，即 `wuji_hardware` 驱动最后一次修改时的最新版）。`wuji_hardware` 的 CMake 在配置时解压对应架构的那一个，不联网。
 
 换版本：下载新版本的 `wuji-sdk-c-<版本>-x86_64-linux-gnu.tar.gz` 和 `-aarch64-linux-gnu.tar.gz` 放进来、删掉旧的，改 `robot_hardware/wuji_hardware/CMakeLists.txt` 里的 `WUJI_SDK_VERSION`。

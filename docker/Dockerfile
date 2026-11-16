@@ -37,8 +37,8 @@ RUN (userdel -r ubuntu 2>/dev/null || true) \
     && (groupdel ubuntu 2>/dev/null || true) \
     && groupadd -g "${USER_GID}" "${USER_NAME}" \
     && useradd -m -u "${USER_UID}" -g "${USER_GID}" -s /bin/bash -G dialout,plugdev "${USER_NAME}" \
-    && printf '%s ALL=(root) NOPASSWD:ALL\nDefaults env_keep += "http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY"\n' "${USER_NAME}" > /etc/sudoers.d/fiveages_w2 \
-    && chmod 0440 /etc/sudoers.d/fiveages_w2 && visudo -cf /etc/sudoers.d/fiveages_w2
+    && printf '%s ALL=(root) NOPASSWD:ALL\nDefaults env_keep += "http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY"\n' "${USER_NAME}" > /etc/sudoers.d/fa_w2 \
+    && chmod 0440 /etc/sudoers.d/fa_w2 && visudo -cf /etc/sudoers.d/fa_w2
 
 USER ${USER_NAME}
 ENTRYPOINT []

@@ -19,7 +19,7 @@ from launch_helpers import (
 def launch_setup(context, *args, **kwargs):
     """Launch setup function using OpaqueFunction"""
     robot_name = context.launch_configurations['robot']
-    robot_type = context.launch_configurations.get('type', '')
+    robot_type = context.launch_configurations.get('arms', '')
     hardware = context.launch_configurations.get('hardware', 'mock_components')
 
     # 基本参数
@@ -33,7 +33,7 @@ def launch_setup(context, *args, **kwargs):
         use_sim_time=use_sim_time,
         launch_configurations={
             'robot': robot_name,
-            'type': robot_type,
+            'arms': robot_type,
             'hardware': hardware,
             'use_sim_time': str(use_sim_time),
         },
@@ -113,14 +113,14 @@ def generate_launch_description():
     # Command-line arguments
     robot_name_arg = DeclareLaunchArgument(
         "robot",
-        default_value="fiveages_w1",
-        description="Robot name (fiveages_w1, etc.)"
+        default_value="fa_w1",
+        description="Robot name (fa_w1, etc.)"
     )
 
     robot_type_arg = DeclareLaunchArgument(
-        "type",
+        "arms",
         default_value="",
-        description="Robot type. Leave empty to not pass type parameter to xacro."
+        description="Arm topology passed to xacro (robot-specific). Leave empty for the xacro default."
     )
 
     hardware_arg = DeclareLaunchArgument(

@@ -66,7 +66,7 @@ namespace xr_teleop
         std::atomic<bool> server_connected_{false};
         std::atomic<uint64_t> parse_errors_{0};
 
-        // Health of this hop (src/robot_log/README.md): frames accepted from the headset (SDK thread) and frames published,
+        // Health of this hop (src/robot_utils/README.md): frames accepted from the headset (SDK thread) and frames published,
         // reported once per window by health_timer_.
         void reportHealth();
         void recordFrameIn(const XrFrame& frame);

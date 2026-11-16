@@ -1,12 +1,12 @@
 # 本机配置模板：复制成 config/robot.local.yaml 后修改（./scripts/start.sh / ./scripts/setup.sh 默认读取本文件，遥操作和推理都用）。
-# 上半部分：启动什么（机型、手、真机 / 仿真、相机）；字段说明和默认值见 src/robot_hmi/teleop_app/config/teleop.yaml，
+# 上半部分：启动什么（机型、手、真机 / 仿真、相机）；字段说明和默认值见 src/robot_hmi/robot_app/config/teleop.yaml，
 # 只写与默认值不同的项即可。下半部分：这台机器的硬件参数（platform / defaults / hardware / control），由 ROS 启动文件读取。
 # 首次使用：./scripts/setup.sh cam 弹窗确认相机画面与左右位置；./scripts/setup.sh hand 确认左右手。
 
 robot:
   entry: whole_body
-  hand: linkerhand_l6       # none | linkerhand_l6 | xhand1 | wuji_hand2（xhand1 只支持 usb，wuji_hand2 只支持 ethernet）
-  hand_drive: usb           # usb（485 转 USB 接电脑）| "485"（接机械臂 485 接口）| usb_can（USB-CAN，只支持 linkerhand_l6）| ethernet（wuji_hand2）
+  end_effector: linkerhand_l6     # 末端（手或夹爪）：none | linkerhand_l6 | xhand1 | wuji_hand2 | jodell_rg75
+  end_effector_bus: usb_rs485   # usb_rs485（485 转 USB 接电脑）| arm_rs485（接机械臂末端 485 口）| usb_can（USB-CAN，只支持 linkerhand_l6）| ethernet（只给 wuji_hand2）；xhand1 只能 usb_rs485，jodell_rg75 只能 arm_rs485
   hardware: real
 
 xr:
@@ -53,7 +53,7 @@ hardware:
   # body_can_stats_period_s: 10  # 真机上测总线速度和稳定性时打开：每 10 秒打印一次控制线程和 CAN 的统计（默认 0，只在停止时打印一次）
   usb_left_port: /dev/ttyUSB0
   usb_right_port: /dev/ttyUSB2
-  # hand_drive: usb_can 时两只手的 CAN 接口（经典 CAN 1 Mbit/s）；不能用腰、头的 body_can_interface。
+  # end_effector_bus: usb_can 时两只手的 CAN 接口（经典 CAN 1 Mbit/s）；不能用腰、头的 body_can_interface。
   # 改了之后重新运行 ./scripts/setup.sh host，让免密 sudo 规则用同样的名字。
   # left_ee_can_interface: can1
   # right_ee_can_interface: can2

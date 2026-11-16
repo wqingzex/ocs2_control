@@ -13,7 +13,7 @@ from launch_helpers import (
     create_controller_manager_nodes, get_ros2_control_robot_description, build_planning_urdf_launch_params)
 
 nodes = create_controller_manager_nodes(
-    robot_name="fiveages_w2", robot_type="linkerhand_l6", hardware="mock_components",
+    robot_name="fa_w2", robot_type="linkerhand_l6", hardware="mock_components",
     launch_configurations=context.launch_configurations)        # robot_state_publisher、ros2_control_node、spawner
 ```
 
@@ -29,7 +29,7 @@ nodes = create_controller_manager_nodes(
 | `control/compose.py` | 按左右末端类型合成控制器配置，注册表见 `config/eef_control_registry.yaml` |
 | `control/manager.py` | 创建 `robot_state_publisher`、`ros2_control_node`、`joint_state_broadcaster` |
 | `control/spawners.py` | 检测 URDF 里有哪些控制器并生成 spawner |
-| `control/task_info.py` | 解析 OCS2 `.info`、准备 `teleop_command` 参数 |
+| `control/task_info.py` | 解析 OCS2 `.info`、准备 `target_generator` 参数 |
 | `launch_utils.py` | rmw_zenoh 路由、launch 模式参数 |
 
 ## 两份 URDF

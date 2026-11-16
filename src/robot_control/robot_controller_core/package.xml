@@ -4,12 +4,12 @@
     <name>robot_controller_core</name>
     <version>1.5.0</version>
     <description>Controller core: the HOME / HOLD / MOVEJ state machine and the base class of the FSM controllers</description>
-    <maintainer email="biao876990970@hotmail.com">Huang Zhenbiao</maintainer>
+    <maintainer email="TODO@email.com"/>
     <license>Apache-2.0</license>
 
     <buildtool_depend>ament_cmake</buildtool_depend>
 
-    <depend>robot_log</depend>
+    <depend>robot_utils</depend>
 
     <depend>hardware_interface</depend>
     <depend>controller_interface</depend>

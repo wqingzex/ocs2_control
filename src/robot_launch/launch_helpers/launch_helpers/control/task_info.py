@@ -1,4 +1,4 @@
-"""OCS2 task .info parsing and teleop_command parameter preparation."""
+"""OCS2 task .info parsing and target_generator parameter preparation."""
 
 import os
 import re
@@ -18,7 +18,7 @@ def parse_task_info(task_file_path):
         tuple: (dual_arm_mode, control_base_frame, marker_fixed_frame)
             - dual_arm_mode (bool): 是否为双臂模式
             - control_base_frame (str): 控制基坐标系ID
-            - marker_fixed_frame (str or None): marker固定坐标系，None表示由teleop_command.yaml决定
+            - marker_fixed_frame (str or None): marker固定坐标系，None表示由target_generator.yaml决定
 
     Example:
         >>> dual_arm, frame, marker_frame = parse_task_info('/path/to/task.info')
@@ -70,14 +70,14 @@ def parse_task_info(task_file_path):
     return dual_arm_mode, control_base_frame, marker_fixed_frame
 
 
-def prepare_teleop_command_parameters(
+def prepare_target_generator_parameters(
     task_file_path,
     config_file_path=None,
     marker_fixed_frame=None,
     hand_controllers=None,
 ):
     """
-    准备 TeleopCommand 节点的参数。
+    准备 TargetGenerator 节点的参数。
     
     这个函数处理所有参数准备逻辑，包括：
     - 解析 task.info 文件
@@ -97,11 +97,11 @@ def prepare_teleop_command_parameters(
         list: 节点参数列表，可以直接传递给 Node 的 parameters 参数
         
     Example:
-        >>> params = prepare_teleop_command_parameters(
+        >>> params = prepare_target_generator_parameters(
         ...     task_file_path='/path/to/task.info',
         ...     hand_controllers=['left_hand_controller', 'right_hand_controller']
         ... )
-        >>> node = Node(package='teleop_command', executable='teleop_command_node', parameters=params)
+        >>> node = Node(package='target_generator', executable='target_generator_node', parameters=params)
     """
     if not task_file_path:
         print(f"[ERROR] No task_file provided")
@@ -121,10 +121,10 @@ def prepare_teleop_command_parameters(
         else:
             print(f"[WARN] Specified config file not found: {config_file_path}, falling back to default search")
     
-    # 如果还没有找到，检查 task_file 同目录下是否有 teleop_command.yaml
+    # 如果还没有找到，检查 task_file 同目录下是否有 target_generator.yaml
     if not config_path:
         task_file_dir = os.path.dirname(task_file_path)
-        task_dir_config = os.path.join(task_file_dir, 'teleop_command.yaml')
+        task_dir_config = os.path.join(task_file_dir, 'target_generator.yaml')
         if os.path.exists(task_dir_config):
             config_path = task_dir_config
             print(f"[INFO] Using config file from task file directory: {config_path}")
@@ -132,7 +132,7 @@ def prepare_teleop_command_parameters(
     # 如果还没有找到，使用默认配置文件
     if not config_path:
         try:
-            package_dir = get_package_share_directory('teleop_command')
+            package_dir = get_package_share_directory('target_generator')
             default_config = os.path.join(package_dir, 'config', 'default.yaml')
             if os.path.exists(default_config):
                 config_path = default_config
@@ -153,7 +153,7 @@ def prepare_teleop_command_parameters(
         'control_base_frame': control_base_frame
     }
     
-    # marker_fixed_frame 优先级：函数参数 > task.info自动检测 > teleop_command.yaml
+    # marker_fixed_frame 优先级：函数参数 > task.info自动检测 > target_generator.yaml
     effective_marker_fixed_frame = marker_fixed_frame if marker_fixed_frame is not None else auto_marker_fixed_frame
     if effective_marker_fixed_frame is not None:
         override_params['marker_fixed_frame'] = effective_marker_fixed_frame

@@ -13,7 +13,7 @@ from launch_helpers import load_robot_config, create_rmw_zenohd_node
 def launch_setup(context, *args, **kwargs):
     """Launch setup function using OpaqueFunction"""
     hand_name = context.launch_configurations.get('hand', 'linkerhand')
-    hand_type = context.launch_configurations.get('type', 'o7')
+    hand_type = context.launch_configurations.get('type', 'l6')
     direction = context.launch_configurations.get('direction', '1')
     hardware = context.launch_configurations.get('hardware', 'mock_components')
     # 基本参数
@@ -21,12 +21,7 @@ def launch_setup(context, *args, **kwargs):
 
     # 显示手部配置信息
     hand_side = "left" if direction == "1" else "right"
-    if hand_name == "freedom":
-        modbus_id = "0" if direction == "1" else "1"
-    elif hand_name == "inspire":
-        modbus_id = "2" if direction == "1" else "1"
-    else:
-        modbus_id = "0x28" if direction == "1" else "0x27"
+    modbus_id = "0x28" if direction == "1" else "0x27"  # LinkerHand L6
     print(f"[INFO] Hand configuration: {hand_side} hand (direction={direction}, Modbus ID={modbus_id})")
 
     # 生成 ros2_control robot_description
@@ -203,8 +198,8 @@ def generate_launch_description():
 
     type_arg = DeclareLaunchArgument(
         "type",
-        default_value="o7",
-        description="Hand type (o7, etc.). Leave empty to not pass type parameter to xacro."
+        default_value="l6",
+        description="Hand type within the hand package (l6 for linkerhand; xhand1 for xhand1). Leave empty to not pass type parameter to xacro."
     )
 
     direction_arg = DeclareLaunchArgument(

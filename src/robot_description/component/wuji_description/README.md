@@ -11,7 +11,7 @@ ros2 launch robot_visualize hand.launch.py hand:=wuji type:=hand2               
 ros2 launch robot_bringup hand.launch.py hand:=wuji type:=hand2 direction:=1         # mock 控制
 ```
 
-整机上用 `robot.hand: wuji_hand2`、`robot.hand_drive: ethernet`；真机走以太网（`wuji_hardware`，扫描后按 `hand_side` 认左右，不写 IP），见 [wuji_hardware](../../../robot_hardware/wuji_hardware/README.md)。装到臂上的方式：
+整机上用 `robot.end_effector: wuji_hand2`、`robot.end_effector_bus: ethernet`；真机走以太网（`wuji_hardware`，扫描后按 `hand_side` 认左右，不写 IP），见 [wuji_hardware](../../../robot_hardware/wuji_hardware/README.md)。装到臂上的方式：
 
 ```xml
 <xacro:WujiHand2 name="${side}_hand" direction="${1 if side == 'left' else -1}" use_mount="true"/>

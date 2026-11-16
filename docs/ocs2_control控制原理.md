@@ -1,6 +1,6 @@
 # ocs2_control 控制原理
 
-> 整理日期：2026-11-08　|　路径均相对 `src/`　|　范围： `arm_controller`、`robot_controller_core`，示例参数取自 fiveages_w2 的描述包（`robot_description/fiveages_w2_description`）
+> 整理日期：2026-11-08　|　路径均相对 `src/`　|　范围： `arm_controller`、`robot_controller_core`，示例参数取自 fa_w2 的描述包（`robot_description/fa_w2_description`）
 
 ocs2_control 把末端目标变成关节角的主路径是 **OCS2 MPC**：它直接优化未来 1 s 的关节轨迹，不单独求逆解。
 数值 IK（DLS，失败改 BFGS）只用于 MOVEJ 状态下的 MoveL / MoveC，以及外部调用的运动学服务。
@@ -39,7 +39,7 @@ flowchart TD
     N --> N3["ros2_control_node<br/>controller_manager 500 Hz + 硬件插件"]
     N --> N4["spawner joint_state_broadcaster"]
     N --> N5["spawner arm_controller<br/>（带 planning_urdf / task .info 参数文件）"]
-    N --> N6["teleop_command<br/>（enable_teleop_command 默认 true）"]
+    N --> N6["target_generator<br/>（enable_target_generator 默认 true）"]
     N --> N7["spawner 夹爪 / 手 / 身体控制器"]
 
     N5 --> C1["控制器配置阶段<br/>建立 topic / action / service"]
@@ -111,7 +111,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     subgraph EXT["外部输入"]
-        TM["teleop_command<br/>（RViz 交互 marker / XR）"]
+        TM["target_generator<br/>（RViz 交互 marker / XR）"]
         TELE["遥操作 / VLA / 上层程序"]
         CLI["ros2 topic / action 命令行"]
     end
@@ -160,7 +160,7 @@ flowchart LR
 - **command 也不经过 topic**：控制器写 command interface，由硬件插件下发给电机。
 - **topic 只用于外部输入和对外监控**：目标位姿、`/fsm_command`、关节目标、action 进入；`/fsm_state`、MPC 观测、`/joint_states`、`/tf` 出去。
 - `left_target` / `right_target` 订阅时使用相对名，在默认命名空间下解析为 `/left_target`、`/right_target`。
-- `<robot_name>` 取自控制器参数 `robot_name`；`common.yaml` 中出现了 `m6_ccs` 和 `fiveages_w2` 两处，实际生效值未核实。
+- `<robot_name>` 取自控制器参数 `robot_name`；`common.yaml` 中出现了 `m6_ccs` 和 `fa_w2` 两处，实际生效值未核实。
 
 ### 2.5 控制器与驱动的调用关系
 
@@ -189,7 +189,7 @@ robot_launch ──启动──▶ ros2_control_node（进程，ros2_control 自
                 ▼
   robot_hardware/comm 通信层：只管收发，不含设备协议
     robot_comm_can      CAN   → 关节模组（腰、头）
-    robot_comm_serial   串口  → XHand1、Freedom、KWR75
+    robot_comm_serial   串口  → XHand1、KWR75
     robot_comm_modbus   485   → Modbus 夹爪、灵巧手
     robot_comm_core     接口（CanBus / SerialPort / ModbusMaster）
 
@@ -223,7 +223,7 @@ Marvin 臂体走天机 SDK，不经 comm（工具口 485 也走 SDK 的异步收
 
 ### 3.1 加载哪个控制器
 
-由 `config/robot.local.yaml` 的 `robot.entry` 决定（映射见 `teleop_app/config.py` 的 `ENTRIES`），三者都基于 OCS2 MPC：
+由 `config/robot.local.yaml` 的 `robot.entry` 决定（映射见 `robot_app/config.py` 的 `ENTRIES`），三者都基于 OCS2 MPC：
 
 | 入口 | launch 文件 | 主控制器 |
 |---|---|---|
@@ -330,7 +330,7 @@ ros2 action send_goal /arm_controller/execute_linear \
 \min_{u(\cdot)} \int_{t}^{t+T} \big[ L_{input}(u) + L_{ee}(x) + L_{limits}(x,u) + L_{collision}(x) \big]\, d\tau + \Phi_{ee}\big(x(t+T)\big)
 ```
 
-| 项 | 配置段 | 作用 | fiveages_w2 参数 |
+| 项 | 配置段 | 作用 | fa_w2 参数 |
 |---|---|---|---|
 | L_input = ½uᵀRu | `inputCost` | 惩罚关节速度，平滑并抑制奇异 | R = 1e-3·I |
 | L_ee | `endEffector` | 过程中的末端位姿误差（Pinocchio FK） | 位置 μ=10，姿态 μ=5 |
@@ -454,7 +454,7 @@ flowchart TD
 
 | ctrl_mode | SDK 设置 | 对 q_cmd 的处理 | 参数 |
 |---|---|---|---|
-| `POSITION`（fiveages_w2 默认） | `OnSetTargetState(1)` | 刚性跟踪，外力下不让步 | xacro `max_joint_speed=50`、`max_joint_acceleration=30` |
+| `POSITION`（fa_w2 默认） | `OnSetTargetState(1)` | 刚性跟踪，外力下不让步 | xacro `max_joint_speed=50`、`max_joint_acceleration=30` |
 | `JOINT_IMPEDANCE` | `OnSetTargetState(3)` + `OnSetImpType(1)` + `OnSetJointKD(K,D)` | q_cmd 作为弹簧平衡点，近似 τ ≈ K(q_cmd − q) − D·q̇ + 重力/动力学补偿 | `joint_k_gains` 默认 `[2,2,2,1.6,1,1,1]`，`joint_d_gains` 默认 0.4 |
 | `CART_IMPEDANCE` | `OnSetTargetState(3)` + `OnSetImpType(2)` + `OnSetCartKD(K,D,type)` | 平衡点仍由 q_cmd 决定，弹簧作用在末端笛卡尔空间 | `cart_k_gains` 默认 `[1800×3, 40×3, 20]`，`cart_d_gains` |
 | `POWER_OFF` | `OnSetTargetState(0)` | 下使能；操作抱闸前必须处于此模式 | — |
@@ -467,11 +467,11 @@ flowchart TD
 2. **阻抗模式下 MPC 输出是柔顺参考**：受外力时实际 q 偏离 q_cmd（偏多少由 K 决定），下一拍 MPC 从偏离后的反馈重新规划——闭环成立，但 MPC 不显式建模外力。K 越小越柔顺，跟踪误差越大。
 3. **延迟补偿需谨慎**：开启 `cached_ob_state_` 时会用上次指令代替反馈，在阻抗模式下会掩盖真实偏离。
 4. **两层限速**：MPC `jointVelocityLimits`（臂 ±1.07 rad/s）与 SDK `max_joint_speed` / `max_joint_acceleration`；SDK 更严时实际运动比规划慢，表现为跟踪滞后。
-5. **ROS 侧 PD 对天机臂不生效**：`StateOCS2::enter()`（第 52-75 行）只在 `ControlMode::MIX` 下写 `joint_kp/kd`，MIX 还会下发速度和静力矩；但 marvin 只导出 position/velocity 指令接口，且 `write()` 只用位置。这套接口面向支持 MIT 模式（位置 + 速度 + kp/kd + 前馈力矩）的电机，如 juxie 关节（未逐个核对插件）。 fiveages_w2 的 `common.yaml` 只配置了 `position` 指令接口，当前走 POSITION 分支。
+5. **ROS 侧 PD 对天机臂不生效**：`StateOCS2::enter()`（第 52-75 行）只在 `ControlMode::MIX` 下写 `joint_kp/kd`，MIX 还会下发速度和静力矩；但 marvin 只导出 position/velocity 指令接口，且 `write()` 只用位置。这套接口面向支持 MIT 模式（位置 + 速度 + kp/kd + 前馈力矩）的电机，如 juxie 关节（未逐个核对插件）。 fa_w2 的 `common.yaml` 只配置了 `position` 指令接口，当前走 POSITION 分支。
 
 ### 6.4 切换方式
 
-- **启动时**：xacro 参数 `arm_ctrl_mode`，默认 `position`（`robot_description/fiveages_w2_description/xacro/ros2_control/robot.xacro:5`），可由平台 profile（`config/robot.local.yaml`）传入。
+- **启动时**：xacro 参数 `arm_ctrl_mode`，默认 `position`（`robot_description/fa_w2_description/xacro/ros2_control/robot.xacro:5`），可由平台 profile（`config/robot.local.yaml`）传入。
 - **运行时**：修改硬件参数 `ctrl_mode`（`marvin_hardware.cpp:713`），插件重新 activate 并下发新模式；抱闸释放时只允许切到 `POWER_OFF`。
 
 一句话：MPC 决定"去哪儿、怎么走"，天机臂控制模式决定"用多硬的方式去"。
@@ -540,7 +540,7 @@ T 是预测时域（秒），不是控制频率。
 
 **注意事项**
 
-- **MOVEJ 不插值**：fiveages_w2 配置 `movej_interpolation_type: none`（`common.yaml`），关节目标下一周期即原样下发（`StateMoveJ.cpp:620-645`）。目标离当前位置远时会要求电机一步跳过去，需发送方自行发密集平滑轨迹，或改为 `linear / tanh / doubles`（代码默认 `tanh`）。
+- **MOVEJ 不插值**：fa_w2 配置 `movej_interpolation_type: none`（`common.yaml`），关节目标下一周期即原样下发（`StateMoveJ.cpp:620-645`）。目标离当前位置远时会要求电机一步跳过去，需发送方自行发密集平滑轨迹，或改为 `linear / tanh / doubles`（代码默认 `tanh`）。
 - **MoveL 不检查速度和碰撞**：DLS 只截断关节位置；插补步长过大或经过奇异区附近时，相邻帧解可能跳变，MoveL 的速度和加速度参数不宜激进。
 - **MPC 有跟踪滞后**：由 `future_time_offset_` 和 MPC 频率决定。
 
@@ -565,8 +565,8 @@ T 是预测时域（秒），不是控制频率。
 | 笛卡尔插补 + 调 IK | `.../trajectory_manager/src/CartesianTrajectoryManager.cpp:574, 589, 624` |
 | DLS / BFGS 实现 | `.../robot_dynamics/src/Kinematics.cpp:137-325, 962, 1326` |
 | MoveL/MoveC 消息定义 | `robot_control/robot_control_msgs/msg/LinearMessage.msg`、`CircleMessage.msg` |
-| MPC 参数 | `robot_description/fiveages_w2_description/config/ocs2/whole_body_fixed_*.info`、`dual_arm_*.info` |
-| 控制器参数 | `robot_description/fiveages_w2_description/config/ros2_control/common.yaml` |
-| 启动入口 | `config/robot.local.yaml` 的 `robot.entry`（`teleop_app/config.py` 的 `ENTRIES`） |
+| MPC 参数 | `robot_description/fa_w2_description/config/ocs2/whole_body_fixed_*.info`、`dual_arm_*.info` |
+| 控制器参数 | `robot_description/fa_w2_description/config/ros2_control/common.yaml` |
+| 启动入口 | `config/robot.local.yaml` 的 `robot.entry`（`robot_app/config.py` 的 `ENTRIES`） |
 | 天机臂控制模式与写入 | `robot_hardware/marvin_hardware/src/marvin_hardware.cpp:713, 960-1030, 2675-2760, 3436-3448` |
-| 天机臂 ctrl_mode 启动参数 | `robot_description/fiveages_w2_description/xacro/ros2_control/robot.xacro:5`、`robot_description/component/m6_ccs_description/xacro/ros2_control/marvin_hardware.xacro:49` |
+| 天机臂 ctrl_mode 启动参数 | `robot_description/fa_w2_description/xacro/ros2_control/robot.xacro:5`、`robot_description/component/m6_ccs_description/xacro/ros2_control/marvin_hardware.xacro:49` |

@@ -1,0 +1,14 @@
+<package format="2">
+  <name>fa_w2_body_description</name>
+  <version>1.0.0</version>
+  <description>Movable waist section (body) of the FiveAges W2</description>
+  <maintainer email="TODO@email.com"/>
+  <license>BSD</license>
+
+  <exec_depend>fa_w2_torso_description</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+
+</package>

@@ -4,7 +4,7 @@
   <name>end_effector_controller</name>
   <version>0.1.0</version>
   <description>ros2_control controller plugins for end effectors: dexterous hand (HandController) and one-joint gripper (GripperController)</description>
-  <maintainer email="biao876990970@hotmail.com">Huang Zhenbiao</maintainer>
+  <maintainer email="TODO@email.com"/>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

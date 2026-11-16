@@ -29,12 +29,12 @@
                 </inertial>
                 <visual>
                     <geometry>
-                        <mesh filename="file://$(find changingtek_description)/meshes/AG2F90-C/visual/flange.glb"/>
+                        <mesh filename="file://$(find xhand1_description)/meshes/flange.glb"/>
                     </geometry>
                 </visual>
                 <visual>
                     <geometry>
-                        <mesh filename="file://$(find xhand1_description)/meshes/flange.glb"/>
+                        <mesh filename="file://$(find xhand1_description)/meshes/hand_flange.glb"/>
                     </geometry>
                 </visual>
             </link>

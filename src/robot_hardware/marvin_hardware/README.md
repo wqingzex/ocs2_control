@@ -4,7 +4,7 @@
 
 ## 作用
 
-fiveages_w2 和 M6 的双臂用它（URDF 里的 `M6_CCS_System`）。双臂时左臂走 A 通道，右臂走 B 通道。独立 USB 转接的末端不走本包，用 [`end_effector_hardware`](../end_effector_hardware/README.md)。
+fa_w2 和 M6 的双臂用它（URDF 里的 `arms`）。双臂时左臂走 A 通道，右臂走 B 通道。独立 USB 转接的末端不走本包，用 [`end_effector_hardware`](../end_effector_hardware/README.md)。
 
 ## 使用
 
@@ -25,16 +25,26 @@ fiveages_w2 和 M6 的双臂用它（URDF 里的 `M6_CCS_System`）。双臂时�
 
 ## 末端类型
 
-按 `left_ee_type` / `right_ee_type`（大写归一化）创建；未知夹爪回退 `JDGripper`，未知灵巧手回退 O7。
+按 `left_ee_type` / `right_ee_type`（大写归一化）创建；只支持下面两种，其他类型初始化直接失败。
 
 | 类型键 | 产品 | 总线 |
 |---|---|---|
-| `RG75` / `JDGRIPPER`、`ERG32` | Jodell RG75、ERG32-150 | RS485 |
-| `AG2F90_C` `AG2F90_D` `AG2F120S` `AG2F120S_D` | ChangingTek 夹爪 | RS485 |
-| `linkerhand_o7` `linkerhand_o6` `linkerhand_l6` | LinkerHand | RS485 |
-| `freedom_v1` `freedom_v2`、`inspire_e2` `inspire_f2` | Freedom、Inspire RH56 | RS485；`ee_channel=1` 时 CAN / CAN FD |
+| `RG75` / `JDGRIPPER` | Jodell RG75 夹爪 | RS485 |
+| `linkerhand_l6` / `L6` | LinkerHand L6 灵巧手 | RS485 |
 
 本仓库的描述包只带 `linkerhand_l6` 和 `xhand1`（后者不走本包）。
+
+## 法兰总线
+
+某一侧臂没有本包驱动的工具、也没有 KWR75 时，本包把这侧法兰口登记成 `robot_comm` bus，供 `end_effector_hardware/EndEffectorHardware` 使用（`end_effector_driver: bus`，见 `m6_ccs_description` 的 `external_ee_systems`）：
+
+| bus | SDK 通道 |
+|---|---|
+| `arm_rs485://<device_ip>/<left\|right>/port1` | COM1 |
+| `arm_rs485://<device_ip>/<left\|right>/port2` | COM2 |
+| `arm_canfd://<device_ip>/<left\|right>` | CANFD |
+
+一条臂只有一个 SDK 收发缓冲，三个口共用一个在途请求，轮流发。`write()` 末尾发出下一帧，`read()` 开头取回复；臂连上之前和断开之后，这些 bus 不可用，挂在上面的请求都以错误结束。
 
 ## 运行期调参
 
@@ -61,4 +71,4 @@ ros2 control switch_controllers --activate whole_body_controller
 
 ## 编译
 
-Marvin SDK 按控制器固件分成两个子模块（上游 `cynthia-you/TJ_FX_ROBOT_CONTRL_SDK`，`.gitmodules` 里都设了 `shallow = true`，只拉固定的那一个提交）：`src/third_party/TJ_FX_ROBOT_CONTRL_SDK_343`（固定在 `02440e8`，固件 100343 及以上，用 `contrlSDK100343`）和 `src/third_party/TJ_FX_ROBOT_CONTRL_SDK_338`（固定在 `1fa6cc6`，固件 338，用 `contrlSDK`）。克隆后 `git submodule update --init --depth 1 src/third_party/TJ_FX_ROBOT_CONTRL_SDK_343 src/third_party/TJ_FX_ROBOT_CONTRL_SDK_338`（`./scripts/setup.sh deps` 会做）。用 `-DMARVIN_FIRMWARE=343|338` 选（默认 343），要和控制器固件一致，装错时连接后读不到控制器版本，激活后立即急停抱闸。`./scripts/setup.sh` 的 `marvin` 步骤询问版本并写入配置的 `hardware.marvin_firmware`，`./scripts/setup.sh build` 按它传 `-DMARVIN_FIRMWARE`。`libKine.so` 缺失或不是 Linux ELF 时编译会自动用 g++ 重建（338 子模块里带的是 Windows DLL，会被重建）。`examples/` 里是不经过 `ros2_control` 的夹爪、灵巧手 SDK 调试程序。夹爪的位置换算复用 `gripper_hardware_common`。
+Marvin SDK 按控制器固件分成两个子模块（上游 `cynthia-you/TJ_FX_ROBOT_CONTRL_SDK`，`.gitmodules` 里都设了 `shallow = true`，只拉固定的那一个提交）：`src/third_party/TJ_FX_ROBOT_CONTRL_SDK_343`（固定在 `02440e8`，固件 100343 及以上，用 `contrlSDK100343`）和 `src/third_party/TJ_FX_ROBOT_CONTRL_SDK_338`（固定在 `1fa6cc6`，固件 338，用 `contrlSDK`）。克隆后 `git submodule update --init --depth 1 src/third_party/TJ_FX_ROBOT_CONTRL_SDK_343 src/third_party/TJ_FX_ROBOT_CONTRL_SDK_338`（`./scripts/setup.sh deps` 会做）。用 `-DMARVIN_FIRMWARE=343|338` 选（默认 343），要和控制器固件一致，装错时连接后读不到控制器版本，激活后立即急停抱闸。`./scripts/setup.sh` 的 `marvin` 步骤询问版本并写入配置的 `hardware.marvin_firmware`，`./scripts/setup.sh build` 按它传 `-DMARVIN_FIRMWARE`。`libKine.so` 缺失或不是 Linux ELF 时编译会自动用 g++ 重建（338 子模块里带的是 Windows DLL，会被重建）。`examples/` 里是不经过 `ros2_control` 的夹爪、灵巧手 SDK 调试程序。夹爪和灵巧手的寄存器表、单位换算用 `end_effector_hardware` 导出的纯头文件目标 `end_effector_hardware::gripper_protocol`（不链接它的插件库）。

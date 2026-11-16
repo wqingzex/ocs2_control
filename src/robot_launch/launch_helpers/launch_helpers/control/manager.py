@@ -123,7 +123,7 @@ def create_controller_manager_nodes(
     """
     if hardware == "gz":
         raise ValueError(
-            "hardware 'gz' (Gazebo) is no longer supported; use real, real_usb, mock_components or isaac"
+            "hardware 'gz' (Gazebo) is no longer supported; use real, mock_components or isaac"
         )
 
     configs = launch_configurations or {}

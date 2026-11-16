@@ -391,5 +391,5 @@ selfCollision
 ;     active only in HEAD_GAZE head mode; mutually exclusive with headTrackingEE (see README.md
 ;     "Head mode compatibility and mutual exclusion"). Independent of body mode; does NOT require
 ;     customJointLock.activate=true.
-; Real per-robot values live in fiveages_w2_description/config/ocs2/*.info.
+; Real per-robot values live in fa_w2_description/config/ocs2/*.info.
 ;=============================================================================

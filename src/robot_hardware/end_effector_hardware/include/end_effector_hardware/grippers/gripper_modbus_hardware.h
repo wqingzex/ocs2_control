@@ -20,7 +20,7 @@ namespace end_effector_hardware {
  * 
  * 通用的 Modbus 末端执行器硬件接口，支持通过配置选择不同的末端执行器类型
  * 当前支持：
- * - ChangingtekGripper
+ * - JodellGripper（Jodell RG75）
  * 
  * 未来可以扩展支持其他 Modbus 末端执行器（夹爪、工具等）
  */
@@ -97,7 +97,7 @@ private:
     std::unique_ptr<ModbusGripperBase> gripper_;
 
     // 配置参数
-    std::string gripper_type_;      // 夹爪类型（如 "changingtek"）
+    std::string gripper_type_;      // 夹爪类型（只支持 "jodell"）
     std::string serial_port_;       // 串口路径
     uint32_t baudrate_;             // 波特率
     int slave_id_;                  // 从站地址
@@ -114,11 +114,6 @@ private:
      */
     void loadParameters(const std::unordered_map<std::string, std::string>& params);
 
-    /**
-     * @brief 创建夹爪对象（根据 gripper_type_）
-     * @return 是否创建成功
-     */
-    bool createGripper();
 };
 
 } // namespace end_effector_hardware

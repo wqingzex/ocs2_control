@@ -4,7 +4,7 @@
   <name>rokae_hardware</name>
   <version>1.0.0</version>
   <description>Rokae ROS2 Control Hardware Interface</description>
-  <maintainer email="rokae@example.com">Rokae Team</maintainer>
+  <maintainer email="TODO@email.com"/>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

@@ -1,103 +1,105 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <xacro:include filename="$(find changingtek_description)/xacro/ros2_control/side_system.xacro"/>
+  <xacro:include filename="$(find xhand1_description)/xacro/ros2_control/side_system.xacro"/>
 
-  <xacro:macro name="xhand1_interfaces" params="name">
+  <!-- commands: the command interfaces of each joint. EndEffectorHardware (end_effector_driver bus) takes position
+       only; the earlier XHand1Rs485Hardware also declares velocity / effort (overwritten by its tool parameters). -->
+  <xacro:macro name="xhand1_interfaces" params="name commands:='position velocity effort'">
     <xacro:property name="prefix" value="${name + '_' if name else ''}"/>
 
     <joint name="${prefix}thumb_joint1">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <command_interface name="effort"/>
+      <xacro:if value="${'position' in commands.split()}"><command_interface name="position"/></xacro:if>
+      <xacro:if value="${'velocity' in commands.split()}"><command_interface name="velocity"/></xacro:if>
+      <xacro:if value="${'effort' in commands.split()}"><command_interface name="effort"/></xacro:if>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="${prefix}thumb_joint2">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <command_interface name="effort"/>
+      <xacro:if value="${'position' in commands.split()}"><command_interface name="position"/></xacro:if>
+      <xacro:if value="${'velocity' in commands.split()}"><command_interface name="velocity"/></xacro:if>
+      <xacro:if value="${'effort' in commands.split()}"><command_interface name="effort"/></xacro:if>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="${prefix}thumb_joint3">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <command_interface name="effort"/>
+      <xacro:if value="${'position' in commands.split()}"><command_interface name="position"/></xacro:if>
+      <xacro:if value="${'velocity' in commands.split()}"><command_interface name="velocity"/></xacro:if>
+      <xacro:if value="${'effort' in commands.split()}"><command_interface name="effort"/></xacro:if>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="${prefix}index_joint1">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <command_interface name="effort"/>
+      <xacro:if value="${'position' in commands.split()}"><command_interface name="position"/></xacro:if>
+      <xacro:if value="${'velocity' in commands.split()}"><command_interface name="velocity"/></xacro:if>
+      <xacro:if value="${'effort' in commands.split()}"><command_interface name="effort"/></xacro:if>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="${prefix}index_joint2">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <command_interface name="effort"/>
+      <xacro:if value="${'position' in commands.split()}"><command_interface name="position"/></xacro:if>
+      <xacro:if value="${'velocity' in commands.split()}"><command_interface name="velocity"/></xacro:if>
+      <xacro:if value="${'effort' in commands.split()}"><command_interface name="effort"/></xacro:if>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="${prefix}index_joint3">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <command_interface name="effort"/>
+      <xacro:if value="${'position' in commands.split()}"><command_interface name="position"/></xacro:if>
+      <xacro:if value="${'velocity' in commands.split()}"><command_interface name="velocity"/></xacro:if>
+      <xacro:if value="${'effort' in commands.split()}"><command_interface name="effort"/></xacro:if>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="${prefix}middle_joint1">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <command_interface name="effort"/>
+      <xacro:if value="${'position' in commands.split()}"><command_interface name="position"/></xacro:if>
+      <xacro:if value="${'velocity' in commands.split()}"><command_interface name="velocity"/></xacro:if>
+      <xacro:if value="${'effort' in commands.split()}"><command_interface name="effort"/></xacro:if>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="${prefix}middle_joint2">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <command_interface name="effort"/>
+      <xacro:if value="${'position' in commands.split()}"><command_interface name="position"/></xacro:if>
+      <xacro:if value="${'velocity' in commands.split()}"><command_interface name="velocity"/></xacro:if>
+      <xacro:if value="${'effort' in commands.split()}"><command_interface name="effort"/></xacro:if>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="${prefix}ring_joint1">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <command_interface name="effort"/>
+      <xacro:if value="${'position' in commands.split()}"><command_interface name="position"/></xacro:if>
+      <xacro:if value="${'velocity' in commands.split()}"><command_interface name="velocity"/></xacro:if>
+      <xacro:if value="${'effort' in commands.split()}"><command_interface name="effort"/></xacro:if>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="${prefix}ring_joint2">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <command_interface name="effort"/>
+      <xacro:if value="${'position' in commands.split()}"><command_interface name="position"/></xacro:if>
+      <xacro:if value="${'velocity' in commands.split()}"><command_interface name="velocity"/></xacro:if>
+      <xacro:if value="${'effort' in commands.split()}"><command_interface name="effort"/></xacro:if>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="${prefix}pinky_joint1">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <command_interface name="effort"/>
+      <xacro:if value="${'position' in commands.split()}"><command_interface name="position"/></xacro:if>
+      <xacro:if value="${'velocity' in commands.split()}"><command_interface name="velocity"/></xacro:if>
+      <xacro:if value="${'effort' in commands.split()}"><command_interface name="effort"/></xacro:if>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="${prefix}pinky_joint2">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
-      <command_interface name="effort"/>
+      <xacro:if value="${'position' in commands.split()}"><command_interface name="position"/></xacro:if>
+      <xacro:if value="${'velocity' in commands.split()}"><command_interface name="velocity"/></xacro:if>
+      <xacro:if value="${'effort' in commands.split()}"><command_interface name="effort"/></xacro:if>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
@@ -106,7 +108,27 @@
 
   <xacro:macro name="xhand1_rs485_side_system" params="side serial_port baudrate:=3000000 host_id:=0xFE hand_id:=0 rw_rate:=''">
     <!-- rw_rate: optional ros2_control read/write rate [Hz]; empty = controller_manager rate -->
-    <xacro:side_ros2_control_system name="xhand1_${side}_system" rw_rate="${rw_rate}">
+    <!-- end_effector_driver (m6_ccs_description external_ee_systems.xacro): bus = EndEffectorHardware on a
+         robot_comm bus, the same frames without a thread of its own (not yet verified on the robot). -->
+    <xacro:if value="${end_effector_driver == 'bus'}">
+      <xacro:side_ros2_control_system name="${side}_end_effector" rw_rate="${rw_rate}">
+        <contents>
+          <hardware>
+            <plugin>end_effector_hardware/EndEffectorHardware</plugin>
+            <param name="device">xhand1</param>
+            <param name="side">${side}</param>
+            <param name="bus">usb_rs485://${serial_port}?baud=${baudrate}</param>
+            <param name="host_id">${host_id}</param>
+            <param name="hand_id">${hand_id}</param>
+            <param name="torque">0.8</param>
+            <param name="velocity">0</param>
+          </hardware>
+          <xacro:xhand1_interfaces name="${side}_hand" commands="position"/>
+        </contents>
+      </xacro:side_ros2_control_system>
+    </xacro:if>
+    <xacro:unless value="${end_effector_driver == 'bus'}">
+    <xacro:side_ros2_control_system name="${side}_end_effector" rw_rate="${rw_rate}">
       <contents>
         <hardware>
           <plugin>end_effector_hardware/XHand1Rs485Hardware</plugin>
@@ -122,6 +144,7 @@
         <xacro:xhand1_interfaces name="${side}_hand"/>
       </contents>
     </xacro:side_ros2_control_system>
+    </xacro:unless>
   </xacro:macro>
 
 </robot>

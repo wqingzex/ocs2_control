@@ -3,7 +3,7 @@
 #include "robot_comm/modbus.h"
 
 #include "end_effector_hardware/grippers/modbus_gripper_base.h"
-#include "gripper_hardware_common/utils/ModbusConfig.h"
+#include "end_effector_hardware/gripper_protocol/utils/ModbusConfig.h"
 #include <unordered_map>
 #include <string>
 

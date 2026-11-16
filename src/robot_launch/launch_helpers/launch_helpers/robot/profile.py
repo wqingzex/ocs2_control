@@ -14,20 +14,14 @@ XACRO_PREFIX = "xacro_"
 HARDWARE_PREFIX = "hardware_"
 CONTROL_PREFIX = "control_"
 
-REAL_HARDWARE = frozenset({"real", "real_usb"})
+REAL_HARDWARE = frozenset({"real"})
 
-_EEF_XACRO_KEYS = frozenset({"type", "left_type", "right_type"})
-
-# launch ``type`` values that select arm topology (left/right/dual),
-# not symmetric end-effector keys — must not become left_type/right_type.
-_ARM_TOPOLOGY_TYPE_KEYS = frozenset({
-    "left",
-    "right",
-    "dual",
+# End effector arguments: resolved by resolve_end_effectors / resolve_end_effector_buses, never copied as plain
+# xacro overrides. Names as robot.end_effector / robot.end_effector_bus in robot.local.yaml.
+_EEF_XACRO_KEYS = frozenset({
+    "end_effector", "left_end_effector", "right_end_effector",
+    "end_effector_bus", "left_end_effector_bus", "right_end_effector_bus",
 })
-
-def _is_arm_topology_type(type_key: str) -> bool:
-    return _strip_eef_key(type_key) in _ARM_TOPOLOGY_TYPE_KEYS
 
 
 def _strip_eef_key(value: str) -> str:
@@ -92,8 +86,7 @@ def normalize_robot_profile(data: Dict[str, Any]) -> Dict[str, Any]:
 
     New schema (recommended):
       platform:  chassis / variant / arm_ctrl_mode — always apply (also when end effectors come from the config)
-      defaults.end_effectors: loaded into profile["eef"]; applied only when use_profile_eef is true
-      Launch merge order: CLI type/left_type/right_type → profile eef (if enabled) → bare arm
+      robot.end_effector / robot.end_effector_bus: loaded into profile["eef"] (launch arguments override them)
       control.patch: inline ros2_control overrides (deep-merged after compose)
     """
     if not isinstance(data, dict) or not data:
@@ -106,6 +99,7 @@ def normalize_robot_profile(data: Dict[str, Any]) -> Dict[str, Any]:
         not isinstance(platform, dict)
         and not isinstance(defaults, dict)
         and not has_control
+        and not isinstance(data.get("robot"), dict)
     ):
         return data
 
@@ -128,28 +122,15 @@ def normalize_robot_profile(data: Dict[str, Any]) -> Dict[str, Any]:
     if arm_mode is not None and str(arm_mode).strip():
         hardware["arm_ctrl_mode"] = str(arm_mode).strip()
 
+    if isinstance(defaults, dict) and "end_effectors" in defaults:
+        raise ValueError("defaults.end_effectors was removed: write robot.end_effector / robot.end_effector_bus "
+                         "in the same file instead")
+    robot = data.get("robot") if isinstance(data.get("robot"), dict) else {}
     eef: Dict[str, str] = {}
-    if isinstance(defaults, dict):
-        raw_eef = defaults.get("end_effectors")
-        eef_src = raw_eef if isinstance(raw_eef, dict) else defaults
-        if isinstance(eef_src, dict):
-            sym = str(eef_src.get("type", "") or "").strip()
-            left = str(eef_src.get("left", "") or eef_src.get("left_type", "") or "").strip()
-            right = str(eef_src.get("right", "") or eef_src.get("right_type", "") or "").strip()
-            if sym:
-                eef["type"] = sym
-            if left:
-                eef["left"] = left
-            if right:
-                eef["right"] = right
-    else:
-        for key in ("type", "left_type", "right_type"):
-            val = legacy_x.get(key)
-            if val is not None and str(val).strip():
-                eef[key if key == "type" else key.replace("_type", "")] = str(val).strip()
-        for key in ("left", "right"):
-            if legacy_c.get(key):
-                eef[key] = str(legacy_c[key]).strip()
+    for key, name in (("end_effector", "end_effector"), ("end_effector_bus", "bus")):
+        value = _strip_eef_key(str(robot.get(key, "") or ""))
+        if value:
+            eef[name] = value
 
     patch = legacy_c.get("patch")
     if isinstance(patch, dict) and patch:
@@ -187,86 +168,38 @@ def _cli_launch_value(launch_configurations: Dict[str, str], key: str) -> str:
     return ""
 
 
-def use_profile_end_effectors(launch_configurations: Dict[str, str]) -> bool:
-    """When false, ``defaults.end_effectors`` from robot.local.yaml are not applied."""
-    val = _cli_launch_value(launch_configurations, "use_profile_eef").lower()
-    if val:
-        return val not in ("false", "0", "no")
-    return True
+def _side_value(launch_configurations: Dict[str, str], profile: Optional[Dict[str, Any]], side: str,
+                key: str, profile_key: str) -> str:
+    """left_<key> / right_<key>, else <key>, from the launch; else the profile's robot.<key>."""
+    for name in (f"{side}_{key}", key):
+        value = _strip_eef_key(_cli_launch_value(launch_configurations, name))
+        if value:
+            return value
+    if profile:
+        return _strip_eef_key(str((profile.get("eef") or {}).get(profile_key, "") or ""))
+    return ""
 
 
-def _profile_eef_pair(profile: Dict[str, Any]) -> Tuple[str, str]:
-    """Left/right type keys from profile ``eef`` section (not merged into platform xacro)."""
-    eef = profile.get("eef")
-    if isinstance(eef, dict) and eef:
-        sym = _strip_eef_key(str(eef.get("type", "") or ""))
-        left = _strip_eef_key(
-            str(eef.get("left", "") or eef.get("left_type", "") or "")
-        )
-        right = _strip_eef_key(
-            str(eef.get("right", "") or eef.get("right_type", "") or "")
-        )
-        if sym and not left and not right:
-            return sym, sym
-        if not left:
-            left = sym
-        if not right:
-            right = sym
-        return left, right
-
-    xacro_section = profile.get("xacro") or {}
-    control_section = profile.get("control") or {}
-    if not isinstance(xacro_section, dict):
-        xacro_section = {}
-    if not isinstance(control_section, dict):
-        control_section = {}
-    left = _strip_eef_key(
-        str(control_section.get("left", "") or xacro_section.get("left_type", "") or "")
-    )
-    right = _strip_eef_key(
-        str(control_section.get("right", "") or xacro_section.get("right_type", "") or "")
-    )
-    sym = _strip_eef_key(str(xacro_section.get("type", "") or ""))
-    if sym and not left and not right:
-        return sym, sym
-    if not left:
-        left = sym
-    if not right:
-        right = sym
-    return left, right
-
-
-def resolve_side_eef_types(
+def resolve_end_effectors(
     launch_configurations: Dict[str, str],
     profile: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, str]:
-    """
-    Per-side end-effector type keys for URDF xacro and ros2_control compose.
+    """Left / right end effector (robot.end_effector names; '' = none) for xacro and ros2_control compose."""
+    sides = tuple(_side_value(launch_configurations, profile, side, "end_effector", "end_effector")
+                  for side in ("left", "right"))
+    return tuple("" if value == "none" else value for value in sides)  # type: ignore[return-value]
 
-    Merge order: launch ``type`` / ``left_type`` / ``right_type`` first; profile
-    ``defaults.end_effectors`` only when ``use_profile_eef`` is true (default).
-    ``use_profile_eef:=false`` is used by start.sh (incl. no end effector).
-    """
-    left = _strip_eef_key(_cli_launch_value(launch_configurations, "left_type"))
-    right = _strip_eef_key(_cli_launch_value(launch_configurations, "right_type"))
-    launch_type = _strip_eef_key(_cli_launch_value(launch_configurations, "type"))
 
-    if launch_type and not left and not right:
-        if _is_arm_topology_type(launch_type):
-            return "", ""
-        return launch_type, launch_type
+def resolve_end_effector_buses(
+    launch_configurations: Dict[str, str],
+    profile: Optional[Dict[str, Any]] = None,
+) -> Tuple[str, str]:
+    """Left / right end effector bus (usb_rs485 | arm_rs485 | usb_can | ethernet; '' = the xacro default)."""
+    return tuple(_side_value(launch_configurations, profile, side, "end_effector_bus", "bus")  # type: ignore
+                 for side in ("left", "right"))
 
-    if not use_profile_end_effectors(launch_configurations):
-        return left, right
 
-    if profile:
-        pe_left, pe_right = _profile_eef_pair(profile)
-        if not left:
-            left = pe_left
-        if not right:
-            right = pe_right
-
-    return left, right
+resolve_side_eef_types = resolve_end_effectors  # used by control.compose
 
 
 def resolve_control_patch(profile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -284,8 +217,8 @@ def resolve_control_sides(
     launch_configurations: Dict[str, str],
     profile: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, str]:
-    """Alias for :func:`resolve_side_eef_types` (ros2_control compose)."""
-    return resolve_side_eef_types(launch_configurations, profile)
+    """Alias for :func:`resolve_end_effectors` (ros2_control compose)."""
+    return resolve_end_effectors(launch_configurations, profile)
 
 
 def resolve_robot_variant(
@@ -324,7 +257,7 @@ def build_xacro_mappings(
             mappings[str(key)] = str(value).strip()
 
     xacro_overrides = extract_prefixed_args(launch_configurations, XACRO_PREFIX)
-    for key in ("type", "left_type", "right_type"):
+    for key in _EEF_XACRO_KEYS:
         xacro_overrides.pop(key, None)
     mappings.update(xacro_overrides)
 
@@ -336,27 +269,18 @@ def build_xacro_mappings(
                     mappings[str(key)] = str(value).strip()
         mappings.update(extract_prefixed_args(launch_configurations, HARDWARE_PREFIX))
 
-    launch_type = _strip_eef_key(_cli_launch_value(launch_configurations, "type"))
-    side_left, side_right = resolve_side_eef_types(launch_configurations, profile)
+    left, right = resolve_end_effectors(launch_configurations, profile)
+    for side, value in (("left", left), ("right", right)):
+        if value:
+            mappings[f"{side}_end_effector"] = value
+    if hardware in REAL_HARDWARE:
+        for side, value in zip(("left", "right"), resolve_end_effector_buses(launch_configurations, profile)):
+            if value:
+                mappings[f"{side}_end_effector_bus"] = value
 
-    if launch_type:
-        mappings["type"] = launch_type
-    elif use_profile_end_effectors(launch_configurations):
-        xt = _strip_eef_key(str((profile.get("eef") or {}).get("type", "") or ""))
-        if not xt:
-            xt = _strip_eef_key(str(profile_xacro.get("type", "") or ""))
-        if xt:
-            mappings["type"] = xt
-
-    if side_left:
-        mappings["left_type"] = side_left
-    elif launch_type and not side_left and not side_right:
-        mappings.pop("left_type", None)
-
-    if side_right:
-        mappings["right_type"] = side_right
-    elif launch_type and not side_left and not side_right:
-        mappings.pop("right_type", None)
+    arms = _strip_eef_key(_cli_launch_value(launch_configurations, "arms"))
+    if arms:
+        mappings["arms"] = arms
 
     if "collider" not in mappings:
         mappings["collider"] = "simple"
@@ -371,18 +295,17 @@ def build_xacro_mappings(
 def create_eef_side_launch_arguments():
     from launch.actions import DeclareLaunchArgument
 
+    names = "jodell_rg75 | linkerhand_l6 | xhand1 | wuji_hand2 | none"
+    buses = "usb_rs485 | arm_rs485 | usb_can | ethernet"
     return [
-        DeclareLaunchArgument(
-            "left_type",
-            default_value="",
-            description="Left end-effector type key (linkerhand_l6, xhand1, wuji_hand2). "
-            "Use with right_type for asymmetric setups; do not pass type:=.",
-        ),
-        DeclareLaunchArgument(
-            "right_type",
-            default_value="",
-            description="Right end-effector type key. See left_type.",
-        ),
+        DeclareLaunchArgument("end_effector", default_value="",
+                              description=f"End effector on both arms ({names}); default robot.end_effector"),
+        DeclareLaunchArgument("left_end_effector", default_value="", description="Left side only; see end_effector"),
+        DeclareLaunchArgument("right_end_effector", default_value="", description="Right side only; see end_effector"),
+        DeclareLaunchArgument("end_effector_bus", default_value="",
+                              description=f"Where the end effectors are wired ({buses}); default robot.end_effector_bus"),
+        DeclareLaunchArgument("left_end_effector_bus", default_value="", description="Left side only"),
+        DeclareLaunchArgument("right_end_effector_bus", default_value="", description="Right side only"),
     ]
 
 
@@ -394,11 +317,6 @@ def create_robot_profile_launch_arguments():
             "robot_profile",
             default_value="",
             description="Path to robot.local.yaml (machine hardware profile)",
-        ),
-        DeclareLaunchArgument(
-            "use_profile_eef",
-            default_value="true",
-            description="Apply defaults.end_effectors from robot_profile (start.sh passes false: end effectors come from robot.hand)",
         ),
         *create_eef_side_launch_arguments(),
     ]

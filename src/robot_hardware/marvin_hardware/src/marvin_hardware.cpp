@@ -20,19 +20,12 @@
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include <string>
-#include "gripper_hardware_common/ChangingtekGripper.h"
-#include "gripper_hardware_common/JodellGripper.h"
-#include "marvin_hardware/tool/grippers/changingtek/changingtek_gripper.h"
+#include "end_effector_hardware/gripper_protocol/JodellGripper.h"
 #include "marvin_hardware/tool/grippers/jodell/jd_gripper.h"
-#include "marvin_hardware/tool/grippers/eincinx/eincinx_gripper.h"
-#include "marvin_hardware/tool/hands/freedom/freedom_hand.h"
-#include "marvin_hardware/tool/hands/inspire/inspire_hand.h"
 #include "marvin_hardware/tool/hands/linkerhand/dexterous_hand.h"
-#include "marvin_hardware/tool/hands/jodell/erg32_hand.h"
-#include "marvin_hardware/tool/hands/theo/theo_hand.h"
 #include "marvin_hardware/tool/marvin_rs485_bus.h"
 
-using namespace gripper_hardware_common;
+using namespace gripper_protocol;
 
 namespace marvin_hardware
 {
@@ -579,12 +572,50 @@ namespace marvin_hardware
                 }
             }
 
+            const bool left_expected = has_left_ee && (robot_arm_index_ == ARM_LEFT || robot_arm_index_ == ARM_DUAL);
+            const bool right_expected = has_right_ee && (robot_arm_index_ == ARM_RIGHT || robot_arm_index_ == ARM_DUAL);
+            if ((left_expected && toolAt(0) == nullptr) || (right_expected && toolAt(1) == nullptr))
+            {
+                RCLCPP_ERROR(get_logger(), "End effector could not be created (left_ee_type=%s, right_ee_type=%s)",
+                             left_ee_type_.c_str(), right_ee_type_.c_str());
+                return hardware_interface::CallbackReturn::ERROR;
+            }
+
             const size_t created_tool_count =
                 static_cast<size_t>(toolAt(0) != nullptr) + static_cast<size_t>(toolAt(1) != nullptr);
             RCLCPP_INFO(get_logger(),
                         "%s init: arm_type=%s, tool_type=%s, detected_joints=%zu, created_tools=%zu",
                         toolTypeLogName(),
                         robot_arm_config_.c_str(), gripper_type_.c_str(), gripper_joint_name_.size(), created_tool_count);
+        }
+
+        // Flange ports as buses for end effector components, on each arm whose SDK buffer this driver does not read
+        // itself (no tool of its own, no KWR75 on that side).
+        arm_buses_.clear();
+        {
+            auto side_is_free = [this](std::size_t tool_idx, bool ft_side_on) {
+                return (tool_idx >= toolCount() || !toolAt(tool_idx)) && !(kwr75_ft_config_.enabled && ft_side_on);
+            };
+            const bool left = (robot_arm_index_ == ARM_LEFT || robot_arm_index_ == ARM_DUAL) &&
+                              side_is_free(0, kwr75_ft_config_.left_enabled);
+            const bool right = (robot_arm_index_ == ARM_RIGHT || robot_arm_index_ == ARM_DUAL) &&
+                               side_is_free(1, kwr75_ft_config_.right_enabled);
+            if (left) arm_buses_.push_back(std::make_unique<ArmBuses>(device_ip_, "left", MarvinRs485Bus::sendA(), MarvinRs485Bus::getA()));
+            if (right) arm_buses_.push_back(std::make_unique<ArmBuses>(device_ip_, "right", MarvinRs485Bus::sendB(), MarvinRs485Bus::getB()));
+            for (auto& buses : arm_buses_)
+            {
+                std::string error;
+                if (buses->provide(error))
+                {
+                    RCLCPP_INFO(get_logger(), "Flange buses of the %s arm: arm_rs485://%s/%s/port1|port2, arm_canfd://%s/%s",
+                                buses->side().c_str(), device_ip_.c_str(), buses->side().c_str(), device_ip_.c_str(),
+                                buses->side().c_str());
+                }
+                else
+                {
+                    RCLCPP_WARN(get_logger(), "Flange buses of the %s arm not provided: %s", buses->side().c_str(), error.c_str());
+                }
+            }
         }
 
         // Initialize hardware connection status
@@ -1345,7 +1376,7 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
         usleep(100000);
     }
 
-    std::unique_ptr<gripper_hardware_common::GripperBase> MarvinHardware::createTool(
+    std::unique_ptr<gripper_protocol::GripperBase> MarvinHardware::createTool(
         marvin_hardware::Clear485Func clear_485, 
         marvin_hardware::Send485Func send_485,
         marvin_hardware::GetChDataFunc get_ch_data,
@@ -1365,215 +1396,25 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
         bool is_left_hand = (robot_arm_index_ == ARM_LEFT) || 
                            (robot_arm_index_ == ARM_DUAL && tool_index == 0);
         
-        // Determine if end effector is a hand or gripper based on type
-        // Hand types: LINKERHAND_O7, LINKERHAND_O6, LINKERHAND_L6 (all are LinkerHand/DexterousHand)
-        // Also support short forms: O7, O6, L6
-        static const std::set<std::string> hand_types = {
-            "LINKERHAND_O7", "LINKERHAND_O6", "LINKERHAND_L6",
-            "O7", "O6", "L6",
-            "FREEDOM_V1", "FREEDOM_V2", "FREEDOM",
-            "INSPIRE_E2", "INSPIRE", "RH56E2",
-            "INSPIRE_F2", "RH56F2",
-            "ERG32",
-            "THEOHAND_STD16A", "THEOHAND", "STD16A"
-        };
-        
-        // Check if type contains hand indicators
-        bool is_hand_type = false;
-        std::string hand_model = "O7";  // Default
-        
-        if (hand_types.find(normalized_ee_type) != hand_types.end())
+        // The only dexterous hand driven through the arm's tool port is the LinkerHand L6.
+        if (eeTypeIsHand(normalized_ee_type))
         {
-            is_hand_type = true;
-        }
-        else if (normalized_ee_type.find("LINKERHAND") != std::string::npos ||
-                 normalized_ee_type.find("HAND") != std::string::npos)
-        {
-            // Check for hand type patterns in the string
-            is_hand_type = true;
-        }
-        
-        if (is_hand_type)
-        {
-            if (normalized_ee_type == "THEOHAND_STD16A" ||
-                normalized_ee_type == "THEOHAND" ||
-                normalized_ee_type == "STD16A" ||
-                normalized_ee_type.find("THEOHAND") != std::string::npos)
-            {
-                const uint8_t slave_id = is_left_hand ? 0x02 : 0x01;
-                RCLCPP_INFO(get_logger(), "Creating TheoHand STD16A (16-DOF, slave: 0x%02X, channel: %ld)",
-                            slave_id, channel);
-                return std::make_unique<marvin_hardware::TheoHandSTD16A>(
-                    clear_485, send_485, get_ch_data, channel, slave_id);
-            }
-            if (normalized_ee_type == "ERG32" || normalized_ee_type.find("ERG32") != std::string::npos)
-            {
-                RCLCPP_INFO(get_logger(), "Creating ERG32 hand (2-DOF rotate+grip, slave: 0x%02X)",
-                            gripper_hardware_common::ModbusConfig::ERG32::SLAVE_ID);
-                return std::make_unique<marvin_hardware::ERG32Hand>(clear_485, send_485, get_ch_data);
-            }
-            // Extract hand model from type string and create corresponding hand object
-            if (normalized_ee_type == "FREEDOM_V1" || normalized_ee_type == "FREEDOM")
-            {
-                hand_model = "FREEDOM_V1";
-                RCLCPP_INFO(get_logger(), "Creating freedom_v1 hand (6-DOF, %s hand, slave: 0x%02X, channel: %ld)",
-                           is_left_hand ? "left" : "right",
-                           is_left_hand ? 0x00 : 0x01,
-                           channel);
-                return std::make_unique<marvin_hardware::FreedomHandV1>(
-                    clear_485, send_485, get_ch_data, is_left_hand, channel);
-            }
-            else if (normalized_ee_type == "FREEDOM_V2")
-            {
-                hand_model = "FREEDOM_V2";
-                RCLCPP_INFO(get_logger(), "Creating freedom_v2 hand (7-DOF, 9-slot protocol, %s hand, slave: 0x%02X, channel: %ld)",
-                           is_left_hand ? "left" : "right",
-                           is_left_hand ? 0x00 : 0x01,
-                           channel);
-                return std::make_unique<marvin_hardware::FreedomHandV2>(
-                    clear_485, send_485, get_ch_data, is_left_hand, channel);
-            }
-            else if (normalized_ee_type == "INSPIRE_E2" ||
-                     normalized_ee_type == "INSPIRE" ||
-                     normalized_ee_type == "RH56E2")
-            {
-                hand_model = "INSPIRE_E2";
-                if (channel == CAN_CHANNEL)
-                {
-                    RCLCPP_INFO(get_logger(), "Creating inspire_e2 CANFD hand (6-DOF, %s hand, hand_id: 0x%02X, channel: %ld)",
-                               is_left_hand ? "left" : "right",
-                               is_left_hand ? 0x02 : 0x01,
-                               channel);
-                    return std::make_unique<marvin_hardware::InspireHandE2Canfd>(
-                        clear_485, send_485, get_ch_data, is_left_hand, channel);
-                }
-                RCLCPP_INFO(get_logger(), "Creating inspire_e2 hand (6-DOF, %s hand, slave: 0x%02X)",
-                           is_left_hand ? "left" : "right",
-                           is_left_hand ? 0x02 : 0x01);
-                return std::make_unique<marvin_hardware::InspireHandE2>(clear_485, send_485, get_ch_data, is_left_hand);
-            }
-            else if (normalized_ee_type == "INSPIRE_F2" ||
-                     normalized_ee_type == "RH56F2")
-            {
-                hand_model = "INSPIRE_F2";
-                if (channel == CAN_CHANNEL)
-                {
-                    RCLCPP_INFO(get_logger(), "Creating inspire_f2 CANFD hand (6-DOF, %s hand, hand_id: 0x%02X, channel: %ld)",
-                               is_left_hand ? "left" : "right",
-                               is_left_hand ? 0x02 : 0x01,
-                               channel);
-                    return std::make_unique<marvin_hardware::InspireHandE2Canfd>(
-                        clear_485, send_485, get_ch_data, is_left_hand, channel);
-                }
-                RCLCPP_INFO(get_logger(), "Creating inspire_f2 hand (6-DOF, %s hand, slave: 0x%02X)",
-                           is_left_hand ? "left" : "right",
-                           is_left_hand ? 0x02 : 0x01);
-                return std::make_unique<marvin_hardware::InspireHandE2>(clear_485, send_485, get_ch_data, is_left_hand);
-            }
-            else if (normalized_ee_type.find("O7") != std::string::npos || normalized_ee_type == "O7")
-            {
-                hand_model = "O7";
-                RCLCPP_INFO(get_logger(), "Creating LinkerHand O7 (7-DOF, %s hand, slave: 0x%02X)", 
-                           is_left_hand ? "left" : "right",
-                           is_left_hand ? 0x28 : 0x27);
-                return std::make_unique<marvin_hardware::DexterousHandO7>(clear_485, send_485, get_ch_data, is_left_hand);
-            }
-            else if (normalized_ee_type.find("L6") != std::string::npos || normalized_ee_type == "L6")
-            {
-                hand_model = "L6";
-                RCLCPP_INFO(get_logger(), "Creating LinkerHand L6 (6-DOF, %s hand, slave: 0x%02X)", 
-                           is_left_hand ? "left" : "right",
-                           is_left_hand ? 0x28 : 0x27);
-                return std::make_unique<marvin_hardware::DexterousHandL6>(clear_485, send_485, get_ch_data, is_left_hand);
-            }
-            else if (normalized_ee_type.find("O6") != std::string::npos || normalized_ee_type == "O6")
-            {
-                hand_model = "O6";
-                RCLCPP_INFO(get_logger(), "Creating LinkerHand O6 (6-DOF, %s hand, slave: 0x%02X)", 
-                           is_left_hand ? "left" : "right",
-                           is_left_hand ? 0x28 : 0x27);
-                return std::make_unique<marvin_hardware::DexterousHandO6>(clear_485, send_485, get_ch_data, is_left_hand);
-            }
-            else
-            {
-                // Default to O7 if model cannot be determined
-                hand_model = "O7";
-                RCLCPP_WARN(get_logger(), "Unknown hand model in type '%s', defaulting to O7", normalized_ee_type.c_str());
-                return std::make_unique<marvin_hardware::DexterousHandO7>(clear_485, send_485, get_ch_data, is_left_hand);
-            }
+            RCLCPP_INFO(get_logger(), "Creating LinkerHand L6 (6-DOF, %s hand, slave: 0x%02X)",
+                        is_left_hand ? "left" : "right", is_left_hand ? 0x28 : 0x27);
+            return std::make_unique<marvin_hardware::DexterousHandL6>(clear_485, send_485, get_ch_data, is_left_hand);
         }
         else
         {
-            // Create gripper
-            enum class GripperKind { JD, Changingtek90C, Changingtek90D, Changingtek120S, EincinX };
-
-            static const std::unordered_map<std::string, GripperKind> kGripperTypeMap = {
-                // JD / RG75
-                {"RG75", GripperKind::JD},
-                {"JDGRIPPER", GripperKind::JD},
-
-                // EincinX electric gripper (grip axis Modbus slave 2)
-                {"EINCINX", GripperKind::EincinX},
-                {"EPGI180", GripperKind::EincinX},
-
-                // Changingtek 90C variants (AG2F90_C is the common实际入参)
-                {"CHANGINGTEK90C", GripperKind::Changingtek90C},
-                {"AG2F90", GripperKind::Changingtek90C},
-                {"AG2F90C", GripperKind::Changingtek90C},
-                {"AG2F90_C", GripperKind::Changingtek90C},
-
-                // Changingtek 90D variants
-                {"CHANGINGTEK90D", GripperKind::Changingtek90D},
-                {"AG2F90D", GripperKind::Changingtek90D},
-                {"AG2F90_D", GripperKind::Changingtek90D},
-
-                // Changingtek 120S (AG2F120S / AG2F120S_D)
-                {"AG2F120S", GripperKind::Changingtek120S},
-                {"AG2F120S_D", GripperKind::Changingtek120S},
-                                            };
-
-            const auto it = kGripperTypeMap.find(normalized_ee_type);
-            const GripperKind kind = (it == kGripperTypeMap.end()) ? GripperKind::JD : it->second;
-
-            switch (kind)
+            // The only supported gripper is the Jodell RG75. An unknown type is an error (on_init fails):
+            // driving it as an RG75 would send RG75 registers to whatever is on the flange.
+            if (normalized_ee_type == "RG75" || normalized_ee_type == "JDGRIPPER")
             {
-                case GripperKind::JD:
-                    if (it == kGripperTypeMap.end())
-                    {
-                        RCLCPP_WARN(get_logger(),
-                                    "Unknown gripper type '%s' (normalized). Using default JDGripper.",
-                                    normalized_ee_type.c_str());
-                    }
-                    RCLCPP_INFO(get_logger(), "Creating JD Gripper");
-                    return std::make_unique<marvin_hardware::JDGripper>(clear_485, send_485, get_ch_data);
-
-                case GripperKind::Changingtek90C:
-                    RCLCPP_INFO(get_logger(), "Creating CHANGINGTEK90C Gripper");
-                    return std::make_unique<marvin_hardware::ChangingtekGripper90C>(clear_485, send_485, get_ch_data);
-
-                case GripperKind::Changingtek90D:
-                    RCLCPP_INFO(get_logger(), "Creating CHANGINGTEK90D Gripper");
-                    return std::make_unique<marvin_hardware::ChangingtekGripper90D>(clear_485, send_485, get_ch_data);
-
-                case GripperKind::Changingtek120S:
-                    if (normalized_ee_type == "AG2F120S_D")
-                    {
-                        RCLCPP_INFO(get_logger(), "Creating CHANGINGTEK120S_D Gripper");
-                        return std::make_unique<marvin_hardware::ChangingtekGripper<
-                            gripper_hardware_common::ModbusConfig::Changingtek120S_D>>(
-                            clear_485, send_485, get_ch_data);
-                    }
-                    RCLCPP_INFO(get_logger(), "Creating CHANGINGTEK120S Gripper");
-                    return std::make_unique<marvin_hardware::ChangingtekGripper120S>(clear_485, send_485, get_ch_data);
-
-                case GripperKind::EincinX:
-                    RCLCPP_INFO(get_logger(), "Creating EincinX Gripper");
-                    return std::make_unique<marvin_hardware::EincinXGripper>(clear_485, send_485, get_ch_data);
+                RCLCPP_INFO(get_logger(), "Creating JD Gripper");
+                return std::make_unique<marvin_hardware::JDGripper>(clear_485, send_485, get_ch_data);
             }
-
-            // Defensive fallback
-            RCLCPP_INFO(get_logger(), "Creating JD Gripper");
-            return std::make_unique<marvin_hardware::JDGripper>(clear_485, send_485, get_ch_data);
+            RCLCPP_ERROR(get_logger(), "Unsupported end effector type '%s' (supported: RG75, LINKERHAND_L6)",
+                         normalized_ee_type.c_str());
+            return nullptr;
         }
     }
 
@@ -1614,16 +1455,7 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
 
     bool MarvinHardware::eeTypeIsHand(const std::string& ee_type) const
     {
-        return ee_type == "THEOHAND_STD16A" || ee_type == "THEOHAND" || ee_type == "STD16A" ||
-               ee_type.find("THEOHAND") != std::string::npos ||
-               ee_type == "ERG32" || ee_type.find("ERG32") != std::string::npos ||
-               ee_type == "LINKERHAND_O7" || ee_type == "LINKERHAND_O6" || ee_type == "LINKERHAND_L6" ||
-               ee_type == "O7" || ee_type == "O6" || ee_type == "L6" ||
-               ee_type == "FREEDOM_V1" || ee_type == "FREEDOM_V2" || ee_type == "FREEDOM" ||
-               ee_type == "INSPIRE_E2" || ee_type == "INSPIRE" ||
-               ee_type == "RH56E2" ||
-               ee_type == "INSPIRE_F2" || ee_type == "RH56F2" ||
-               ee_type.find("LINKERHAND") != std::string::npos;
+        return ee_type == "LINKERHAND_L6" || ee_type == "L6";
     }
 
     std::string MarvinHardware::eeTypeForTool(size_t tool_idx) const
@@ -1664,25 +1496,10 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
         RCLCPP_INFO(get_logger(), "contains_tool: gripper_type_='%s', should_detect_gripper=%d", 
                     gripper_type_.c_str(), should_detect_gripper);
 
-        // Determine if end effector is a hand or gripper based on type
-        // Hand types: LINKERHAND_O7, LINKERHAND_O6, LINKERHAND_L6 (all are LinkerHand/DexterousHand)
-        // Also support short forms: O7, O6, L6
-        static const std::set<std::string> hand_types = {
-            "LINKERHAND_O7", "LINKERHAND_O6", "LINKERHAND_L6",
-            "O7", "O6", "L6",
-            "FREEDOM_V1", "FREEDOM_V2", "FREEDOM",
-            "INSPIRE_E2", "INSPIRE", "RH56E2",
-            "INSPIRE_F2", "RH56F2",
-            "ERG32",
-            "THEOHAND_STD16A", "THEOHAND", "STD16A"
-        };
-        // Gripper types: JD, Changingtek variants
+        static const std::set<std::string> hand_types = {"LINKERHAND_L6", "L6"};
+        // Gripper types: Jodell RG75 only
         static const std::set<std::string> gripper_types = {
-            "RG75", "JDGRIPPER",
-            "CHANGINGTEK90C", "AG2F90", "AG2F90C", "AG2F90_C",
-            "CHANGINGTEK90D", "AG2F90D", "AG2F90_D",
-            "AG2F120S", "AG2F120S_D",
-            "EINCINX", "EPGI180"
+            "RG75", "JDGRIPPER"
         };
         
         // Check if type is hand or gripper
@@ -2491,7 +2308,7 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
 
         // ① 控制工具指令（10Hz，有命令变化才发；优先级最高）
         // 响应门控：上一次写/读请求未响应则跳过本帧——避免 RS485 半双工下高频控制指令
-        // 打断 EincinX 等动作中慢速设备的写确认（超时由工具线程 checkPrevCycleTimeout 每 100ms 兜底清除）
+        // 打断动作中慢速设备的写确认（超时由工具线程 checkPrevCycleTimeout 每 100ms 兜底清除）
         std::vector<double> write_cmd;
         if (ctrl_due && shouldSendToolCommand(tool_idx, write_cmd) && !write_cmd.empty())
         {
@@ -3227,6 +3044,7 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
         {
             return hardware_interface::return_type::ERROR;
         }
+        for (auto& buses : arm_buses_) buses->pull();
         if (flight_)
         {
             flight_->record(robot_log::flight::kHwRead, hw_position_states_.data(), hw_position_states_.size());
@@ -3280,6 +3098,7 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
         {
             return hardware_interface::return_type::ERROR;
         }
+        for (auto& buses : arm_buses_) buses->push();  // after the arm frame: one end effector frame per arm
         return hardware_interface::return_type::OK;
     }
 
@@ -3899,6 +3718,7 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
             OnRelease();  // 释放连接
         }
 
+        for (auto& buses : arm_buses_) buses->setConnected(hardware_connected_);
         return hardware_connected_;
     }
 
@@ -3906,6 +3726,7 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
     {
         RCLCPP_INFO(get_logger(), "Disconnecting from Marvin hardware");
 
+        for (auto& buses : arm_buses_) buses->setConnected(false);
         OnRelease();
 
         hardware_connected_ = false;

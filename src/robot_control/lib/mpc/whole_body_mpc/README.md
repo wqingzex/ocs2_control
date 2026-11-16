@@ -22,7 +22,7 @@ refManager->setModeSchedule(ModeSchedule({t + 0.5}, {Modes::DUAL_COUPLED, Modes:
 refManager->setTargetTrajectories(targets);
 ```
 
-问题的参数（模型坐标系、初始状态、`initialModeSchedule.modeSequence`、约束权重、DDP/MPC）在 `config/task.info`；fiveages_w2 实际使用的 `.info` 在 `fiveages_w2_description/config/ocs2/`。
+问题的参数（模型坐标系、初始状态、`initialModeSchedule.modeSequence`、约束权重、DDP/MPC）在 `config/task.info`；fa_w2 实际使用的 `.info` 在 `fa_w2_description/config/ocs2/`。
 
 ## 模式
 

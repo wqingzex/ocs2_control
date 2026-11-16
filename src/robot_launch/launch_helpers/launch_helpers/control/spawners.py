@@ -66,30 +66,26 @@ def write_spawner_controller_param_file(
 def _extract_joints_from_urdf(robot_description):
     """
     从 URDF/XML 字符串中提取所有 joint 名称。
-    
-    Args:
-        robot_description (str): URDF/XML 格式的机器人描述字符串
-        
-    Returns:
-        set: 所有 joint 名称的集合
+
+    robot_description 不是合法 XML 时直接抛 ET.ParseError：它就是 controller_manager 要加载的那份，
+    解析不了应当在这里停下，而不是返回空集合、跳过关节校验把所有控制器都 spawn 出来。
     """
     if not robot_description:
         return set()
-    
-    try:
-        root = ET.fromstring(robot_description)
-        joints = set()
-        for joint in root.findall('.//joint'):
-            name_attr = joint.get('name')
-            if name_attr:
-                joints.add(name_attr)
-        return joints
-    except ET.ParseError as e:
-        print(f"[WARN] Failed to parse robot_description XML: {e}")
+    root = ET.fromstring(robot_description)
+    return {joint.get("name") for joint in root.findall(".//joint") if joint.get("name")}
+
+
+def _extract_sensors_from_urdf(robot_description):
+    """Names of the <sensor> elements of the ros2_control blocks (e.g. left_ft_sensor).
+
+    A robot_description that is not XML raises (ET.ParseError): it is the same text the controller manager loads, so
+    the launch must stop there instead of silently starting without the FT broadcasters.
+    """
+    if not robot_description:
         return set()
-    except Exception as e:
-        print(f"[WARN] Error extracting joints from robot_description: {e}")
-        return set()
+    root = ET.fromstring(robot_description)
+    return {s.get("name") for s in root.findall(".//ros2_control/sensor") if s.get("name")}
 
 
 # The MPC controllers are the arm and the whole-body plugin; the joint, hand and gripper plugins are not.
@@ -114,10 +110,20 @@ def _controller_passes_joint_check(
     """Return True if controller should be included."""
     if not any(pattern.lower() in name.lower() for pattern in patterns):
         return False
+
+    controller_params = config.get(name, {}).get("ros__parameters", {})
+    sensor_name = controller_params.get("sensor_name")
+    if sensor_name:
+        # A sensor broadcaster (FT): only when the robot has that sensor; without a description it cannot be known.
+        if sensor_name in _extract_sensors_from_urdf(robot_description):
+            print(f"[INFO] Detected controller: {name} with sensor '{sensor_name}' (verified)")
+            return True
+        skipped_controllers.add(name)
+        return False
+
     if not robot_description or not available_joints:
         return True
 
-    controller_params = config.get(name, {}).get("ros__parameters", {})
     joint_name = controller_params.get("joint")
     joint_names = controller_params.get("joints")
 

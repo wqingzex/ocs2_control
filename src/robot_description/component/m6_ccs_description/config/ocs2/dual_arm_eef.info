@@ -1,5 +1,5 @@
 ; M6-CCS 双臂控制：法兰（left_eef、right_eef）跟踪
-; 参数基准：fiveages_w2 的 whole_body_fixed_eef_l6.info（原 fixed_base.info），仅提取手臂适用项。
+; 参数基准：fa_w2 的 whole_body_fixed_eef_l6.info（原 fixed_base.info），仅提取手臂适用项。
 ; 状态与输入为 14 维：[left_joint1~7 | right_joint1~7]。
 ; 保留本模型的基座和末端坐标系；规划 xacro 固定末端执行器关节。
 

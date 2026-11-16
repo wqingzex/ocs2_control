@@ -45,15 +45,13 @@ namespace end_effector_hardware
         {
             RCLCPP_INFO_STREAM(rclcpp::get_logger("DexterousHandBase"), "Detected hand joint: " << joint_name);
         }
-        // 如果找到的关节数量正好是7个（O7）或6个（O6），返回它们
-        if (hand_joints.size() == 7 || hand_joints.size() == 6)
+        // LinkerHand L6：正好 6 个关节才返回
+        if (hand_joints.size() == 6)
         {
             return hand_joints;
         }
 
-        // 如果找到的关节数量不是7个或6个，返回空列表（未检测到完整的灵巧手）
-        // 注意：这里返回空列表会导致错误，但这是预期的行为
-        return {}; // 未检测到完整的灵巧手（需要7个或6个关节）
+        return {}; // 未检测到完整的灵巧手（需要 6 个关节），调用方会报错
     }
 
     DexterousHandBase::DexterousHandBase(
@@ -66,11 +64,11 @@ namespace end_effector_hardware
           , joint_names_(joint_names)
           , initialized_(false)
     {
-        if (joint_names.size() != 7 && joint_names.size() != 6)
+        if (joint_names.size() != 6)
         {
             RCLCPP_WARN(
                 logger_,
-                "DexterousHandBase expects 7 (O7) or 6 (O6) joints, got %zu",
+                "DexterousHandBase expects 6 joints (LinkerHand L6), got %zu",
                 joint_names.size()
             );
         }

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "marvin_hardware/tool/grippers/modbus_gripper.h"
-#include "gripper_hardware_common/utils/ModbusConfig.h"
+#include "end_effector_hardware/gripper_protocol/utils/ModbusConfig.h"
 
 namespace marvin_hardware
 {

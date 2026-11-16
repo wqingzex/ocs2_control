@@ -5,21 +5,21 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include "gripper_hardware_common/utils/JodellCommandBuilder.h"
-#include "gripper_hardware_common/utils/ModbusConfig.h"
-#include "gripper_hardware_common/utils/PositionConverter.h"
-#include "gripper_hardware_common/utils/TorqueConverter.h"
-#include "gripper_hardware_common/utils/VelocityConverter.h"
+#include "end_effector_hardware/gripper_protocol/utils/JodellCommandBuilder.h"
+#include "end_effector_hardware/gripper_protocol/utils/ModbusConfig.h"
+#include "end_effector_hardware/gripper_protocol/utils/PositionConverter.h"
+#include "end_effector_hardware/gripper_protocol/utils/TorqueConverter.h"
+#include "end_effector_hardware/gripper_protocol/utils/VelocityConverter.h"
 #include "end_effector_hardware/grippers/jodell_gripper.h"
 #include "robot_comm_modbus/mock_modbus_master.h"
 
 namespace
 {
-using gripper_hardware_common::JodellCommandBuilder;
-using gripper_hardware_common::PositionConverter;
-using gripper_hardware_common::TorqueConverter;
-using gripper_hardware_common::VelocityConverter;
-namespace Jodell = gripper_hardware_common::ModbusConfig::Jodell;
+using gripper_protocol::JodellCommandBuilder;
+using gripper_protocol::PositionConverter;
+using gripper_protocol::TorqueConverter;
+using gripper_protocol::VelocityConverter;
+namespace Jodell = gripper_protocol::ModbusConfig::Jodell;
 
 class JodellGripperTest : public ::testing::Test
 {

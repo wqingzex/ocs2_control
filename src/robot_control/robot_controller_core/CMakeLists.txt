@@ -27,7 +27,7 @@ set(dependencies
         robot_control_msgs
         robot_dynamics
         trajectory_manager
-        robot_log
+        robot_utils
 )
 
 find_package(ament_cmake REQUIRED)
@@ -70,7 +70,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
         ${controller_interface_TARGETS}
         ${std_msgs_TARGETS}
         ${rclcpp_TARGETS}
-        ${robot_log_TARGETS}
+        ${robot_utils_TARGETS}
         pinocchio::pinocchio
         ${urdf_TARGETS}
         ament_index_cpp::ament_index_cpp

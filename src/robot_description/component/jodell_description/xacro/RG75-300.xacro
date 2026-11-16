@@ -219,13 +219,13 @@
                 </inertial>
                 <visual>
                     <geometry>
-                        <mesh filename="file://$(find jodell_description)/meshes/RG75/pad_fiveages.glb"/>
+                        <mesh filename="file://$(find jodell_description)/meshes/RG75/pad_fa.glb"/>
                     </geometry>
                 </visual>
                 <xacro:if value="${collider_type == 'convex'}">
                     <collision>
                         <geometry>
-                            <mesh filename="file://$(find jodell_description)/meshes/RG75/pad_fiveages.glb"/>
+                            <mesh filename="file://$(find jodell_description)/meshes/RG75/pad_fa.glb"/>
                         </geometry>
                     </collision>
                 </xacro:if>
@@ -245,14 +245,14 @@
                 </inertial>
                 <visual>
                     <geometry>
-                        <mesh filename="file://$(find jodell_description)/meshes/RG75/pad_fiveages.glb"
+                        <mesh filename="file://$(find jodell_description)/meshes/RG75/pad_fa.glb"
                               scale="1 -1 1"/>
                     </geometry>
                 </visual>
                 <xacro:if value="${collider_type == 'convex'}">
                     <collision>
                         <geometry>
-                            <mesh filename="file://$(find jodell_description)/meshes/RG75/pad_fiveages.glb"
+                            <mesh filename="file://$(find jodell_description)/meshes/RG75/pad_fa.glb"
                                   scale="1 -1 1"/>
                         </geometry>
                     </collision>

@@ -4,7 +4,7 @@
   <name>robot_comm_modbus</name>
   <version>0.1.0</version>
   <description>Modbus master for the hardware drivers: a libmodbus RTU implementation of robot_comm::ModbusMaster, and a mock slave for tests.</description>
-  <maintainer email="wqingzey@gmail.com">wqingze</maintainer>
+  <maintainer email="TODO@email.com"/>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

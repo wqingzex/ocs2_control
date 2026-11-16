@@ -6,7 +6,7 @@
   <description>
     ROS2 interface for OCS2 Wheel Humanoid MPC controller.
   </description>
-  <maintainer email="developer@example.com">Developer</maintainer>
+  <maintainer email="TODO@email.com"/>
   <license>BSD-3-Clause</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

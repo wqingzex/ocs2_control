@@ -47,7 +47,7 @@ namespace robot_dynamics
      * Usage examples:
      * 1. For the joint controllers (no MPC model): Parse from URDF and apply to target positions
      * 2. For rviz control plugin: Parse limits and validate user input
-     * 3. For teleop_command: Validate joint angles before sending commands
+     * 3. For target_generator: Validate joint angles before sending commands
      */
     class JointLimitsManager
     {

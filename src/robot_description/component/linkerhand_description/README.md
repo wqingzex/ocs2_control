@@ -14,7 +14,7 @@ ros2 launch robot_bringup hand.launch.py type:=l6                             # 
 ros2 launch robot_bringup hand.launch.py hand:=linkerhand type:=l6 hardware:=real direction:=1   # 真机
 ```
 
-整机上用 `type:=linkerhand_l6`，见 [m6_ccs](../m6_ccs_description/README.md#末端执行器)。
+整机上用 `end_effector:=linkerhand_l6`，见 [m6_ccs](../m6_ccs_description/README.md#末端执行器)。
 
 ## 真机
 

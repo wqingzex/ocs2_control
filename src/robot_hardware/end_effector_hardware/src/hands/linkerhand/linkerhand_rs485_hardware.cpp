@@ -3,12 +3,12 @@
 #include "robot_comm/modbus.h"
 #include "robot_comm_modbus/libmodbus_rtu_master.h"
 #include "end_effector_hardware/common/serial_notices.h"
-#include "gripper_hardware_common/utils/ModbusConfig.h"
+#include "end_effector_hardware/gripper_protocol/utils/ModbusConfig.h"
 #include <pluginlib/class_list_macros.hpp>
 #include <algorithm>
 #include <string>
 
-using namespace gripper_hardware_common;
+using namespace gripper_protocol;
 
 namespace end_effector_hardware
 {
@@ -68,15 +68,15 @@ namespace end_effector_hardware
             );
         }
 
-        // Check if we have O7 (7 joints) or 6-DOF hand
-        if (hand_joint_names.size() != ModbusConfig::DexterousHand::JOINT_COUNT_O7 &&
-            hand_joint_names.size() != ModbusConfig::DexterousHand::JOINT_COUNT_O6)
+        // LinkerHand L6 only (the only LinkerHand model in the robot descriptions): 6 joints, hand_type containing L6.
+        std::string product_type = hand_type_;
+        std::transform(product_type.begin(), product_type.end(), product_type.begin(), ::toupper);
+        if (hand_joint_names.size() != L6DexterousHandWrapper::JOINT_COUNT || product_type.find("L6") == std::string::npos)
         {
             RCLCPP_ERROR(
                 get_node()->get_logger(),
-                "Dexterous hand requires exactly %d (O7) or %d (6-DOF) joints, found %zu",
-                ModbusConfig::DexterousHand::JOINT_COUNT_O7,
-                ModbusConfig::DexterousHand::JOINT_COUNT_O6,
+                "Only the LinkerHand L6 is supported (6 joints, hand_type linkerhand_l6); got hand_type=%s with %zu joints",
+                hand_type_.c_str(),
                 hand_joint_names.size()
             );
             return hardware_interface::CallbackReturn::ERROR;
@@ -95,76 +95,12 @@ namespace end_effector_hardware
         );
         modbus_communicator_->setTimeouts(response_timeout_ms_, byte_timeout_ms_);
 
-        // Determine product type from hand_type parameter or joint count
-        // Default: O7 for 7 joints, O6 for 6 joints (can be overridden by hand_type parameter)
-        std::string product_type = hand_type_;
-        std::transform(product_type.begin(), product_type.end(), product_type.begin(), ::toupper);
-        if (product_type.find("FREEDOM") != std::string::npos)
-        {
-            RCLCPP_ERROR(
-                get_node()->get_logger(),
-                "Freedom hand uses a dedicated hardware plugin: end_effector_hardware/FreedomRs485Hardware. "
-                "Do not use LinkerHandRs485Hardware for hand_type=%s.",
-                hand_type_.c_str()
-            );
-            return hardware_interface::CallbackReturn::ERROR;
-        }
-        if (product_type.find("INSPIRE") != std::string::npos ||
-            product_type.find("RH56") != std::string::npos)
-        {
-            RCLCPP_ERROR(
-                get_node()->get_logger(),
-                "Inspire RH56 hand uses a dedicated hardware plugin: end_effector_hardware/InspireRs485Hardware. "
-                "Use inspire_description inspire_rs485_side_system (or hand.xacro with hardware:=real). "
-                "Do not use LinkerHandRs485Hardware for hand_type=%s.",
-                hand_type_.c_str()
-            );
-            return hardware_interface::CallbackReturn::ERROR;
-        }
-        
-        // 根据关节数量和产品类型创建对应的灵巧手对象
-        if (hand_joint_names.size() == ModbusConfig::DexterousHand::JOINT_COUNT_O7)
-        {
-            // O7 hand (7 joints)
-            hand_ = std::make_unique<SimpleDexterousHandWrapper>(
-                get_node()->get_logger(),
-                get_node()->get_clock(),
-                hand_joint_names
-            );
-            RCLCPP_INFO(
-                get_node()->get_logger(),
-                "Creating O7 dexterous hand (7-DOF)"
-            );
-        }
-        else if (hand_joint_names.size() == ModbusConfig::DexterousHand::JOINT_COUNT_O6)
-        {
-            if (product_type == "L6" || product_type.find("L6") != std::string::npos)
-            {
-                // L6 hand (6 joints)
-                hand_ = std::make_unique<L6DexterousHandWrapper>(
-                    get_node()->get_logger(),
-                    get_node()->get_clock(),
-                    hand_joint_names
-                );
-                RCLCPP_INFO(
-                    get_node()->get_logger(),
-                    "Creating L6 dexterous hand (6-DOF)"
-                );
-            }
-            else
-            {
-                // O6 hand (6 joints) - default for 6-DOF
-                hand_ = std::make_unique<O6DexterousHandWrapper>(
-                    get_node()->get_logger(),
-                    get_node()->get_clock(),
-                    hand_joint_names
-                );
-                RCLCPP_INFO(
-                    get_node()->get_logger(),
-                    "Creating O6 dexterous hand (6-DOF)"
-                );
-            }
-        }
+        hand_ = std::make_unique<L6DexterousHandWrapper>(
+            get_node()->get_logger(),
+            get_node()->get_clock(),
+            hand_joint_names
+        );
+        RCLCPP_INFO(get_node()->get_logger(), "Creating L6 dexterous hand (6-DOF)");
 
         tool_torque_parameter_name_ = hand_side_ == "left" ?
             "left_tool_torque" : "right_tool_torque";
@@ -219,19 +155,8 @@ namespace end_effector_hardware
             get_node()->get_logger(),
             "LinkerHandRs485Hardware initialized:"
         );
-        // Determine product name for logging
-        std::string product_name = "Unknown";
-        if (hand_joint_names.size() == ModbusConfig::DexterousHand::JOINT_COUNT_O7)
-        {
-            product_name = "O7";
-        }
-        else if (hand_joint_names.size() == ModbusConfig::DexterousHand::JOINT_COUNT_O6)
-        {
-            std::string product_type = hand_type_;
-            std::transform(product_type.begin(), product_type.end(), product_type.begin(), ::toupper);
-            product_name = (product_type == "L6" || product_type.find("L6") != std::string::npos) ? "L6" : "O6";
-        }
-        
+        const std::string product_name = "L6";
+
         RCLCPP_INFO(
             get_node()->get_logger(),
             "  Hand type: %s (Product: %s, %zu-DOF)",

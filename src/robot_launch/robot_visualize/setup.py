@@ -17,8 +17,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Huang Zhenbiao',
-    maintainer_email='biao876990970@hotmail.com',
+    maintainer='',
+    maintainer_email='TODO@email.com',
     description='RViz model viewing launch files',
     license='BSD-3',
 )

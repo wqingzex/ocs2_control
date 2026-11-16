@@ -3,7 +3,7 @@
 #include "robot_comm/modbus.h"
 
 #include "end_effector_hardware/hands/dexterous_hand_wrapper_template.h"
-#include "gripper_hardware_common/utils/ModbusConfig.h"
+#include "end_effector_hardware/gripper_protocol/utils/ModbusConfig.h"
 #include <cmath>
 #include <algorithm>
 #include <iomanip>
@@ -22,7 +22,7 @@ namespace end_effector_hardware
     /**
      * @brief Get joint limits from ModbusConfig based on joint name and product type
      * @param joint_name Joint name (e.g., "thumb_joint1", "index_joint")
-     * @param product_type Product type (O7, O6, or L6)
+     * @param product_type Product type (L6)
      * @param lower Output lower limit
      * @param upper Output upper limit
      * @return true if limits found, false otherwise
@@ -37,99 +37,9 @@ namespace end_effector_hardware
         std::string name_lower = joint_name;
         std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(), ::tolower);
         
-        namespace ModbusConfig = gripper_hardware_common::ModbusConfig;
+        namespace ModbusConfig = gripper_protocol::ModbusConfig;
         
-        if (product_type == DexterousHandProduct::O7)
-        {
-            if (name_lower.find("thumb") != std::string::npos)
-            {
-                if (name_lower.find("joint1") != std::string::npos)
-                {
-                    lower = ModbusConfig::DexterousHand::O7::THUMB_JOINT1_LOWER;
-                    upper = ModbusConfig::DexterousHand::O7::THUMB_JOINT1_UPPER;
-                    return true;
-                }
-                else if (name_lower.find("joint2") != std::string::npos)
-                {
-                    lower = ModbusConfig::DexterousHand::O7::THUMB_JOINT2_LOWER;
-                    upper = ModbusConfig::DexterousHand::O7::THUMB_JOINT2_UPPER;
-                    return true;
-                }
-                else if (name_lower.find("joint3") != std::string::npos)
-                {
-                    lower = ModbusConfig::DexterousHand::O7::THUMB_JOINT3_LOWER;
-                    upper = ModbusConfig::DexterousHand::O7::THUMB_JOINT3_UPPER;
-                    return true;
-                }
-            }
-            else if (name_lower.find("index") != std::string::npos)
-            {
-                lower = ModbusConfig::DexterousHand::O7::INDEX_JOINT_LOWER;
-                upper = ModbusConfig::DexterousHand::O7::INDEX_JOINT_UPPER;
-                return true;
-            }
-            else if (name_lower.find("middle") != std::string::npos)
-            {
-                lower = ModbusConfig::DexterousHand::O7::MIDDLE_JOINT_LOWER;
-                upper = ModbusConfig::DexterousHand::O7::MIDDLE_JOINT_UPPER;
-                return true;
-            }
-            else if (name_lower.find("ring") != std::string::npos)
-            {
-                lower = ModbusConfig::DexterousHand::O7::RING_JOINT_LOWER;
-                upper = ModbusConfig::DexterousHand::O7::RING_JOINT_UPPER;
-                return true;
-            }
-            else if (name_lower.find("pinky") != std::string::npos || name_lower.find("little") != std::string::npos)
-            {
-                lower = ModbusConfig::DexterousHand::O7::PINKY_JOINT_LOWER;
-                upper = ModbusConfig::DexterousHand::O7::PINKY_JOINT_UPPER;
-                return true;
-            }
-        }
-        else if (product_type == DexterousHandProduct::O6)
-        {
-            if (name_lower.find("thumb") != std::string::npos)
-            {
-                if (name_lower.find("joint1") != std::string::npos)
-                {
-                    lower = ModbusConfig::DexterousHand::O6::THUMB_JOINT1_LOWER;
-                    upper = ModbusConfig::DexterousHand::O6::THUMB_JOINT1_UPPER;
-                    return true;
-                }
-                else if (name_lower.find("joint2") != std::string::npos)
-                {
-                    lower = ModbusConfig::DexterousHand::O6::THUMB_JOINT2_LOWER;
-                    upper = ModbusConfig::DexterousHand::O6::THUMB_JOINT2_UPPER;
-                    return true;
-                }
-            }
-            else if (name_lower.find("index") != std::string::npos)
-            {
-                lower = ModbusConfig::DexterousHand::O6::INDEX_JOINT_LOWER;
-                upper = ModbusConfig::DexterousHand::O6::INDEX_JOINT_UPPER;
-                return true;
-            }
-            else if (name_lower.find("middle") != std::string::npos)
-            {
-                lower = ModbusConfig::DexterousHand::O6::MIDDLE_JOINT_LOWER;
-                upper = ModbusConfig::DexterousHand::O6::MIDDLE_JOINT_UPPER;
-                return true;
-            }
-            else if (name_lower.find("ring") != std::string::npos)
-            {
-                lower = ModbusConfig::DexterousHand::O6::RING_JOINT_LOWER;
-                upper = ModbusConfig::DexterousHand::O6::RING_JOINT_UPPER;
-                return true;
-            }
-            else if (name_lower.find("pinky") != std::string::npos || name_lower.find("little") != std::string::npos)
-            {
-                lower = ModbusConfig::DexterousHand::O6::PINKY_JOINT_LOWER;
-                upper = ModbusConfig::DexterousHand::O6::PINKY_JOINT_UPPER;
-                return true;
-            }
-        }
-        else if (product_type == DexterousHandProduct::L6)
+        if (product_type == DexterousHandProduct::L6)
         {
             if (name_lower.find("thumb") != std::string::npos)
             {
@@ -179,55 +89,7 @@ namespace end_effector_hardware
     // Traits Implementation: Register Mapping Functions
     // ============================================================================
 
-    // O7 specialization
-    inline int DexterousHandProductTraits<DexterousHandProduct::O7>::getModbusRegisterIndex(const std::string& joint_name)
-    {
-        std::string name_lower = joint_name;
-        std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(), ::tolower);
-        
-        if (name_lower.find("thumb") != std::string::npos)
-        {
-            if (name_lower.find("joint1") != std::string::npos)
-            {
-                return 6;  // Thumb_Roll (joint1 实际对应 Roll)
-            }
-            else if (name_lower.find("joint2") != std::string::npos || 
-                     name_lower.find("yaw") != std::string::npos)
-            {
-                return 1;  // Thumb_Yaw
-            }
-            else if (name_lower.find("joint3") != std::string::npos || 
-                     name_lower.find("roll") != std::string::npos)
-            {
-                return 0;  // Thumb_Pitch (joint3 实际对应 Pitch)
-            }
-            else if (name_lower.find("pitch") != std::string::npos)
-            {
-                return 0;  // Thumb_Pitch
-            }
-        }
-        else if (name_lower.find("index") != std::string::npos)
-        {
-            return 2;  // Index_Pitch
-        }
-        else if (name_lower.find("middle") != std::string::npos)
-        {
-            return 3;  // Middle_Pitch
-        }
-        else if (name_lower.find("ring") != std::string::npos)
-        {
-            return 4;  // Ring_Pitch
-        }
-        else if (name_lower.find("pinky") != std::string::npos || 
-                 name_lower.find("little") != std::string::npos)
-        {
-            return 5;  // Little_Pitch
-        }
-        
-        return -1;  // Not found
-    }
-
-    // O6 specialization
+    // L6 register mapping
     // Register mapping according to Modbus protocol and URDF definition:
     // Protocol: Address 0=Current_Thumb_Pitch, Address 1=Current_Thumb_Yaw
     // URDF: thumb_joint1 -> Address 0 (Current_Thumb_Pitch), thumb_joint2 -> Address 1 (Current_Thumb_Yaw)
@@ -237,14 +99,13 @@ namespace end_effector_hardware
     // Address 3: Current_Middle_Pitch (middle_joint) - 中指弯曲
     // Address 4: Current_Ring_Pitch (ring_joint) - 无名指弯曲
     // Address 5: Current_Little_Pitch (pinky_joint) - 小拇指弯曲
-    inline int DexterousHandProductTraits<DexterousHandProduct::O6>::getModbusRegisterIndex(const std::string& joint_name)
+    inline int DexterousHandProductTraits<DexterousHandProduct::L6>::getModbusRegisterIndex(const std::string& joint_name)
     {
         std::string name_lower = joint_name;
         std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(), ::tolower);
         
         if (name_lower.find("thumb") != std::string::npos)
         {
-            // O6 mapping:
             // Protocol: Address 0=Current_Thumb_Pitch (大拇指弯曲), Address 1=Current_Thumb_Yaw (大拇指横摆)
             // URDF mapping: thumb_joint1 (第一个关节) -> Address 0 (Current_Thumb_Pitch - 大拇指弯曲)
             //               thumb_joint2 (第二个关节) -> Address 1 (Current_Thumb_Yaw - 大拇指横摆)
@@ -265,7 +126,6 @@ namespace end_effector_hardware
             {
                 return 1;  // Address 1: Current_Thumb_Yaw
             }
-            // Note: O6 hand does not have Thumb_Roll (no joint3)
         }
         else if (name_lower.find("index") != std::string::npos)
         {
@@ -286,14 +146,6 @@ namespace end_effector_hardware
         }
         
         return -1;  // Not found
-    }
-
-    // L6 specialization
-    inline int DexterousHandProductTraits<DexterousHandProduct::L6>::getModbusRegisterIndex(const std::string& joint_name)
-    {
-        // For now, L6 uses the same mapping as O6
-        // Customize this if L6 has a different register layout
-        return DexterousHandProductTraits<DexterousHandProduct::O6>::getModbusRegisterIndex(joint_name);
     }
 
     // ============================================================================
@@ -522,7 +374,7 @@ namespace end_effector_hardware
         }
 
         // Read joint positions using Input Registers (Function Code 04)
-        // According to O6 protocol: Only FC 04 (Read Input Registers) and FC 16 (Write Holding Registers) are supported
+        // LinkerHand protocol: Only FC 04 (Read Input Registers) and FC 16 (Write Holding Registers) are supported
         // Address 0-5 are Input Registers for current joint position
         uint16_t joint_data[JOINT_COUNT] = {0};
         int rc = communicator_->readInputRegisters(Traits::JOINT_POSITION_REG_START, JOINT_COUNT, joint_data);
@@ -566,7 +418,7 @@ namespace end_effector_hardware
                 *clock_,
                 2000,
                 "Failed to read %s hand position using Function Code 04 (Read Input Registers): %s (read %d registers, expected %zu). "
-                "O6 protocol only supports FC 04 (read) and FC 16 (write). "
+                "LinkerHand protocol only supports FC 04 (read) and FC 16 (write). "
                 "Please check: 1) Modbus slave ID is correct (0x27=right hand, 0x28=left hand), "
                 "2) Device is powered on and in Modbus mode, 3) Serial port is correct (/dev/ttyUSB0), "
                 "4) Baudrate is 115200, 5) No other process is using the serial port",
@@ -631,7 +483,7 @@ namespace end_effector_hardware
                 RCLCPP_ERROR(logger_, "Failed to map joint %s to Modbus register", joint_names_[i].c_str());
                 return false;
             }
-            // Debug: log mapping for O6/L6 hands
+            // Debug: log mapping for the L6 hand
             if (JOINT_COUNT == 6)
             {
                 RCLCPP_DEBUG(logger_, "Joint %s (index %zu) -> Modbus register %d", 

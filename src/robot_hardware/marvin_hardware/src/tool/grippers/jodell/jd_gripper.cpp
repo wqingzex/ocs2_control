@@ -4,13 +4,13 @@
 #include <chrono>
 #include <algorithm>
 #include "rclcpp/logging.hpp"
-#include "gripper_hardware_common/utils/PositionConverter.h"
-#include "gripper_hardware_common/utils/TorqueConverter.h"
-#include "gripper_hardware_common/utils/VelocityConverter.h"
-#include "gripper_hardware_common/utils/ModbusConfig.h"
-#include "gripper_hardware_common/utils/JodellCommandBuilder.h"
+#include "end_effector_hardware/gripper_protocol/utils/PositionConverter.h"
+#include "end_effector_hardware/gripper_protocol/utils/TorqueConverter.h"
+#include "end_effector_hardware/gripper_protocol/utils/VelocityConverter.h"
+#include "end_effector_hardware/gripper_protocol/utils/ModbusConfig.h"
+#include "end_effector_hardware/gripper_protocol/utils/JodellCommandBuilder.h"
 
-using namespace gripper_hardware_common;
+using namespace gripper_protocol;
 using namespace ModbusConfig;
 
 namespace marvin_hardware
@@ -33,8 +33,8 @@ namespace marvin_hardware
     /// Velocity maps linearly to Modbus low byte 0–255.
     bool JDGripper::move_gripper(double normalized_torque, double normalized_velocity, double normalized_pos)
     {
-        using namespace gripper_hardware_common;
-        using namespace gripper_hardware_common::ModbusConfig;
+        using namespace gripper_protocol;
+        using namespace gripper_protocol::ModbusConfig;
         
         // Convert normalized position to Jodell position (0-255)
         int pos_set = PositionConverter::Jodell::normalizedToJodell(normalized_pos);
@@ -57,8 +57,8 @@ namespace marvin_hardware
 
     bool JDGripper::getStatus()
     {
-        using namespace gripper_hardware_common;
-        using namespace gripper_hardware_common::ModbusConfig;
+        using namespace gripper_protocol;
+        using namespace gripper_protocol::ModbusConfig;
         
         // Only send read request, don't wait for response
         // The actual status will be updated by recv_thread_func when response arrives
@@ -68,8 +68,8 @@ namespace marvin_hardware
 
     void JDGripper::updateStatusFromResponse(const std::vector<uint16_t>& registers)
     {
-        using namespace gripper_hardware_common;
-        using namespace gripper_hardware_common::ModbusConfig;
+        using namespace gripper_protocol;
+        using namespace gripper_protocol::ModbusConfig;
         
         if (registers.size() >= Jodell::STATUS_REG_COUNT)
         {
@@ -88,8 +88,8 @@ namespace marvin_hardware
     bool JDGripper::processReadResponse(const uint8_t* data, size_t data_size,
                                        int& torque, int& velocity, double& position)
     {
-        using namespace gripper_hardware_common;
-        using namespace gripper_hardware_common::ModbusConfig;
+        using namespace gripper_protocol;
+        using namespace gripper_protocol::ModbusConfig;
 
         char hex_str[512] = {0};
         size_t hex_pos = 0;

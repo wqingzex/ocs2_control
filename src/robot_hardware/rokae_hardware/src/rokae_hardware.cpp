@@ -1,5 +1,4 @@
 #include "rokae_hardware/rokae_hardware.h"
-#include "rokae_hardware/ag2f90d_gripper.h"
 #include "rokae_hardware/jodell_gripper.h"
 #include "rokae_hardware/linkerhand_l6.h"
 #include <pluginlib/class_list_macros.hpp>
@@ -92,20 +91,6 @@ namespace rokae_hardware {
                 if (it != joints.end()) result.push_back(it->name);
             }
             return result;
-        }
-
-        bool isAg2f90CType(const std::string &gripper_type) {
-            return gripper_type == "ag2f90_c" || gripper_type == "ag2f90c" ||
-                   gripper_type == "ag2f90" || gripper_type == "changingtek90c";
-        }
-
-        bool isAg2f90DType(const std::string &gripper_type) {
-            return gripper_type == "ag2f90_d" || gripper_type == "ag2f90d" ||
-                   gripper_type == "changingtek90d";
-        }
-
-        bool isAg2f90Type(const std::string &gripper_type) {
-            return isAg2f90CType(gripper_type) || isAg2f90DType(gripper_type);
         }
 
         bool gripperJointIsRight(const std::string &joint_name) {
@@ -297,7 +282,7 @@ namespace rokae_hardware {
 
         const std::string gripper_joint_name = detectGripperJoint(params.hardware_info.joints);
         if (!gripper_joint_name.empty()) {
-            std::string gripper_type = get_hardware_parameter("gripper_type", std::string("ag2f90_d"));
+            std::string gripper_type = get_hardware_parameter("gripper_type", std::string("jodell"));
             std::transform(gripper_type.begin(), gripper_type.end(), gripper_type.begin(),
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
@@ -330,44 +315,12 @@ namespace rokae_hardware {
                 config.normalized_velocity = tool_velocity;
                 gripper_ = std::make_unique<LinkerHandL6>(
                     get_node()->get_logger(), get_node()->get_clock(), hand_joints, config);
-            } else if (isAg2f90Type(gripper_type)) {
-                Ag2f90dGripper::Config config;
-                config.slave_id = get_hardware_parameter("gripper_slave_id", 1);
-                config.close_pos = get_hardware_parameter("gripper_close_pos", 9000);
-                config.max_opening_distance =
-                    get_hardware_parameter("gripper_max_opening_distance", 0.09);
-                config.configure_xpanel =
-                    get_hardware_parameter("gripper_configure_xpanel", false);
-                config.read_interval_ms =
-                    get_hardware_parameter("gripper_read_interval_ms", 500);
-                config.normalized_torque = tool_torque;
-                config.normalized_velocity = tool_velocity;
-                config.velocity_reg = get_hardware_parameter("gripper_velocity_reg", config.velocity_reg);
-                config.torque_reg = get_hardware_parameter("gripper_torque_reg", config.torque_reg);
-                config.acceleration_reg = get_hardware_parameter("gripper_acceleration_reg", config.acceleration_reg);
-                config.deceleration_reg = get_hardware_parameter("gripper_deceleration_reg", config.deceleration_reg);
-                config.default_acceleration =
-                    get_hardware_parameter("gripper_default_acceleration", config.default_acceleration);
-                config.default_deceleration =
-                    get_hardware_parameter("gripper_default_deceleration", config.default_deceleration);
-                if (isAg2f90CType(gripper_type)) {
-                    config.model_name = "AG2F90C";
-                    config.feedback_reg = Ag2f90dGripper::FEEDBACK_REG_C;
-                } else {
-                    config.model_name = "AG2F90D";
-                    config.feedback_reg = Ag2f90dGripper::FEEDBACK_REG_D;
-                }
-                config.feedback_reg =
-                    get_hardware_parameter("gripper_feedback_reg", config.feedback_reg);
-                gripper_ = std::make_unique<Ag2f90dGripper>(
-                    get_node()->get_logger(),
-                    get_node()->get_clock(),
-                    gripper_joint_name,
-                    config);
             } else {
-                RCLCPP_WARN(get_node()->get_logger(),
-                            "Unknown Rokae gripper_type '%s', continuing without gripper",
-                            gripper_type.c_str());
+                // The URDF exports the gripper joint, so running without a driver for it is not an option.
+                RCLCPP_ERROR(get_node()->get_logger(),
+                             "Unsupported Rokae gripper_type '%s' (supported: jodell / rg75, linkerhand_l6)",
+                             gripper_type.c_str());
+                return hardware_interface::CallbackReturn::ERROR;
             }
         }
 

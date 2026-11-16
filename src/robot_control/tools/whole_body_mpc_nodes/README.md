@@ -4,7 +4,7 @@
 
 ## 作用
 
-不接真机、不经过 `ros2_control`，单独验证 MPC 问题和模式切换。实际控制 fiveages_w2 用 `whole_body_controller`，不用这里的节点。
+不接真机、不经过 `ros2_control`，单独验证 MPC 问题和模式切换。实际控制 fa_w2 用 `whole_body_controller`，不用这里的节点。
 
 ## 使用
 

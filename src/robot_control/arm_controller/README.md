@@ -15,7 +15,7 @@ MPC 任务本身在 [`arm_mpc`](../lib/mpc/arm_mpc)；共用的运行时在 [`mp
 
 ## 使用
 
-整机由 `robot_launch/robot_bringup` 的启动文件起（`./scripts/start.sh` 按 `robot.entry` 选）。在机器人描述包的 `config/ros2_control/*.yaml` 里声明（fiveages_w2 见 `fiveages_w2_description/config/ros2_control/common.yaml`）：
+整机由 `robot_launch/robot_bringup` 的启动文件起（`./scripts/start.sh` 按 `robot.entry` 选）。在机器人描述包的 `config/ros2_control/*.yaml` 里声明（fa_w2 见 `fa_w2_description/config/ros2_control/common.yaml`）：
 
 ```yaml
 controller_manager:
@@ -26,7 +26,7 @@ arm_controller:
     update_rate: 500
     mpc_frequency: 100
     robot_name: m6_ccs            # 规划模型
-    info_package: fiveages_w2_description   # 可选，.info 所在的包；不写 = <robot_name>_description
+    info_package: fa_w2_description   # 可选，.info 所在的包；不写 = <robot_name>_description
     info_file_name: dual_arm_eef  # <包>/config/ocs2/<name>.info，默认 dual_arm_eef
     joints: [left_joint1, ...]    # 顺序和数量必须与 .info 的状态一致
 ```
@@ -41,7 +41,7 @@ arm_controller:
 |---|---|
 | `robot_name` | 机器人名，决定规划 URDF；不写 `info_package` 时 `.info` 也从 `<robot_name>_description` 取 |
 | `info_package` | `.info` 所在的包（如整机用部件臂规划时放在整机包里），默认空 |
-| `info_file_name` | `<包>/config/ocs2/<name>.info`，默认 `dual_arm_eef`；命名见 [fiveages_w2_description](../../robot_description/fiveages_w2_description/README.md#info-命名) |
+| `info_file_name` | `<包>/config/ocs2/<name>.info`，默认 `dual_arm_eef`；命名见 [fa_w2_description](../../robot_description/fa_w2_description/README.md#info-命名) |
 | `mpc_frequency` | MPC 求解频率 |
 | `recompile_libraries` | 重编 CppAD 库；也可由 `.info` 的 `model_settings.recompileLibraries` 覆盖，Isaac 默认不重编 |
 | `thread_priority` `cpu_affinity` | MPC 工作线程的实时优先级和绑核 |

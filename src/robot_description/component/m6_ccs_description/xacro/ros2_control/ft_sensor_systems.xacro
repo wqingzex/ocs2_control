@@ -2,17 +2,29 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
 	<!--
-		Generic FT sensor system (type=sensor, independent of Marvin).
-		robot.local.yaml left_ft/right_ft value selects the transport:
-		  kwr75_usb → this block,  kwr75_485 → Marvin built-in.
-		Exports left_ft_sensor / right_ft_sensor — same names regardless
-		of transport, so controllers/broadcasters only need one config.
+		KWR75 force / torque sensors (end_effector_hardware/Kwr75Sensor), one ros2_control sensor per side, on the
+		real robot only. left_ft_bus / right_ft_bus (launch: xacro_left_ft_bus:=...) say where it is wired:
+		  ''                                   no sensor (default)
+		  arm_rs485                            the arm's flange RS485 port 2: arm_rs485://<device_ip>/<side>/port2;
+		                                       the arm driver must not drive an end effector of its own on that side
+		                                       (end_effector_driver bus, or no end effector)
+		  usb_rs485:///dev/ttyUSB4?baud=...    a USB-RS485 adapter (any robot_comm bus name)
+		Exports left_ft_sensor / right_ft_sensor; left_ft_broadcaster / right_ft_broadcaster publish them.
 	-->
-	<xacro:macro name="side_ft_sensor_system" params="side serial_port">
-		<ros2_control name="${side}_ft_system" type="sensor">
+	<xacro:arg name="left_ft_bus" default=""/>
+	<xacro:arg name="right_ft_bus" default=""/>
+
+	<xacro:macro name="side_ft_sensor_system" params="side bus device_ip arm_drives_end_effector">
+		<xacro:if value="${bus.startswith('arm_rs485://')}">
+			${xacro.fatal(side + '_ft_bus: write arm_rs485 (the arm port 2 is filled in), got ' + bus)}
+		</xacro:if>
+		<xacro:if value="${bus == 'arm_rs485' and arm_drives_end_effector}">
+			${xacro.fatal(side + '_ft_bus arm_rs485: the arm driver drives the ' + side + ' end effector itself and reads that RS485; use end_effector_driver bus')}
+		</xacro:if>
+		<ros2_control name="${side}_ft" type="sensor">
 			<hardware>
-				<plugin>end_effector_hardware/Kwr75ForceTorqueSensor</plugin>
-				<param name="serial_port">${serial_port}</param>
+				<plugin>end_effector_hardware/Kwr75Sensor</plugin>
+				<param name="bus">${'arm_rs485://' + device_ip + '/' + side + '/port2' if bus == 'arm_rs485' else bus}</param>
 			</hardware>
 			<sensor name="${side}_ft_sensor">
 				<state_interface name="force.x"/>
@@ -25,16 +37,17 @@
 		</ros2_control>
 	</xacro:macro>
 
-	<xacro:macro name="ft_sensor_systems" params="
-		left_ft:=$(arg left_ft)
-		right_ft:=$(arg right_ft)
-		usb_left_ft_port:=$(arg usb_left_ft_port)
-		usb_right_ft_port:=$(arg usb_right_ft_port)">
-		<xacro:if value="${left_ft == 'kwr75_usb'}">
-			<xacro:side_ft_sensor_system side="left" serial_port="${usb_left_ft_port}"/>
+	<!-- left_/right_drive_type, *_hand_type, *_gripper_type: the properties of the ros2_control robot.xacro -->
+	<xacro:macro name="ft_sensor_systems" params="device_ip">
+		<xacro:property name="left_ft_bus" value="$(arg left_ft_bus)"/>
+		<xacro:property name="right_ft_bus" value="$(arg right_ft_bus)"/>
+		<xacro:if value="${left_ft_bus != ''}">
+			<xacro:side_ft_sensor_system side="left" bus="${left_ft_bus}" device_ip="${device_ip}"
+				arm_drives_end_effector="${left_drive_type == 'marvin' and (left_hand_type != '' or left_gripper_type != '')}"/>
 		</xacro:if>
-		<xacro:if value="${right_ft == 'kwr75_usb'}">
-			<xacro:side_ft_sensor_system side="right" serial_port="${usb_right_ft_port}"/>
+		<xacro:if value="${right_ft_bus != ''}">
+			<xacro:side_ft_sensor_system side="right" bus="${right_ft_bus}" device_ip="${device_ip}"
+				arm_drives_end_effector="${right_drive_type == 'marvin' and (right_hand_type != '' or right_gripper_type != '')}"/>
 		</xacro:if>
 	</xacro:macro>
 

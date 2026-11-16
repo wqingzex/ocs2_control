@@ -14,8 +14,8 @@
 		<!-- Visual skins live under m6_ccs_description/meshes/{skin}/ -->
 		<xacro:property name="visual_package" value="m6_ccs_description"/>
 		<xacro:property name="visual_path" value=""/>
-		<xacro:if value="${skin == 'fiveages_w2'}">
-			<xacro:property name="visual_path" value="fiveages_w2/"/>
+		<xacro:if value="${skin == 'fa_w2'}">
+			<xacro:property name="visual_path" value="fa_w2/"/>
 		</xacro:if>
 		<xacro:property name="collision_package" value="m6_ccs_description"/>
 		<xacro:property name="collision_path" value=""/>

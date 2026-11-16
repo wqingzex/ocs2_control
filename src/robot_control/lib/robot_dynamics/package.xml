@@ -4,7 +4,7 @@
     <name>robot_dynamics</name>
     <version>1.5.0</version>
     <description>Robot model helpers shared by the controllers: kinematics (FK / IK), gravity compensation and joint limits</description>
-    <maintainer email="biao876990970@hotmail.com">Huang Zhenbiao</maintainer>
+    <maintainer email="TODO@email.com"/>
     <license>Apache-2.0</license>
 
     <buildtool_depend>ament_cmake</buildtool_depend>

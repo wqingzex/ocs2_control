@@ -34,8 +34,9 @@ target_include_directories(dexcap_device PUBLIC
 target_link_libraries(dexcap_device
   "${DEXCAP_SDK_LIB_DIR}/libserial.so"
   "${DEXCAP_SDK_LIB_DIR}/libyaml-cpp.so"
-  "${DEXCAP_SDK_LIB_DIR}/libusb-1.0.so"
   "${DEXCAP_SDK_LIB_DIR}/libDexCap.so")
+# Not linked: the SDK's libusb-1.0.so. Nothing here or in libDexCap uses it, and its SONAME libusb-1.0.so.0 has no
+# matching file in the SDK, so with --no-as-needed the nodes would fail to start where libusb-1.0-0 is not installed.
 
 # Device nodes: raw joint states of the exoskeleton (waist, arms) and the gloves.
 add_executable(dexcap_upper_body_node src/dexcap_upper_body_node.cpp)

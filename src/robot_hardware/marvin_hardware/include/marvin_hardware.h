@@ -34,8 +34,9 @@
 #include <cmath>
 #include "marvin_hardware/tool/grippers/modbus_gripper.h"
 #include "marvin_hardware/tool/hands/modbus_hand.h"
-#include "gripper_hardware_common/GripperBase.h"
+#include "end_effector_hardware/gripper_protocol/GripperBase.h"
 #include "marvin_hardware/tool/modbus_io.h"
+#include "marvin_hardware/tool/arm_bus.h"
 #include "marvin_hardware/sensors/kwr75_protocol.h"
 
 namespace marvin_hardware
@@ -199,6 +200,9 @@ private:
 
         // Connection status
         bool hardware_connected_;
+        /** The flange ports as robot_comm buses (arm_rs485:// / arm_canfd://) for end effector components; only when
+         *  this driver runs no end effector of its own (no ee_type, no KWR75): both read the same SDK buffer. */
+        std::vector<std::unique_ptr<ArmBuses>> arm_buses_;
         rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
         std::vector<std::string> joint_names_;
 
@@ -213,7 +217,7 @@ private:
 
         // Helper method to create tool (gripper or hand) based on type
         // tool_index: 0 for left hand (in dual arm) or single left arm, 1 for right hand (in dual arm) or single right arm
-        std::unique_ptr<gripper_hardware_common::GripperBase> createTool(
+        std::unique_ptr<gripper_protocol::GripperBase> createTool(
             Clear485Func clear_485, 
             Send485Func send_485,
             GetChDataFunc get_ch_data,
@@ -287,7 +291,7 @@ private:
         bool eeTypeIsHand(const std::string& ee_type) const;
         std::string eeTypeForTool(size_t tool_idx) const;
         bool toolIsHand(size_t tool_idx) const;
-        std::vector<std::unique_ptr<gripper_hardware_common::GripperBase>> tool_ptr_;  // Unified container for hand/gripper
+        std::vector<std::unique_ptr<gripper_protocol::GripperBase>> tool_ptr_;  // Unified container for hand/gripper
         std::vector<bool> tool_is_left_side_;
         std::vector<std::string> tool_ee_types_;
         bool toolUsesLeftChannel(size_t tool_idx) const;
@@ -354,8 +358,8 @@ private:
         // 开启后打印 pending/read_gate/RX valid|invalid/rx_drop 等工具帧级日志，便于排查。
         std::atomic<bool> tool_debug_log_{false};
 
-        // Health of the read / write cycles (src/robot_log/README.md): filled by read() and write(), reported by health_timer_.
-        // What was read from and written to the motors in each cycle, for the diagnosis (src/robot_log/README.md).
+        // Health of the read / write cycles (src/robot_utils/README.md): filled by read() and write(), reported by health_timer_.
+        // What was read from and written to the motors in each cycle, for the diagnosis (src/robot_utils/README.md).
         std::shared_ptr<robot_log::FlightRecorder> flight_;
         robot_log::CycleStats read_stats_;
         robot_log::CycleStats write_stats_;
@@ -426,11 +430,11 @@ private:
 
         // Unified tool access helpers
         size_t toolCount() const { return tool_ptr_.size(); }
-        gripper_hardware_common::GripperBase* toolAt(size_t idx) 
+        gripper_protocol::GripperBase* toolAt(size_t idx) 
         { 
             return (idx < tool_ptr_.size()) ? tool_ptr_[idx].get() : nullptr; 
         }
-        const gripper_hardware_common::GripperBase* toolAt(size_t idx) const 
+        const gripper_protocol::GripperBase* toolAt(size_t idx) const 
         { 
             return (idx < tool_ptr_.size()) ? tool_ptr_[idx].get() : nullptr; 
         }

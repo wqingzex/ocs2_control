@@ -17,8 +17,8 @@
 
 // // planners/kinematics required for cartesian moveL support
 // #include "motion_planning/path_planner/movel.h"
-// #include "motion_planning/kinematics/fiveages_w2_fk.h"
-// #include "motion_planning/kinematics/fiveages_w2_ik.h"
+// #include "motion_planning/kinematics/fa_w2_fk.h"
+// #include "motion_planning/kinematics/fa_w2_ik.h"
 
 namespace
 {
@@ -3284,7 +3284,7 @@ namespace robot_controller_core
             else
                 return false;
             if (!std::isfinite(yaw)) return false;
-            // Match OCS2 WaistPhiPositiveBiasCost (fiveages_w2 yawOffset = 0).
+            // Match OCS2 WaistPhiPositiveBiasCost (fa_w2 yawOffset = 0).
             yaw_sign = std::cos(yaw) >= 0.0 ? 1.0 : -1.0;
         }
         const double speed = factor * yaw_sign * default_waist_phi_para_(0);

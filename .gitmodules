@@ -14,3 +14,7 @@
 	path = src/third_party/TJ_FX_ROBOT_CONTRL_SDK_338
 	url = https://github.com/cynthia-you/TJ_FX_ROBOT_CONTRL_SDK.git
 	shallow = true
+[submodule "src/third_party/dexcap-sdk-cpp"]
+	path = src/third_party/dexcap-sdk-cpp
+	url = https://github.com/DexRobot/dexcap-sdk-cpp.git
+	shallow = true

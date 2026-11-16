@@ -21,10 +21,9 @@ namespace end_effector_hardware
     /**
      * @brief 灵巧手 ROS2 Control 硬件接口
      * 
-     * 支持 O7 (7-DOF) 和 O6 (6-DOF) 灵巧手的 ROS2 Control 硬件接口
+     * LinkerHand L6（6-DOF）灵巧手的 ROS2 Control 硬件接口（USB-RS485，Modbus）
      * 根据检测到的关节数量自动选择对应的实现
-     * O7: 提供7个关节的位置、速度、力矩接口
-     * O6: 提供6个关节的位置、速度、力矩接口
+     * 提供 6 个关节的位置、速度、力矩接口
      */
     class LinkerHandRs485Hardware : public hardware_interface::SystemInterface
     {

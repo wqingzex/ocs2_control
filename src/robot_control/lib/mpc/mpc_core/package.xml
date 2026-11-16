@@ -4,7 +4,7 @@
   <name>mpc_core</name>
   <version>1.5.0</version>
   <description>Shared OCS2 + ros2_control building blocks: the MPC controller skeleton (MpcFsmController), reference targets, Pinocchio visualization and MPC timing helpers</description>
-  <maintainer email="biao876990970@hotmail.com">Huang Zhenbiao</maintainer>
+  <maintainer email="TODO@email.com"/>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

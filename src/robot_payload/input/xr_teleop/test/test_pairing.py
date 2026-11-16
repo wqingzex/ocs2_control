@@ -3,16 +3,16 @@ import io
 
 import pytest
 
-from w2_payload import config_edit
-from w2_payload.device_setup import Io
+from fa_w2_payload import config_edit
+from fa_w2_payload.device_setup import Io
 from xr_teleop import pairing
 
 TELEOP = """\
 # 本机配置（注释必须保留）
 robot:
   entry: split_body
-  hand: linkerhand_l6   # 末端
-  hand_drive: usb
+  end_effector: linkerhand_l6   # 末端
+  end_effector_bus: usb_rs485
 
 cameras:
   enable: false

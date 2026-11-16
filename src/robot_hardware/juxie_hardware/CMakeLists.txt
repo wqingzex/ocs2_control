@@ -18,7 +18,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
 
 find_package(ament_cmake REQUIRED)
 find_package(robot_comm_can REQUIRED)
-find_package(robot_log REQUIRED)
+find_package(robot_utils REQUIRED)
 foreach (Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
     find_package(${Dependency} REQUIRED)
 endforeach ()
@@ -42,7 +42,7 @@ ament_target_dependencies(
         ${PROJECT_NAME} PUBLIC
         ${THIS_PACKAGE_INCLUDE_DEPENDS}
 )
-target_link_libraries(${PROJECT_NAME} PUBLIC robot_comm_can::robot_comm_can ${robot_log_TARGETS})
+target_link_libraries(${PROJECT_NAME} PUBLIC robot_comm_can::robot_comm_can ${robot_utils_TARGETS})
 
 # 电机模拟器（Juxie 协议的纯逻辑），只给单元测试用
 add_library(juxie_motor_sim STATIC src/juxie_motor_sim.cpp)

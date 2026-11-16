@@ -1,0 +1,121 @@
+<?xml version="1.0"?>
+<robot name="FiveAges W2 Head" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+	<xacro:property name="PI" value="3.1415926535897931"/>
+
+	<xacro:macro name="head" params="variant:='' collider:='simple' isaac:=false">
+		<xacro:property name="head_pitch_mesh" value="meshes/head/head_pitch.glb"/>
+		<!-- default (stand / v1.5): LRAA0000000_0528_08.SLDASM.urdf joint05 & JOINT06 limits -->
+		<xacro:property name="head_joint1_lower" value="-1.3963"/>
+		<xacro:property name="head_joint1_upper" value="1.3963"/>
+		<xacro:property name="head_joint2_lower" value="-0.4014"/>
+		<xacro:property name="head_joint2_upper" value="0.5236"/>
+
+		<!-- wheeled V1.0 legacy limits -->
+		<xacro:if value="${variant == 'wheel_V1.0'}">
+			<xacro:property name="head_joint1_lower" value="-0.436"/>
+			<xacro:property name="head_joint1_upper" value="0.436"/>
+			<xacro:property name="head_joint2_lower" value="-0.26"/>
+			<xacro:property name="head_joint2_upper" value="0.26"/>
+		</xacro:if>
+
+		<link name="head_link1">
+			<inertial>
+				<origin xyz="0.0110684120335558 0.0270955929655894 -0.0849037421704728"/>
+				<mass value="1.76592019732553"/>
+				<inertia
+						ixx="0.00540494211688139"
+						ixy="5.45899583655646E-06"
+						ixz="0.000512508898720623"
+						iyy="0.0045794535946287"
+						iyz="5.71011553188605E-05"
+						izz="0.00441063426341843"/>
+			</inertial>
+			<visual>
+				<geometry>
+					<mesh filename="file://$(find fa_w2_head_description)/meshes/head/head_yaw.glb"/>
+				</geometry>
+			</visual>
+			<xacro:if value="${collider == 'convex'}">
+				<collision>
+					<geometry>
+						<mesh filename="file://$(find fa_w2_head_description)/meshes/head/head_yaw.glb"/>
+					</geometry>
+				</collision>
+			</xacro:if>
+		</link>
+
+		<!-- head_mount 与 head_link1 原点重合，偏航 DOF 在 head_joint1 -->
+		<joint name="head_joint1" type="revolute">
+			<origin xyz="0 0 0"/>
+			<parent link="head_mount"/>
+			<child link="head_link1"/>
+			<axis xyz="0 0 1"/>
+			<limit lower="${head_joint1_lower}" upper="${head_joint1_upper}" effort="500" velocity="1"/>
+		</joint>
+
+		<link name="head_link2">
+			<inertial>
+				<origin xyz="-0.0151771428301439 -0.00143945296196635 -0.0524451271193214"/>
+				<mass value="1.96836671464479"/>
+				<inertia
+						ixx="0.00378737345531871"
+						ixy="1.23509442005848E-05"
+						ixz="0.000117982756207023"
+						iyy="0.00352320847778892"
+						iyz="-1.03942260573708E-05"
+						izz="0.00568300818653482"/>
+			</inertial>
+			<visual>
+				<geometry>
+					<mesh filename="file://$(find fa_w2_head_description)/${head_pitch_mesh}"/>
+				</geometry>
+			</visual>
+			<visual>
+				<geometry>
+					<mesh filename="file://$(find fa_w2_head_description)/meshes/head/neck.glb"/>
+				</geometry>
+			</visual>
+			<xacro:if value="${collider == 'simple'}">
+				<collision>
+					<origin xyz="0.025 0 0.04"/>
+					<geometry>
+						<box size="0.15 0.16 0.24"/>
+					</geometry>
+				</collision>
+			</xacro:if>
+			<xacro:if value="${collider == 'convex'}">
+				<collision>
+					<geometry>
+						<mesh filename="file://$(find fa_w2_head_description)/${head_pitch_mesh}"/>
+					</geometry>
+				</collision>
+			</xacro:if>
+		</link>
+
+		<joint name="head_joint2" type="revolute">
+			<origin xyz="0 0.0 0.15"/>
+			<parent link="head_link1"/>
+			<child link="head_link2"/>
+			<axis xyz="0 1 0"/>
+			<limit lower="${head_joint2_lower}" upper="${head_joint2_upper}" effort="500" velocity="1"/>
+		</joint>
+
+		<link name="head_camera">
+			<xacro:unless value="${isaac}">
+				<visual>
+					<geometry>
+						<mesh filename="file://$(find sensor_models)/meshes/orbbec/336L.glb"/>
+					</geometry>
+				</visual>
+			</xacro:unless>
+		</link>
+
+		<joint name="head_camera_joint" type="fixed">
+			<origin xyz="0.0976  0.043639 0.1243" rpy="${-PI/2-0.64460396} 0 ${-PI/2}"/>
+			<parent link="head_link2"/>
+			<child link="head_camera"/>
+		</joint>
+	</xacro:macro>
+
+</robot>

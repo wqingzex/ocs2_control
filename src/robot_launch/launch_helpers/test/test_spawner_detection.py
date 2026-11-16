@@ -59,3 +59,36 @@ def test_the_joint_plugin_is_a_normal_joint_controller():
     found = spawners.detect_controllers("robot", "", ["body"], ros2_control_config=config)
 
     assert [controller["name"] for controller in found] == ["body_joint_controller"]
+
+
+# ---- FT sensor broadcasters: spawned only for a <sensor> the URDF declares ----------------------------------------
+
+FT_CONFIG = {
+    "controller_manager": {"ros__parameters": {
+        "left_ft_broadcaster": {"type": "force_torque_sensor_broadcaster/ForceTorqueSensorBroadcaster"},
+        "right_ft_broadcaster": {"type": "force_torque_sensor_broadcaster/ForceTorqueSensorBroadcaster"},
+    }},
+    "left_ft_broadcaster": {"ros__parameters": {"sensor_name": "left_ft_sensor", "frame_id": "left_eef"}},
+    "right_ft_broadcaster": {"ros__parameters": {"sensor_name": "right_ft_sensor", "frame_id": "right_eef"}},
+}
+URDF_LEFT_FT = """<robot name="r">
+  <joint name="left_gripper_joint" type="fixed"/>
+  <ros2_control name="left_ft" type="sensor"><sensor name="left_ft_sensor"/></ros2_control>
+</robot>"""
+
+
+def test_ft_broadcaster_is_spawned_for_a_declared_sensor_only():
+    found = spawners.detect_controllers("robot", "", ["ft_broadcaster"], robot_description=URDF_LEFT_FT,
+                                        ros2_control_config=FT_CONFIG)
+    assert [c["name"] for c in found] == ["left_ft_broadcaster"]
+
+
+def test_ft_broadcaster_is_not_spawned_without_a_robot_description():
+    assert spawners.detect_controllers("robot", "", ["ft_broadcaster"], ros2_control_config=FT_CONFIG) == []
+
+
+def test_ft_broadcaster_detection_fails_loudly_on_a_broken_robot_description():
+    import xml.etree.ElementTree as ET
+    with pytest.raises(ET.ParseError):
+        spawners.detect_controllers("robot", "", ["ft_broadcaster"], robot_description="<robot><unclosed",
+                                    ros2_control_config=FT_CONFIG)

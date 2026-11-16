@@ -4,7 +4,7 @@
   <name>robot_comm_serial</name>
   <version>0.1.0</version>
   <description>Serial ports for the hardware drivers: a termios SerialPort with the USB-adapter latency setting, and a mock port for tests.</description>
-  <maintainer email="wqingzey@gmail.com">wqingze</maintainer>
+  <maintainer email="TODO@email.com"/>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

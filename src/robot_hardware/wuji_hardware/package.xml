@@ -7,7 +7,7 @@
     ROS 2 Control hardware interface for Wuji Hand 2 (Ethernet / wuji-sdk C API).
   </description>
 
-  <maintainer email="dev@fiveages.local">fiveages</maintainer>
+  <maintainer email="TODO@email.com"/>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

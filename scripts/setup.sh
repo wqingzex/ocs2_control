@@ -47,8 +47,8 @@ MARVIN_FIRMWARES=(338 343)
 MARVIN_FIRMWARE_DEFAULT=343   # 和 marvin_hardware/CMakeLists.txt 的默认值一致
 # build --minimal 只编译这些包及其依赖。
 MINIMAL_PACKAGES=(
-  fiveages_w2_description juxie_hardware marvin_hardware end_effector_hardware
-  joystick_teleop keyboard_teleop xr_teleop topic_based_hardware teleop_app w2_camera w2_hand
+  fa_w2_description juxie_hardware marvin_hardware end_effector_hardware
+  joystick_teleop keyboard_teleop xr_teleop topic_based_hardware robot_app camera end_effector
 )
 
 # ==================================================================================================
@@ -118,24 +118,29 @@ deps_rosdep_update() {
   done
 }
 
-# MarvinPlatform_EN 是 PyInstaller 打包脚本，不是 ROS 包；colcon 扫描时会执行它的 setup.py 并报错，所以让 colcon 忽略。
-# 子模块里的 COLCON_IGNORE 同时加入子模块的 info/exclude，避免子模块显示为有未跟踪文件。
-colcon_ignore_marvin_platform() {
-  local dir exclude
-  for dir in "${WS_DIR}"/src/third_party/TJ_FX_ROBOT_CONTRL_SDK_*/MarvinPlatform_EN; do
+# 子模块里不是 ROS 包、却会被 colcon 扫到的目录，让 colcon 忽略：
+#   MarvinPlatform_EN：PyInstaller 打包脚本，colcon 扫描时会执行它的 setup.py 并报错；
+#   dexcap-sdk-cpp：整个忽略。里面只有预编译库，dexcap_teleop 按路径引用；examples/ 是厂家示例（CMake 项目
+#   DexGloveDemo，要 Qt6 和 libbluetooth），urdf/ 是 ROS 1 catkin 包，都编不了。
+# 子模块里的 COLCON_IGNORE 同时加入子模块的 info/exclude（写相对子模块根的路径），避免子模块显示为有未跟踪文件。
+colcon_ignore_submodule_dirs() {
+  local dir entry exclude
+  for dir in "${WS_DIR}"/src/third_party/TJ_FX_ROBOT_CONTRL_SDK_*/MarvinPlatform_EN \
+             "${WS_DIR}"/src/third_party/dexcap-sdk-cpp; do
     [[ -d "${dir}" ]] || continue
     touch "${dir}/COLCON_IGNORE"
+    entry="$(git -C "${dir}" rev-parse --show-prefix 2>/dev/null || true)COLCON_IGNORE"
     exclude="$(git -C "${dir}" rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null || true)"
-    if [[ -n "${exclude}" ]] && ! grep -qxF 'MarvinPlatform_EN/COLCON_IGNORE' "${exclude}" 2>/dev/null; then
+    if [[ -n "${exclude}" ]] && ! grep -qxF "${entry}" "${exclude}" 2>/dev/null; then
       mkdir -p "$(dirname "${exclude}")"
-      echo 'MarvinPlatform_EN/COLCON_IGNORE' >> "${exclude}"
+      echo "${entry}" >> "${exclude}"
     fi
   done
 }
 
 step_deps() {
   git -C "${WS_DIR}" submodule update --init --recursive --depth 1  # 浅克隆：只取固定的提交
-  colcon_ignore_marvin_platform
+  colcon_ignore_submodule_dirs
   source_ros
   command -v rosdep >/dev/null || die "未安装 rosdep：sudo apt install python3-rosdep"
   [[ -d /etc/ros/rosdep/sources.list.d ]] || as_root rosdep init
@@ -179,7 +184,7 @@ PY
   printf '%s' "${iface}"
 }
 
-# robot.hand_drive 为 usb_can 时两只手的 CAN 接口（hardware.left_ee_can_interface / right_ee_can_interface，
+# robot.end_effector_bus 为 usb_can 时两只手的 CAN 接口（hardware.left_ee_can_interface / right_ee_can_interface，
 # 默认 can1 / can2），每行一个；其他接线方式不输出。名字同样要合法，且不能和腰部接口相同。
 hand_can_ifaces() {
   [[ -f "${CONFIG}" ]] || return 0
@@ -193,7 +198,7 @@ hand_can_ifaces() {
 import sys, yaml
 data = yaml.safe_load(open(sys.argv[1])) or {}
 robot, hw = data.get("robot") or {}, data.get("hardware") or {}
-if robot.get("hand", "linkerhand_l6") != "none" and robot.get("hand_drive") == "usb_can":
+if robot.get("end_effector", "linkerhand_l6") != "none" and robot.get("end_effector_bus") == "usb_can":
     names = [str(hw.get("left_ee_can_interface") or "can1").strip(), str(hw.get("right_ee_can_interface") or "can2").strip()]
     print("\n".join(dict.fromkeys(names)))  # the two hands may share one interface
 PY
@@ -201,13 +206,15 @@ PY
 }
 
 # 只放行驱动实际执行的 `sudo ip link set <can> ...`，参数写死、不用通配符：
-# 腰部 jx_hardware（CAN FD），以及 hand_drive: usb_can 时手的 end_effector_hardware（经典 CAN 1 Mbit/s）
+# 腰部 jx_hardware（CAN FD），以及 end_effector_bus: usb_can 时手的 end_effector_hardware（经典 CAN 1 Mbit/s）
 host_sudoers() {
-  local iface file="/etc/sudoers.d/fiveages_w2-can" legacy="/etc/sudoers.d/fa-w2-can"
-  if sudo test -e "${legacy}"; then  # 旧文件名写入的同一条规则：删掉，只留新文件
-    sudo rm -f "${legacy}"
-    info "已删除旧的 ${legacy}"
-  fi
+  local iface file="/etc/sudoers.d/fa_w2-can" legacy
+  for legacy in /etc/sudoers.d/fa-w2-can /etc/sudoers.d/fiveages_w2-can; do  # 旧文件名写入的同一条规则：删掉，只留新文件
+    if sudo test -e "${legacy}"; then
+      sudo rm -f "${legacy}"
+      info "已删除旧的 ${legacy}"
+    fi
+  done
   iface="$(body_can_iface)"
   local up_args="up type can bitrate 1000000 dbitrate 5000000 restart-ms 100 fd on"
   local cmds=() ip rule tmp
@@ -347,7 +354,7 @@ step_marvin() {
   is_marvin_firmware "${choice}" || die "天机臂 SDK 版本只能是 338 或 343，输入的是 '${choice}'"
   PYTHONPATH="${PAYLOAD_PYTHONPATH}:${PYTHONPATH:-}" python3 - "${CONFIG}" "${choice}" <<'PY'
 import sys
-from w2_payload.config_edit import set_fields
+from fa_w2_payload.config_edit import set_fields
 set_fields(sys.argv[1], "hardware", {"marvin_firmware": int(sys.argv[2])})
 PY
   info "已写入 hardware.marvin_firmware: ${choice}（之后编译 marvin_hardware 都用这个版本）"
@@ -355,7 +362,7 @@ PY
 
 # ---- build ----------------------------------------------------------------------------------------
 step_build() {
-  colcon_ignore_marvin_platform
+  colcon_ignore_submodule_dirs
   source_ros
   cd "${WS_DIR}"
   export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-4}"
@@ -367,15 +374,15 @@ step_build() {
     --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF "${marvin_arg}"
 }
 
-# ---- 相机 w2_camera、手 w2_hand、负载辨识 w2_payload；XR 由遥操作模块处理 ---------------------------------
-PAYLOAD_PYTHONPATH="${WS_DIR}/src/robot_payload/w2_payload/common:${WS_DIR}/src/robot_payload/w2_payload/w2_camera:${WS_DIR}/src/robot_payload/w2_payload/w2_hand"
+# ---- 相机 camera、手 end_effector、负载辨识 fa_w2_payload；XR 由遥操作模块处理 ---------------------------------
+PAYLOAD_PYTHONPATH="${WS_DIR}/src/robot_payload/fa_w2_payload/common:${WS_DIR}/src/robot_payload/fa_w2_payload/camera:${WS_DIR}/src/robot_payload/fa_w2_payload/end_effector"
 run_python_step() {
   source_ros --workspace
   local python_status=0 module python_path="${PAYLOAD_PYTHONPATH}"
   case "$1" in
-    cameras) module=w2_camera.camera_setup ;;
-    hand) module=w2_hand.hand_setup ;;
-    dyn) module=w2_payload.load_identify ;;
+    cameras) module=camera.camera_setup ;;
+    hand) module=end_effector.hand_setup ;;
+    dyn) module=fa_w2_payload.load_identify ;;
     xr)
       module=xr_teleop.pairing
       python_path="${python_path}:${WS_DIR}/src/robot_payload/input/xr_teleop" ;;
@@ -403,7 +410,7 @@ step_ready() {  # 返回 0 表示不用配置；原因写入 READY_REASON
       [[ -n "${firmware}" ]] || return 1
       READY_REASON="已选择 ${firmware}" ;;
     cameras|hand|dyn)
-      READY_REASON="$(PYTHONPATH="${python_path}" python3 -m w2_payload.config_status status --config "${CONFIG}" "$1" 2>/dev/null)" || status=$? ;;
+      READY_REASON="$(PYTHONPATH="${python_path}" python3 -m fa_w2_payload.config_status status --config "${CONFIG}" "$1" 2>/dev/null)" || status=$? ;;
     xr)
       READY_REASON="$(PYTHONPATH="${WS_DIR}/src/robot_payload/input/xr_teleop:${python_path}" python3 -m xr_teleop.pairing \
         --config "${CONFIG}" --ws-root "${WS_DIR}" --status xr 2>/dev/null)" || status=$? ;;
@@ -416,7 +423,7 @@ step_ready() {  # 返回 0 表示不用配置；原因写入 READY_REASON
 step_summary() {
   source_ros --workspace
   PYTHONPATH="${PAYLOAD_PYTHONPATH}:${PYTHONPATH:-}" \
-    python3 -m w2_payload.config_status check "${CONFIG}"
+    python3 -m fa_w2_payload.config_status check "${CONFIG}"
   local chosen built
   chosen="$(marvin_firmware_config)"
   built="$(marvin_firmware_built)"

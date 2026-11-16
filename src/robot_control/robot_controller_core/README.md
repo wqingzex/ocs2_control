@@ -4,7 +4,7 @@
 
 ## 作用
 
-`robot_controller`（所有 MPC 和关节实例）共用这里的状态实现，`teleop_command` 和 RViz 面板用它的 FSM 命令工具。新增一种控制器时，复用这里的状态，只写自己特有的状态。
+`robot_controller`（所有 MPC 和关节实例）共用这里的状态实现，`target_generator` 和 RViz 面板用它的 FSM 命令工具。新增一种控制器时，复用这里的状态，只写自己特有的状态。
 
 ## 内容
 

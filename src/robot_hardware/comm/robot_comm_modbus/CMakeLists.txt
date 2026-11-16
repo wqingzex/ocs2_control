@@ -35,6 +35,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_mock_modbus_master ${PROJECT_NAME})
   ament_add_gtest(test_libmodbus_rtu_master test/test_libmodbus_rtu_master.cpp)
   target_link_libraries(test_libmodbus_rtu_master ${PROJECT_NAME})
+  ament_add_gtest(test_rtu_frame test/test_rtu_frame.cpp)
+  target_link_libraries(test_rtu_frame ${PROJECT_NAME})
 endif()
 
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)

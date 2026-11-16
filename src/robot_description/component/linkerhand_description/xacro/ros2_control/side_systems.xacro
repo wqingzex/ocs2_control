@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <xacro:include filename="$(find changingtek_description)/xacro/ros2_control/side_system.xacro"/>
+  <xacro:include filename="$(find linkerhand_description)/xacro/ros2_control/side_system.xacro"/>
   <xacro:include filename="$(find linkerhand_description)/xacro/ros2_control/l6.xacro"/>
 
   <!-- LinkerHand on a USB-CAN adapter (classic CAN, 1 Mbit/s), driven by end_effector_hardware/LinkerHandCanHardware.
@@ -11,7 +11,7 @@
     <xacro:unless value="${hand_type == 'linkerhand_l6'}">
       ${xacro.fatal('linkerhand_usb_can_side_system: hand_type ' + hand_type + ' is not supported on CAN (only linkerhand_l6)')}
     </xacro:unless>
-    <xacro:side_ros2_control_system name="${hand_type}_${side}_can_system" rw_rate="${rw_rate if rw_rate != '' else 50}">
+    <xacro:side_ros2_control_system name="${side}_end_effector" rw_rate="${rw_rate if rw_rate != '' else 50}">
       <contents>
         <hardware>
           <plugin>end_effector_hardware/LinkerHandCanHardware</plugin>

@@ -4,12 +4,11 @@
     <version>0.0.0</version>
     <description>URDF Description package for linkerhand dexhands</description>
 
-    <maintainer email="biao876990970@hotmail.com">Huang Zhenbiao</maintainer>
+    <maintainer email="TODO@email.com"/>
     <license>TODO</license>
 
     <buildtool_depend>ament_cmake</buildtool_depend>
     <!-- side_system.xacro (optional rw_rate) for the USB-CAN side system -->
-    <exec_depend>changingtek_description</exec_depend>
 
     <export>
         <build_type>ament_cmake</build_type>

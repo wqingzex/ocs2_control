@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 from typing import List, NamedTuple
 
-READY, FAILED, PENDING = "ready", "failed", "pending"  # same values as teleop_app.control_ready
+READY, FAILED, PENDING = "ready", "failed", "pending"  # same values as robot_app.control_ready
 
 SERVICE_CONNECTED = "SDK 事件: PC Service 已连接"
 HEADSET_SELECTED = re.compile(r"头显选择：(\S+)")

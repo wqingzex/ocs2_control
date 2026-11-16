@@ -14,7 +14,7 @@ ROBOT_NAVIGATION_CONFIG_FILENAME = 'navigation.yaml'
 
 # ament package name -> workspace-relative source directory (for pre-build fallback)
 _SOURCE_PACKAGE_PATHS: Dict[str, str] = {
-    'fiveages_w2_description': os.path.join('src', 'robot_description', 'fiveages_w2_description'),
+    'fa_w2_description': os.path.join('src', 'robot_description', 'fa_w2_description'),
     'robot_navigation': os.path.join('src', 'robot_control', 'launch', 'robot_navigation'),
 }
 

@@ -23,7 +23,7 @@ from .robot.urdf import (
 )
 from .control.task_info import (
     parse_task_info,
-    prepare_teleop_command_parameters,
+    prepare_target_generator_parameters,
 )
 from .control.spawners import (
     detect_controllers,
@@ -38,6 +38,8 @@ from .robot.profile import (
     create_robot_profile_launch_arguments,
     resolve_profile_path,
     resolve_side_eef_types,
+    resolve_end_effectors,
+    resolve_end_effector_buses,
     resolve_control_sides,
     resolve_control_patch,
     resolve_robot_variant,
@@ -75,6 +77,8 @@ __all__ = [
     'create_robot_profile_launch_arguments',
     'resolve_profile_path',
     'resolve_side_eef_types',
+    'resolve_end_effectors',
+    'resolve_end_effector_buses',
     'resolve_control_sides',
     'resolve_control_patch',
     'resolve_robot_variant',
@@ -85,7 +89,7 @@ __all__ = [
     'is_compose_asymmetric',
     'resolve_compose_type_key',
     'parse_task_info',
-    'prepare_teleop_command_parameters',
+    'prepare_target_generator_parameters',
     'extract_info_file_name_from_config',
     'resolve_info_file_path',
     'detect_controllers',

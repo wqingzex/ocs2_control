@@ -1,0 +1,113 @@
+<?xml version="1.0"?>
+<robot name="fa_w2" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+	<xacro:arg name="ros2_control_hardware_type" default="mock_components"/>
+	<xacro:arg name="arm_ctrl_mode" default="position"/>
+	<xacro:arg name="device_ip" default="192.168.1.190"/>
+	<!-- left_/right_end_effector_bus: where each end effector is wired (robot.end_effector_bus): usb_rs485 | arm_rs485 |
+	     usb_can | ethernet. Empty: arm_rs485 on the real robot. Converted once here to the drive keys the macros use. -->
+	<xacro:arg name="left_end_effector_bus" default=""/>
+	<xacro:arg name="right_end_effector_bus" default=""/>
+	<xacro:arg name="left_dyn_param" default=""/>
+	<xacro:arg name="right_dyn_param" default=""/>
+	<xacro:arg name="max_joint_speed" default="100"/>
+	<xacro:arg name="max_joint_acceleration" default="100"/>
+	<!-- CAN FD interface of the waist / head (Juxie). setup.sh writes the sudoers rule for the same name. -->
+	<xacro:arg name="body_can_interface" default="can0"/>
+	<!-- 0: print the CAN / control-loop statistics once, when the driver stops; N > 0: also every N seconds -->
+	<xacro:arg name="body_can_stats_period_s" default="0"/>
+	<xacro:arg name="usb_left_port" default="/dev/ttyUSB0"/>
+	<xacro:arg name="usb_right_port" default="/dev/ttyUSB2"/>
+	<!-- Optional ros2_control rw_rate [Hz] of the USB hand systems (XHand1); empty = controller_manager rate -->
+	<xacro:arg name="left_ee_rw_rate" default=""/>
+	<xacro:arg name="right_ee_rw_rate" default=""/>
+	<!-- USB-CAN interfaces of the hands (end_effector_bus usb_can); can0 is the waist / head bus -->
+	<xacro:arg name="left_ee_can_interface" default="can1"/>
+	<xacro:arg name="right_ee_can_interface" default="can2"/>
+
+	<xacro:property name="is_real_hardware" value="${'$(arg ros2_control_hardware_type)' == 'real'}"/>
+	<xacro:property name="default_end_effector_bus" value="${'arm_rs485' if '$(arg ros2_control_hardware_type)' == 'real' else ''}"/>
+	<!-- end_effector_driver bus: an end effector on the arm's RS485 is its own component (end_effector_hardware on
+	     arm_rs485://<ip>/<side>/port1) instead of being driven inside the arm driver (legacy). -->
+	<xacro:arg name="end_effector_driver" default="legacy"/>
+	<xacro:property name="arm_rs485_drive" value="${'arm_bus' if '$(arg end_effector_driver)' == 'bus' else 'marvin'}"/>
+	<xacro:property name="bus_to_drive" value="${dict(usb_rs485='usb', arm_rs485=arm_rs485_drive, usb_can='usb_can', ethernet='ethernet')}"/>
+	<xacro:property name="left_end_effector_bus" value="${'$(arg left_end_effector_bus)' or default_end_effector_bus}"/>
+	<xacro:property name="right_end_effector_bus" value="${'$(arg right_end_effector_bus)' or default_end_effector_bus}"/>
+	<xacro:unless value="${left_end_effector_bus in ['', *bus_to_drive] and right_end_effector_bus in ['', *bus_to_drive]}">
+		${xacro.fatal('end_effector_bus must be one of usb_rs485, arm_rs485, usb_can, ethernet; got ' + left_end_effector_bus + ' / ' + right_end_effector_bus)}
+	</xacro:unless>
+	<xacro:property name="left_drive_type" value="${bus_to_drive.get(left_end_effector_bus, '')}"/>
+	<xacro:property name="right_drive_type" value="${bus_to_drive.get(right_end_effector_bus, '')}"/>
+
+	<xacro:include filename="$(find fa_w2_description)/xacro/robot.xacro"/>
+
+	<xacro:include filename="$(find m6_ccs_description)/xacro/ros2_control/simulation_hardware.xacro"/>
+	<xacro:include filename="$(find m6_ccs_description)/xacro/ros2_control/marvin_hardware.xacro"/>
+	<xacro:include filename="$(find m6_ccs_description)/xacro/ros2_control/end_effector_interfaces.xacro"/>
+	<xacro:include filename="$(find m6_ccs_description)/xacro/ros2_control/external_ee_systems.xacro"/>
+	<xacro:include filename="$(find m6_ccs_description)/xacro/ros2_control/ft_sensor_systems.xacro"/>
+	<xacro:include filename="$(find fa_w2_description)/xacro/ros2_control/body.xacro"/>
+
+	<xacro:if value="${is_real_hardware}">
+		<ros2_control name="arms" type="system">
+			<hardware>
+				<xacro:marvin_hardware_block
+					arm_type="dual"
+					arm_ctrl_mode="$(arg arm_ctrl_mode)"
+					max_joint_speed="$(arg max_joint_speed)"
+					max_joint_acceleration="$(arg max_joint_acceleration)"
+					device_ip="$(arg device_ip)"
+					left_dyn_param="$(arg left_dyn_param)"
+					right_dyn_param="$(arg right_dyn_param)"/>
+			</hardware>
+			<xacro:dual_arm_ee_block mode="real"/>
+		</ros2_control>
+
+		<ros2_control name="juxie_body" type="system">
+			<hardware>
+				<plugin>juxie_hardware/JxHardware</plugin>
+				<param name="can_interface">$(arg body_can_interface)</param>
+				<param name="motor_ids">1,2,3,4,5,6</param>
+				<param name="control_period_ms">2</param>
+				<param name="max_position_step_nct">25</param>
+				<param name="max_position_accel_nct">5</param>
+				<param name="stats_log_period_s">$(arg body_can_stats_period_s)</param>
+			</hardware>
+			<xacro:body_interfaces/>
+		</ros2_control>
+
+		<xacro:external_ee_systems
+			usb_left_port="$(arg usb_left_port)"
+			usb_right_port="$(arg usb_right_port)"
+			left_ee_rw_rate="$(arg left_ee_rw_rate)"
+			right_ee_rw_rate="$(arg right_ee_rw_rate)"
+			left_ee_can_interface="$(arg left_ee_can_interface)"
+			right_ee_can_interface="$(arg right_ee_can_interface)"
+			body_can_interface="$(arg body_can_interface)"
+			device_ip="$(arg device_ip)"/>
+		<xacro:ft_sensor_systems device_ip="$(arg device_ip)"/>
+	</xacro:if>
+
+	<xacro:unless value="${is_real_hardware}">
+		<ros2_control name="fa_w2_system" type="system">
+			<hardware>
+				<xacro:simulation_hardware_plugin hardware_type="$(arg ros2_control_hardware_type)"/>
+			</hardware>
+			<xacro:body_interfaces/>
+			<xacro:dual_arm_ee_block mode="sim"/>
+		</ros2_control>
+	</xacro:unless>
+
+	<xacro:arg name="gazebo" default="false"/>
+	<xacro:if value="$(arg gazebo)">
+		<xacro:property name="ros2_control_config_basename" value="ros2_controllers.yaml"/>
+		<gazebo>
+			<plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+				<parameters>$(find fa_w2_description)/config/ros2_control/common.yaml</parameters>
+				<parameters>$(find fa_w2_description)/config/ros2_control/${ros2_control_config_basename}</parameters>
+			</plugin>
+		</gazebo>
+	</xacro:if>
+
+</robot>

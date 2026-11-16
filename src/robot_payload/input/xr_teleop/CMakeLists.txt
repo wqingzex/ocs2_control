@@ -12,7 +12,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(robot_log REQUIRED)
+find_package(robot_utils REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -47,7 +47,7 @@ if(PXREA_INCLUDE_DIR AND PXREA_LIBRARY)
   add_library(xr_bridge SHARED src/xr_sdk_client.cpp src/xr_bridge_node.cpp)
   target_include_directories(xr_bridge PRIVATE ${PXREA_INCLUDE_DIR})
   target_link_libraries(xr_bridge PRIVATE xr_teleop_core ${PXREA_LIBRARY}
-    rclcpp::rclcpp rclcpp_components::component ${geometry_msgs_TARGETS} ${std_msgs_TARGETS} ${robot_log_TARGETS})
+    rclcpp::rclcpp rclcpp_components::component ${geometry_msgs_TARGETS} ${std_msgs_TARGETS} ${robot_utils_TARGETS})
   # The SDK lives outside the ROS prefix: keep its directory in the runtime search path.
   set_target_properties(xr_bridge PROPERTIES INSTALL_RPATH "${PXREA_LIBRARY_DIR}" BUILD_RPATH "${PXREA_LIBRARY_DIR}")
   rclcpp_components_register_node(xr_bridge
@@ -87,7 +87,7 @@ if(BUILD_TESTING)
   foreach(t test_xr_network test_pairing test_units)
     ament_add_pytest_test(${t} test/${t}.py
       PYTHON_EXECUTABLE python3
-      APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}:${CMAKE_CURRENT_SOURCE_DIR}/../../../robot_runtime:${CMAKE_CURRENT_SOURCE_DIR}/../../../robot_log/python:${CMAKE_CURRENT_SOURCE_DIR}/../../w2_payload/common)
+      APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}:${CMAKE_CURRENT_SOURCE_DIR}/../../../robot_utils/python:${CMAKE_CURRENT_SOURCE_DIR}/../../fa_w2_payload/common)
   endforeach()
 endif()
 

@@ -1,15 +1,16 @@
 # robot_control
 
-双臂和 fiveages_w2 的控制栈：从末端目标到关节指令。控制器都是 ros2_control 的 `ControllerInterface` 插件，由 `controller_manager` 加载。
+双臂和 fa_w2 的控制栈：从末端目标到关节指令。控制器都是 ros2_control 的 `ControllerInterface` 插件，由 `controller_manager` 加载。
 
 ```
-目标（robot_hmi 的 teleop_command：RViz marker / XR / 手柄）
+目标（本组的 target_generator：RViz marker / XR / 手柄）
    → 控制器（MPC 或关节插值，ros2_control 插件）
    → src/robot_hardware 里的硬件插件 → 真机
 ```
 
 | 位置 | 内容 |
 |---|---|
+| [`target_generator/`](target_generator/README.md) | 末端目标节点：RViz 交互 marker、XR 头显、键盘手柄输入 → `left_target` / `right_target`，由控制器转成 MPC 目标 |
 | [`arm_controller/`](arm_controller/README.md) | 控制器插件：双臂 MPC |
 | [`whole_body_controller/`](whole_body_controller/README.md) | 控制器插件：全身 MPC（轮式人形） |
 | [`joint_controller/`](joint_controller/README.md) | 控制器插件：腰、头、身体的关节空间控制（不含 MPC） |
@@ -19,7 +20,7 @@
 | [`tools/`](tools/README.md) | 开发用工具：`whole_body_mpc_nodes`，不接硬件单独跑全身 MPC |
 | [`lib/`](lib/README.md) | 非插件的库：`motion_planning`、`robot_dynamics`、`trajectory_manager`，OCS2 的 MPC（`lib/mpc/`） |
 
-启动文件在 [`../robot_launch`](../robot_launch/README.md)，RViz 面板和目标指令在 [`../robot_hmi`](../robot_hmi/README.md)。
+启动文件在 [`../robot_launch`](../robot_launch/README.md)，RViz 面板在 [`../robot_hmi`](../robot_hmi/README.md)。
 
 ## 使用
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "marvin_hardware/tool/modbus_io.h"
-#include "gripper_hardware_common/GripperBase.h"
+#include "end_effector_hardware/gripper_protocol/GripperBase.h"
 #include <vector>
 #include <cstdint>
 
@@ -13,7 +13,7 @@ namespace marvin_hardware
      * Combines ModbusIO (Marvin-specific) with GripperBase (shared interface).
      * This class is specific to Marvin robots due to ModbusIO dependency.
      */
-    class ModbusGripper : public ModbusIO, public gripper_hardware_common::GripperBase
+    class ModbusGripper : public ModbusIO, public gripper_protocol::GripperBase
     {
     public:
         ModbusGripper(Clear485Func clear_485, Send485Func send_485,
@@ -53,7 +53,7 @@ namespace marvin_hardware
         /** Optional: user torque/speed before initialize() for one-time device config write. */
         virtual void setInitialToolConfig(double /*normalized_torque*/, double /*normalized_velocity*/) {}
 
-        /** True while a user-initiated current/speed write is still queued (EincinX). */
+        /** True while a user-initiated current/speed write is still queued (for devices that need separate config writes). */
         virtual bool hasPendingConfigWrites() const { return false; }
 
     protected:

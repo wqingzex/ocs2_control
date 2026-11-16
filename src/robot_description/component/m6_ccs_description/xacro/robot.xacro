@@ -4,21 +4,26 @@
 	<xacro:arg name="collider" default="convex"/>
 	<xacro:arg name="skin" default="default"/>
 	<xacro:arg name="variant" default=""/>
-	<xacro:arg name="type" default="dual"/>
-	<xacro:arg name="left_type" default=""/>
-	<xacro:arg name="right_type" default=""/>
+	<xacro:arg name="arms" default="dual"/>                  <!-- which arms: dual | left | right -->
+	<xacro:arg name="end_effector" default=""/>             <!-- both sides; left_/right_end_effector override one side -->
+	<xacro:arg name="left_end_effector" default=""/>
+	<xacro:arg name="right_end_effector" default=""/>
 	<xacro:arg name="eef_fixed_joints" default="false"/>
 	<xacro:arg name="left_tcp_offset_xyz" default="0 0 0"/>
 	<xacro:arg name="left_tcp_offset_rpy" default="0 0 0"/>
 	<xacro:arg name="right_tcp_offset_xyz" default="0 0 0"/>
 	<xacro:arg name="right_tcp_offset_rpy" default="0 0 0"/>
 	<!-- 从 type 参数解析 arm_config / 对称末端 -->
-	<xacro:property name="type_arg" value="$(arg type)"/>
+	<xacro:property name="arms_arg" value="$(arg arms)"/>
+	<xacro:property name="end_effector_arg" value="$(arg end_effector)"/>
 	<xacro:property name="variant_arg" value="$(arg variant)"/>
-	<xacro:property name="left_type_arg" value="$(arg left_type)"/>
-	<xacro:property name="right_type_arg" value="$(arg right_type)"/>
-	<xacro:property name="effective_left_type" value="${left_type_arg if left_type_arg != '' else type_arg}"/>
-	<xacro:property name="effective_right_type" value="${right_type_arg if right_type_arg != '' else type_arg}"/>
+	<xacro:property name="left_end_effector_arg" value="$(arg left_end_effector)"/>
+	<xacro:property name="right_end_effector_arg" value="$(arg right_end_effector)"/>
+	<xacro:property name="effective_left_type" value="${left_end_effector_arg if left_end_effector_arg != '' else end_effector_arg}"/>
+	<xacro:property name="effective_right_type" value="${right_end_effector_arg if right_end_effector_arg != '' else end_effector_arg}"/>
+	<xacro:unless value="${arms_arg in ['dual', 'left', 'right']}">
+		${xacro.fatal('arms must be dual, left or right, got ' + arms_arg)}
+	</xacro:unless>
 
 	<!-- 默认值 -->
 	<xacro:property name="selected_arm_config" value="dual"/>
@@ -27,10 +32,10 @@
 
 	<!-- 从 type 解析 arm_config 和 gripper_type -->
 	<!-- 单臂配置 -->
-	<xacro:if value="${type_arg == 'left'}">
+	<xacro:if value="${arms_arg == 'left'}">
 		<xacro:property name="selected_arm_config" value="left"/>
 	</xacro:if>
-	<xacro:if value="${type_arg == 'right'}">
+	<xacro:if value="${arms_arg == 'right'}">
 		<xacro:property name="selected_arm_config" value="right"/>
 	</xacro:if>
 	<!-- 双臂配置 -->

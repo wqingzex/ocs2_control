@@ -1,6 +1,6 @@
 # m6_ccs_description
 
-天机 Marvin M6-S CCS 双臂的描述包，同时是**末端和 `ros2_control` 共享宏**的所在：fiveages_w2 的双臂规划模型和末端也复用这里（fiveages_w2 双臂的 `.info` 在它自己的包里）。
+天机 Marvin M6-S CCS 双臂的描述包，同时是**末端和 `ros2_control` 共享宏**的所在：fa_w2 的双臂规划模型和末端也复用这里（fa_w2 双臂的 `.info` 在它自己的包里）。
 
 ![Marvin M6 CCS](../../../../docs/images/description/m6_ccs.png)
 
@@ -9,28 +9,28 @@
 ```bash
 ros2 launch robot_visualize manipulator.launch.py robot:=m6_ccs collider:=simple     # 看模型（双臂）
 ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs                         # 控制，默认 mock
-ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs hardware:=real type:=linkerhand_l6
+ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs hardware:=real end_effector:=linkerhand_l6
 ```
 
 | 场景 | 做法 |
 |---|---|
-| 单臂 | `type:=left` 或 `type:=right` |
-| 末端 | `type:=<键>`；左右不同用 `left_type` / `right_type`，此时不要再传 `type` |
+| 单臂 | `arms:=left` 或 `arms:=right`（默认 `dual`） |
+| 末端 | `end_effector:=<名字>`（和 `robot.end_effector` 相同：`jodell_rg75` / `linkerhand_l6` / `xhand1` / `wuji_hand2` / `none`）；左右不同用 `left_end_effector` / `right_end_effector` 覆盖一侧；不传时用 `robot_profile` 里的 `robot.end_effector` |
 | 展台 | `variant:=desktop`（臂间距 ±0.12 m，OCS2 `dual_arm_eef_desktop.info`），与末端正交，见 [docs/m6_ccs_dual_desktop.md](docs/m6_ccs_dual_desktop.md) |
-| 臂外观 | `skin:=fiveages_w2` 用 fiveages_w2 的外观网格；碰撞始终用 `meshes/link*.glb` |
+| 臂外观 | `skin:=fa_w2` 用 fa_w2 的外观网格；碰撞始终用 `meshes/link*.glb` |
 
 `robot.local.yaml` 也可配 `defaults.end_effectors.left` / `.right`。
 
 ## OCS2 `.info`
 
-`arm_controller` 按 `info_file_name` 从本包 `config/ocs2/` 选一份，命名规则同 [fiveages_w2](../../fiveages_w2_description/README.md#info-命名)（「范围_坐标系_变体」）：
+`arm_controller` 按 `info_file_name` 从本包 `config/ocs2/` 选一份，命名规则同 [fa_w2](../../fa_w2_description/README.md#info-命名)（「范围_坐标系_变体」）：
 
 | 文件 | 用于 |
 |---|---|
 | `dual_arm_eef.info` | 双臂，默认值 |
 | `dual_arm_tcp.info` | 双臂，跟踪 TCP |
 | `dual_arm_eef_desktop.info` | `variant:=desktop`（`config/ros2_control/desktop.yaml`） |
-| `single_arm_tcp.info` | 单臂 `type:=left` / `right`（`left.yaml` / `right.yaml`） |
+| `single_arm_tcp.info` | 单臂 `arms:=left` / `right`（`left.yaml` / `right.yaml`） |
 
 ## 末端执行器
 
@@ -44,7 +44,7 @@ ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs hardware:=real type:=
 
 夹爪关节是 `left_gripper_joint` / `right_gripper_joint`，控制器是 `end_effector_controller/GripperController` 实例；`rg75` 的标定负载（`dyn_param`）已内置在 `xacro/eefs.xacro`。每条臂下面还有一个虚拟的 `<side>_tcp_offset` 坐标系（TCP 偏移，默认 0），用启动参数 `left_tcp_offset_xyz/rpy`、`right_tcp_offset_xyz/rpy` 设置，不会移动手或夹爪的模型。
 
-真机每侧独立选驱动：`left_ee_drive_type` / `right_ee_drive_type`。`hardware:=real` 默认走 `marvin`（臂体 RS485，`marvin_hardware`），`hardware:=real_usb` 默认走 `usb`（`end_effector_hardware`）。`tianji_can`（臂体 CAN）只保留在 xacro 里，目前没有末端使用。
+真机每侧独立选驱动：`left_end_effector_bus` / `right_end_effector_bus`。`hardware:=real` 时默认走 `marvin`（臂体 RS485，`marvin_hardware`）；外接 USB 末端传 `left_ee_drive_type:=usb` / `right_ee_drive_type:=usb`（`robot_app` 按 `robot.end_effector_bus` 自动传）。`tianji_can`（臂体 CAN）只保留在 xacro 里，目前没有末端使用。
 
 ## 真机配置
 
@@ -52,7 +52,7 @@ ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs hardware:=real type:=
 
 ```yaml
 platform: {variant: desktop}                 # 可选
-defaults: {end_effectors: {type: linkerhand_l6}}
+robot: {end_effector: linkerhand_l6, end_effector_bus: arm_rs485}
 hardware:
   device_ip: 192.168.10.190
   arm_ctrl_mode: JOINT_IMPEDANCE
@@ -66,7 +66,7 @@ hardware:
 
 ## 共享宏（`xacro/ros2_control/`）
 
-`robot.xacro` 是薄封装，下面的模块也被 `fiveages_w2_description` include：
+`robot.xacro` 是薄封装，下面的模块也被 `fa_w2_description` include：
 
 | 文件 | 宏 | 作用 |
 |---|---|---|

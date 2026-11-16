@@ -4,7 +4,7 @@
   <name>robot_comm_core</name>
   <version>0.1.0</version>
   <description>Communication interfaces shared by the hardware drivers: CAN bus, interface configurator, link kinds, interface-name validation. No ROS dependency, so drivers can be tested without hardware.</description>
-  <maintainer email="wqingzey@gmail.com">wqingze</maintainer>
+  <maintainer email="TODO@email.com"/>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

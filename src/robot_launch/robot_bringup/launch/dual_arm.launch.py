@@ -9,7 +9,7 @@ from launch_helpers import (
     create_launch_mode_arguments,
     create_robot_profile_launch_arguments,
     resolve_info_file_path,
-    prepare_teleop_command_parameters,
+    prepare_target_generator_parameters,
 )
 
 _launch_dir = os.path.dirname(os.path.abspath(__file__))
@@ -53,24 +53,24 @@ def launch_setup(context, *args, **kwargs):
     task_file_path = resolve_info_file_path(ctx.config, "dual_arm", ctx.robot_name)
     if task_file_path is None:
         return []
-    print(f"[INFO] Using task file for TeleopCommand: {task_file_path}")
+    print(f"[INFO] Using task file for TargetGenerator: {task_file_path}")
 
-    teleop_command = None
-    teleop_command_params = prepare_teleop_command_parameters(
+    target_generator = None
+    target_generator_params = prepare_target_generator_parameters(
         task_file_path=task_file_path,
         config_file_path=None,
         hand_controllers=hand_names or None,
     )
-    if teleop_command_params and (
-        context.launch_configurations.get("enable_teleop_command", "true").lower()
+    if target_generator_params and (
+        context.launch_configurations.get("enable_target_generator", "true").lower()
         == "true"
     ):
-        teleop_command = Node(
-            package="teleop_command",
-            executable="teleop_command_node",
-            name="teleop_command",
+        target_generator = Node(
+            package="target_generator",
+            executable="target_generator_node",
+            name="target_generator",
             output="screen",
-            parameters=teleop_command_params + [{"use_sim_time": ctx.use_sim_time}],
+            parameters=target_generator_params + [{"use_sim_time": ctx.use_sim_time}],
         )
 
     rviz_node = common.build_rviz_node(
@@ -86,7 +86,7 @@ def launch_setup(context, *args, **kwargs):
         controller_stack_nodes=controller_stack_nodes,
         main_spawner=main_spawner,
         extra_spawners=hand_spawners,
-        optional_nodes=[teleop_command] if teleop_command else [],
+        optional_nodes=[target_generator] if target_generator else [],
     )
 
 
@@ -94,9 +94,9 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("robot", default_value="cr5"),
-            DeclareLaunchArgument("type", default_value=""),
+            DeclareLaunchArgument("arms", default_value="", description="Which arms: dual (default) | left | right"),
             DeclareLaunchArgument("hardware", default_value="mock_components"),
-            DeclareLaunchArgument("enable_teleop_command", default_value="true"),
+            DeclareLaunchArgument("enable_target_generator", default_value="true"),
             DeclareLaunchArgument("enable_gripper", default_value="true"),
             *create_launch_mode_arguments(),
         ]

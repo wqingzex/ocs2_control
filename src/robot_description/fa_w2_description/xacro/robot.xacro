@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<robot name="FiveAges W2" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <xacro:arg name="collider" default="simple"/>
+    <!-- OCS2 planning URDF: eef_fixed_joints + chassis_joints_movable=false (see robot_utils planning mappings) -->
+    <xacro:arg name="eef_fixed_joints" default="false"/>
+    <xacro:arg name="chassis" default="linkhou_s2"/>
+    <xacro:arg name="chassis_joints_movable" default="false"/>
+    <xacro:arg name="variant" default=""/>
+
+    <!-- End effectors (robot.end_effector names): both sides, or one side with left_/right_end_effector -->
+    <xacro:arg name="end_effector" default=""/>
+    <xacro:arg name="left_end_effector" default=""/>
+    <xacro:arg name="right_end_effector" default=""/>
+    <!-- Optional virtual planning/control frames below left_tcp/right_tcp. -->
+    <xacro:arg name="left_tcp_offset_xyz" default="0 0 0"/>
+    <xacro:arg name="left_tcp_offset_rpy" default="0 0 0"/>
+    <xacro:arg name="right_tcp_offset_xyz" default="0 0 0"/>
+    <xacro:arg name="right_tcp_offset_rpy" default="0 0 0"/>
+    <xacro:property name="end_effector_arg" value="$(arg end_effector)"/>
+    <xacro:property name="left_end_effector_arg" value="$(arg left_end_effector)"/>
+    <xacro:property name="right_end_effector_arg" value="$(arg right_end_effector)"/>
+    <xacro:property name="effective_left_type" value="${left_end_effector_arg if left_end_effector_arg != '' else end_effector_arg}"/>
+    <xacro:property name="effective_right_type" value="${right_end_effector_arg if right_end_effector_arg != '' else end_effector_arg}"/>
+
+    <xacro:include filename="$(find m6_ccs_description)/xacro/eef_type_resolver.xacro"/>
+    <xacro:set_side_eef_types side="left" type_key="${effective_left_type}"/>
+    <xacro:set_side_eef_types side="right" type_key="${effective_right_type}"/>
+
+    <xacro:property name="chassis_arg" value="$(arg chassis)"/>
+    <!-- platform-wide OEM visual variant (launch/profile: variant); not the chassis model selector -->
+    <xacro:property name="platform_variant" value="$(arg variant)"/>
+
+    <xacro:if value="${chassis_arg == 'linkhou_s2'}">
+        <xacro:include filename="$(find linkhou_s2_description)/xacro/linkhou_s2.xacro"/>
+        <xacro:linkhou_s2 joints_movable="$(arg chassis_joints_movable)" variant="${platform_variant}" collider="$(arg collider)"/>
+    </xacro:if>
+    <xacro:if value="${chassis_arg == 'linkhou_s2_v2'}">
+        <xacro:include filename="$(find linkhou_s2_description)/xacro/linkhou_s2_v2.xacro"/>
+        <xacro:linkhou_s2 joints_movable="$(arg chassis_joints_movable)" variant="${platform_variant}" collider="$(arg collider)"/>
+    </xacro:if>
+
+    <xacro:include filename="$(find fa_w2_body_description)/xacro/body.xacro"/>
+    <xacro:body variant="${platform_variant}" collider="$(arg collider)"/>
+    <xacro:include filename="$(find fa_w2_head_description)/xacro/head.xacro"/>
+    <xacro:head variant="${platform_variant}" collider="$(arg collider)"/>
+
+    <xacro:include filename="$(find m6_ccs_description)/xacro/arm_mount.xacro"/>
+    <xacro:DualArmMount parent="arm_base"/>
+
+    <xacro:include filename="$(find m6_ccs_description)/xacro/arm.xacro"/>
+    <xacro:M6_CCS name="left" skin="fa_w2" variant="${platform_variant}"
+        tcp_offset_xyz="$(arg left_tcp_offset_xyz)"
+        tcp_offset_rpy="$(arg left_tcp_offset_rpy)"/>
+    <xacro:M6_CCS name="right" direction="-1" skin="fa_w2" variant="${platform_variant}"
+        tcp_offset_xyz="$(arg right_tcp_offset_xyz)"
+        tcp_offset_rpy="$(arg right_tcp_offset_rpy)"/>
+
+    <xacro:include filename="$(find m6_ccs_description)/xacro/eefs.xacro"/>
+    <xacro:EndEffectors
+        eef_fixed_joints="$(arg eef_fixed_joints)"
+        left_hand_type="${left_hand_type}"
+        left_gripper_type="${left_gripper_type}"
+        left_gripper_pad="${left_gripper_pad}"
+        right_hand_type="${right_hand_type}"
+        right_gripper_type="${right_gripper_type}"
+        right_gripper_pad="${right_gripper_pad}"/>
+</robot>

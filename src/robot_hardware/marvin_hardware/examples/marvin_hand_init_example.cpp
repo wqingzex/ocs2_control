@@ -8,7 +8,7 @@
  *   ros2 run marvin_hardware marvin_hand_init_example
  *   # or: ./install/marvin_hardware/lib/marvin_hardware/marvin_hand_init_example
  *
- * Requires: Marvin SDK, gripper_hardware_common, rclcpp.
+ * Requires: Marvin SDK, gripper_protocol, rclcpp.
  */
 
 #include <iostream>
@@ -29,7 +29,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "marvin_hardware/tool/hands/linkerhand/dexterous_hand.h"
 #include "marvin_hardware/tool/modbus_io.h"
-#include "gripper_hardware_common/GripperBase.h"
+#include "end_effector_hardware/gripper_protocol/GripperBase.h"
 
 using namespace marvin_hardware;
 
@@ -159,8 +159,8 @@ static void runAsync485ReadWriteTest(
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     // clear_ch_data();
 
-    const uint8_t slave_id = gripper_hardware_common::ModbusConfig::LinkerHand::RIGHT_HAND_SLAVE_ID;
-    const uint8_t expected_read_fc = gripper_hardware_common::ModbusConfig::LinkerHand::READ_FUNCTION;  // typically 0x03
+    const uint8_t slave_id = gripper_protocol::ModbusConfig::LinkerHand::RIGHT_HAND_SLAVE_ID;
+    const uint8_t expected_read_fc = gripper_protocol::ModbusConfig::LinkerHand::READ_FUNCTION;  // typically 0x03
 
     // get-thread: only call get485 (OnGetChDataB) and parse/collect stats. No sending.
     std::thread reader([&]() {
@@ -197,8 +197,8 @@ static void runAsync485ReadWriteTest(
                         }
                     }
                 }
-                else if (fc == gripper_hardware_common::ModbusConfig::LinkerHand::WRITE_SINGLE_FUNCTION ||
-                         fc == gripper_hardware_common::ModbusConfig::LinkerHand::WRITE_FUNCTION)
+                else if (fc == gripper_protocol::ModbusConfig::LinkerHand::WRITE_SINGLE_FUNCTION ||
+                         fc == gripper_protocol::ModbusConfig::LinkerHand::WRITE_FUNCTION)
                 {
                     stats.rx_write_fc.fetch_add(1, std::memory_order_relaxed);
                 }
@@ -439,15 +439,15 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // Dual LinkerHand O7: left = channel A (slave 0x28), right = channel B (slave 0x27)
+    // Dual LinkerHand L6: left = channel A (slave 0x28), right = channel B (slave 0x27)
     // NOTE: left hand disabled for now; only test right hand.
-    // auto left_hand = std::make_unique<DexterousHandO7>(
+    // auto left_hand = std::make_unique<DexterousHandL6>(
     //     OnClearChDataA, OnSetChDataA, OnGetChDataA, true);
-    auto right_hand = std::make_unique<DexterousHandO7>(
+    auto right_hand = std::make_unique<DexterousHandL6>(
         OnClearChDataB, OnSetChDataB, OnGetChDataB, false);
 
     std::cout << "Initializing right hand (channel B, 7-DOF) ..." << std::endl;
-    if (!static_cast<gripper_hardware_common::GripperBase*>(right_hand.get())->initialize())
+    if (!static_cast<gripper_protocol::GripperBase*>(right_hand.get())->initialize())
     {
         std::cerr << "Right hand initialize failed." << std::endl;
         OnRelease();
@@ -456,7 +456,7 @@ int main(int argc, char* argv[])
     }
     std::cout << "Right hand initialized." << std::endl;
 
-    std::cout << "Dual LinkerHand O7 initialization complete." << std::endl;
+    std::cout << "Dual LinkerHand L6 initialization complete." << std::endl;
 
     std::cout << "\nSelect test mode:\n"
               << "  1) Sync only  (single readStatus)\n"

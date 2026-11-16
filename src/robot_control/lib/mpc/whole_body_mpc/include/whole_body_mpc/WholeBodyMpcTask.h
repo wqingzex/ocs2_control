@@ -83,7 +83,7 @@ public:
                 return on_parameter_change(parameters);
             });
 
-        robot_name_ = auto_declare("robot_name", std::string("fiveages_w2"));
+        robot_name_ = auto_declare("robot_name", std::string("fa_w2"));
         planning_urdf_variant_ = auto_declare("planning_urdf_variant", std::string(""));
         planning_urdf_path_ = auto_declare("planning_urdf_path", std::string(""));
         future_time_offset_ = auto_declare("future_time_offset", 1.0);

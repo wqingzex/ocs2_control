@@ -15,7 +15,7 @@ MPC 任务本身在 [`whole_body_mpc`](../lib/mpc/whole_body_mpc/README.md)；�
 
 ## 使用
 
-整机由 `robot_launch/robot_bringup` 的 `whole_body.launch.py` 起。在机器人描述包的 `config/ros2_control/*.yaml` 里声明（fiveages_w2 见 `fiveages_w2_description/config/ros2_control/common.yaml`）：
+整机由 `robot_launch/robot_bringup` 的 `whole_body.launch.py` 起。在机器人描述包的 `config/ros2_control/*.yaml` 里声明（fa_w2 见 `fa_w2_description/config/ros2_control/common.yaml`）：
 
 ```yaml
 controller_manager:
@@ -25,8 +25,8 @@ whole_body_controller:
   ros__parameters:
     update_rate: 500
     mpc_frequency: 100
-    robot_name: fiveages_w2
-    info_file_name: whole_body_fixed_eef_l6   # 默认值；可选值见 fiveages_w2_description README
+    robot_name: fa_w2
+    info_file_name: whole_body_fixed_eef_l6   # 默认值；可选值见 fa_w2_description README
     joints: [...]
 ```
 

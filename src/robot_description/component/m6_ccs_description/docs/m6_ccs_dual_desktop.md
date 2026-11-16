@@ -2,7 +2,7 @@
 
 Dual-arm **booth / demo stand** layout for m6_ccs. Use **`variant:=desktop`** (m6_ccs-specific platform variant), not `type:=desktop`.
 
-End effectors are selected independently via `type` / `left_type` / `right_type` (see [m6_ccs_description/README.md](../README.md)).
+End effectors are selected independently via `type` / `left_end_effector` / `right_end_effector` (see [m6_ccs_description/README.md](../README.md)).
 
 ## 1. Build
 
@@ -20,19 +20,13 @@ source ~/ros2_ws/install/setup.bash
 ros2 launch robot_visualize manipulator.launch.py robot:=m6_ccs variant:=desktop collider:=simple
 ```
 
-* Desktop + AG2F90-C gripper
+* Desktop + Jodell RG75 gripper
 
 ```bash
 source ~/ros2_ws/install/setup.bash
-ros2 launch robot_visualize manipulator.launch.py robot:=m6_ccs variant:=desktop type:=ag2f90_c collider:=simple
+ros2 launch robot_visualize manipulator.launch.py robot:=m6_ccs variant:=desktop end_effector:=jodell_rg75 collider:=simple
 ```
 
-* Desktop + AG2F90-C (soft pad)
-
-```bash
-source ~/ros2_ws/install/setup.bash
-ros2 launch robot_visualize manipulator.launch.py robot:=m6_ccs variant:=desktop type:=ag2f90_c_soft collider:=simple
-```
 
 ## 3. OCS2 Arm Controller
 
@@ -45,19 +39,13 @@ source ~/ros2_ws/install/setup.bash
 ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs variant:=desktop
 ```
 
-* Desktop + AG2F90-C
+* Desktop + Jodell RG75
 
 ```bash
 source ~/ros2_ws/install/setup.bash
-ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs variant:=desktop type:=ag2f90_c
+ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs variant:=desktop end_effector:=jodell_rg75
 ```
 
-* Desktop + AG2F90-C (soft pad)
-
-```bash
-source ~/ros2_ws/install/setup.bash
-ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs variant:=desktop type:=ag2f90_c_soft
-```
 
 ### 3.2 Isaac Sim
 
@@ -68,16 +56,10 @@ source ~/ros2_ws/install/setup.bash
 ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs variant:=desktop hardware:=isaac
 ```
 
-* Desktop + AG2F90-C
+* Desktop + Jodell RG75
 
 ```bash
 source ~/ros2_ws/install/setup.bash
-ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs variant:=desktop type:=ag2f90_c hardware:=isaac
+ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs variant:=desktop end_effector:=jodell_rg75 hardware:=isaac
 ```
 
-* Desktop + AG2F90-C (soft pad)
-
-```bash
-source ~/ros2_ws/install/setup.bash
-ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs variant:=desktop type:=ag2f90_c_soft hardware:=isaac
-```

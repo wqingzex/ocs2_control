@@ -2,7 +2,6 @@
 #include "robot_comm/modbus.h"
 #include "robot_comm_modbus/libmodbus_rtu_master.h"
 #include "end_effector_hardware/common/serial_notices.h"
-#include "end_effector_hardware/grippers/changingtek_gripper.h"
 #include "end_effector_hardware/grippers/jodell_gripper.h"
 #include "end_effector_hardware/grippers/modbus_gripper_base.h"
 #include <pluginlib/class_list_macros.hpp>
@@ -21,6 +20,15 @@ namespace end_effector_hardware
 
         // 读取配置参数
         loadParameters(params.hardware_info.hardware_parameters);
+        if (gripper_type_ != "jodell")
+        {
+            RCLCPP_ERROR(
+                get_node()->get_logger(),
+                "Unsupported gripper_type '%s' (supported: jodell)",
+                gripper_type_.c_str()
+            );
+            return hardware_interface::CallbackReturn::ERROR;
+        }
 
         // 检测夹爪关节
         std::string gripper_joint_name = ModbusGripperBase::detectGripperJoint(
@@ -49,23 +57,12 @@ namespace end_effector_hardware
         // 应用事务超时（需在 connect 前设置）
         modbus_communicator_->setTimeouts(response_timeout_ms_, byte_timeout_ms_);
 
-        // 创建夹爪对象（按 gripper_type_ 分派）
-        if (gripper_type_ == "jodell")
-        {
-            gripper_ = std::make_unique<JodellGripper>(
-                get_node()->get_logger(),
-                get_node()->get_clock(),
-                gripper_joint_name
-            );
-        }
-        else
-        {
-            gripper_ = std::make_unique<ChangingtekGripper>(
-                get_node()->get_logger(),
-                get_node()->get_clock(),
-                gripper_joint_name
-            );
-        }
+        // 创建夹爪对象
+        gripper_ = std::make_unique<JodellGripper>(
+            get_node()->get_logger(),
+            get_node()->get_clock(),
+            gripper_joint_name
+        );
 
         RCLCPP_INFO(
             get_node()->get_logger(),
@@ -255,33 +252,10 @@ namespace end_effector_hardware
         };
 
         // 首先读取 gripper_type
-        gripper_type_ = get_param("gripper_type", "changingtek");
+        gripper_type_ = get_param("gripper_type", "jodell");
 
-        // 从夹爪类获取默认 Modbus 参数
-        ModbusParams default_params;
-        if (gripper_type_ == "changingtek")
-        {
-            // 检查是否有变体参数
-            auto variant_it = params.find("variant");
-            std::string variant = (variant_it != params.end()) 
-                ? variant_it->second 
-                : "90c";
-            default_params = ChangingtekGripper::getDefaultModbusParams(variant);
-        }
-        else if (gripper_type_ == "jodell")
-        {
-            // Jodell RG75（slave 0x09，默认 115200 8N1）
-            default_params = JodellGripper::getDefaultModbusParams();
-        }
-        else
-        {
-            // 未知类型的默认值（通用 Modbus RTU 配置）
-            RCLCPP_WARN(
-                get_node()->get_logger(),
-                "Unknown gripper type '%s', using default Modbus parameters",
-                gripper_type_.c_str()
-            );
-        }
+        // Jodell RG75 的默认 Modbus 参数（slave 0x09，115200 8N1）；类型不对时 on_init 报错
+        const ModbusParams default_params = JodellGripper::getDefaultModbusParams();
 
         // 使用默认参数初始化
         serial_port_ = default_params.serial_port;
@@ -333,22 +307,6 @@ namespace end_effector_hardware
         {
             byte_timeout_ms_ = std::stoi(it->second);
         }
-    }
-
-    bool GripperModbusHardware::createGripper()
-    {
-        // 支持 Changingtek（90C/90D）与 Jodell（RG75），均在 on_init 中创建
-        if (gripper_type_ == "changingtek" || gripper_type_ == "jodell")
-        {
-            return true;
-        }
-
-        RCLCPP_ERROR(
-            get_node()->get_logger(),
-            "Unsupported gripper type: %s",
-            gripper_type_.c_str()
-        );
-        return false;
     }
 } // namespace end_effector_hardware
 

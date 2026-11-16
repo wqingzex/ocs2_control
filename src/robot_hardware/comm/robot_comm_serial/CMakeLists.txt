@@ -11,11 +11,12 @@ find_package(robot_comm_core REQUIRED)
 add_library(${PROJECT_NAME} SHARED
         src/posix_serial_port.cpp
         src/usb_latency.cpp
-        src/mock_serial_port.cpp)
+        src/mock_serial_port.cpp
+        src/serial_bus.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>")
-target_link_libraries(${PROJECT_NAME} PUBLIC robot_comm_core::robot_comm_core)
+target_link_libraries(${PROJECT_NAME} PUBLIC robot_comm_core::robot_comm_core robot_comm_core::robot_comm_bus)
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME})
@@ -28,6 +29,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_posix_serial_port ${PROJECT_NAME})
   ament_add_gtest(test_mock_serial_port test/test_mock_serial_port.cpp)
   target_link_libraries(test_mock_serial_port ${PROJECT_NAME})
+  ament_add_gtest(test_serial_bus test/test_serial_bus.cpp)
+  target_link_libraries(test_serial_bus ${PROJECT_NAME})
 endif()
 
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)

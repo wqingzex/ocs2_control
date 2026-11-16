@@ -315,7 +315,7 @@ Visualization Manager:
     - Class: rviz_default_plugins/InteractiveMarkers
       Enable Transparency: true
       Enabled: true
-      Interactive Markers Namespace: /teleop_command
+      Interactive Markers Namespace: /target_generator
       Name: InteractiveMarkers
       Show Axes: true
       Show Descriptions: true

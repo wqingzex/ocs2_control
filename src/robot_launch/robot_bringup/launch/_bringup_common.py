@@ -52,7 +52,7 @@ def build_context(context) -> BringupContext:
     """Load profile, ros2_control config, and launch mode from launch context."""
     configs = context.launch_configurations
     robot_name = configs["robot"]
-    robot_type = configs.get("type", "")
+    robot_type = configs.get("arms", "")  # arm topology (m6_ccs: dual | left | right); end effectors are separate
     hardware = configs.get("hardware", "mock_components")
     use_sim_time = hardware == "isaac"
 
@@ -184,7 +184,7 @@ def setup_hand_controllers(
     )
     return detect_and_spawn_controllers(
         ctx.config,
-        ["hand", "gripper"],
+        ["hand", "gripper", "ft_broadcaster"],  # the FT broadcasters only for the sensors the robot has
         robot_description=robot_description,
         use_sim_time=ctx.use_sim_time,
     )

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "marvin_hardware/tool/hands/modbus_hand.h"
-#include "gripper_hardware_common/utils/ModbusConfig.h"
-#include "gripper_hardware_common/utils/PositionConverter.h"
+#include "end_effector_hardware/gripper_protocol/utils/ModbusConfig.h"
+#include "end_effector_hardware/gripper_protocol/utils/PositionConverter.h"
 #include "rclcpp/logging.hpp"
 #include <vector>
 #include <cstdint>
@@ -14,16 +14,14 @@
 namespace marvin_hardware
 {
     // Scoped to this namespace so that the directive does not leak into every file that includes this header.
-    using namespace gripper_hardware_common;
+    using namespace gripper_protocol;
 
     /**
      * @brief Product type enum for different LinkerHand models
      */
     enum class LinkerHandProduct
     {
-        O7,  // 7-DOF hand
-        O6,  // 6-DOF hand
-        L6   // 6-DOF hand (different model)
+        L6   // 6-DOF hand
     };
 
     /**
@@ -37,20 +35,6 @@ namespace marvin_hardware
     struct LinkerHandProductTraits;
 
     template<>
-    struct LinkerHandProductTraits<LinkerHandProduct::O7>
-    {
-        static constexpr size_t JOINT_COUNT = 7;
-        static constexpr const char* PRODUCT_NAME = "O7";
-    };
-
-    template<>
-    struct LinkerHandProductTraits<LinkerHandProduct::O6>
-    {
-        static constexpr size_t JOINT_COUNT = 6;
-        static constexpr const char* PRODUCT_NAME = "O6";
-    };
-
-    template<>
     struct LinkerHandProductTraits<LinkerHandProduct::L6>
     {
         static constexpr size_t JOINT_COUNT = 6;
@@ -60,10 +44,10 @@ namespace marvin_hardware
     /**
      * @brief Template-based Dexterous Hand implementation for Marvin robots
      * 
-     * Common implementation for all LinkerHand products (O7, O6, L6).
+     * LinkerHand L6 (the only LinkerHand model in the robot descriptions).
      * Configuration is specified as a template parameter.
      * 
-     * @tparam Product Product type (O7, O6, L6)
+     * @tparam Product Product type (L6)
      */
     template<LinkerHandProduct Product>
     class DexterousHandTemplate : public ModbusHand
@@ -80,24 +64,9 @@ namespace marvin_hardware
                                      : ModbusConfig::LinkerHand::RIGHT_HAND_SLAVE_ID)
         {
             // Set PositionConverter function pointers based on hand type (polymorphic behavior)
-            if constexpr (JOINT_COUNT == 7)  // O7
-            {
-                get_limits_func_ = PositionConverter::LinkerHandO7::getLimits;
-                get_joint_name_func_ = PositionConverter::LinkerHandO7::getJointNameByIndex;
-                clamp_to_limits_func_ = PositionConverter::LinkerHandO7::clampToLimits;
-            }
-            else if constexpr (Product == LinkerHandProduct::O6)  // O6
-            {
-                get_limits_func_ = PositionConverter::LinkerHandO6::getLimits;
-                get_joint_name_func_ = PositionConverter::LinkerHandO6::getJointNameByIndex;
-                clamp_to_limits_func_ = PositionConverter::LinkerHandO6::clampToLimits;
-            }
-            else  // L6
-            {
-                get_limits_func_ = PositionConverter::LinkerHandL6::getLimits;
-                get_joint_name_func_ = PositionConverter::LinkerHandL6::getJointNameByIndex;
-                clamp_to_limits_func_ = PositionConverter::LinkerHandL6::clampToLimits;
-            }
+            get_limits_func_ = PositionConverter::LinkerHandL6::getLimits;
+            get_joint_name_func_ = PositionConverter::LinkerHandL6::getJointNameByIndex;
+            clamp_to_limits_func_ = PositionConverter::LinkerHandL6::clampToLimits;
             last_applied_torques_.assign(JOINT_COUNT, std::numeric_limits<double>::quiet_NaN());
             last_applied_velocities_.assign(JOINT_COUNT, std::numeric_limits<double>::quiet_NaN());
         }
@@ -133,15 +102,14 @@ namespace marvin_hardware
     protected:
         uint8_t slave_id_;  // Modbus slave ID (0x28 for left, 0x27 for right)
 
-        // O6/L6: pos 0-5, torque 6-11, speed 12-17 (read/write 0-17 when dynamics change)
-        // O7:    pos 0-6, torque 7-13, speed 14-20
+        // L6: pos 0-5, torque 6-11, speed 12-17 (read/write 0-17 when dynamics change)
         static constexpr uint16_t torqueRegStart()
         {
-            return (JOINT_COUNT == 7) ? static_cast<uint16_t>(7) : static_cast<uint16_t>(6);
+            return static_cast<uint16_t>(6);
         }
         static constexpr uint16_t speedRegStart()
         {
-            return (JOINT_COUNT == 7) ? static_cast<uint16_t>(14) : static_cast<uint16_t>(12);
+            return static_cast<uint16_t>(12);
         }
         static constexpr uint16_t fullInputRegisterCount()
         {
@@ -262,61 +230,24 @@ namespace marvin_hardware
 
             if (write_dynamics)
             {
-                // O6/L6: 一次 FC16 写 0-17（位置+力矩+速度）；O7: 0-20。
+                // L6: 一次 FC16 写 0-17（位置+力矩+速度）。
                 const uint16_t n_regs = fullInputRegisterCount();
                 std::vector<uint16_t> block(n_regs, 0);
                 for (size_t i = 0; i < JOINT_COUNT; ++i)
                 {
                     block[i] = raw_positions[i];
-                    if constexpr (Product == LinkerHandProduct::O6)
-                    {
-                        if (initialize_dynamics)
-                        {
-                            // O6 首次初始化按设备约定写最大值。
-                            block[torqueRegStart() + i] = 255;
-                            block[speedRegStart() + i] = 255;
-                        }
-                        else
-                        {
-                            // 运行中动态参数改变时写入新的归一化力矩/速度。
-                            block[torqueRegStart() + i] = static_cast<uint16_t>(
-                                std::lround(std::clamp(torques[i], 0.0, 1.0) * 255.0));
-                            block[speedRegStart() + i] = static_cast<uint16_t>(
-                                std::lround(std::clamp(velocities[i], 0.0, 1.0) * 255.0));
-                        }
-                    }
-                    else
-                    {
-                        block[torqueRegStart() + i] = static_cast<uint16_t>(
-                            std::lround(std::clamp(torques[i], 0.0, 1.0) * 255.0));
-                        block[speedRegStart() + i] = static_cast<uint16_t>(
-                            std::lround(std::clamp(velocities[i], 0.0, 1.0) * 255.0));
-                    }
+                    block[torqueRegStart() + i] = static_cast<uint16_t>(
+                        std::lround(std::clamp(torques[i], 0.0, 1.0) * 255.0));
+                    block[speedRegStart() + i] = static_cast<uint16_t>(
+                        std::lround(std::clamp(velocities[i], 0.0, 1.0) * 255.0));
                 }
                 if (!writeMultipleRegisters(slave_id_, ModbusConfig::LinkerHand::THUMB_PITCH_REG, block,
                                             ModbusConfig::LinkerHand::WRITE_FUNCTION))
                 {
                     return false;
                 }
-                if constexpr (Product == LinkerHandProduct::O6)
-                {
-                    if (initialize_dynamics)
-                    {
-                        // 缓存必须反映设备实际收到的最大值，后续参数变化才能被检测。
-                        last_applied_torques_.assign(JOINT_COUNT, 1.0);
-                        last_applied_velocities_.assign(JOINT_COUNT, 1.0);
-                    }
-                    else
-                    {
-                        last_applied_torques_ = torques;
-                        last_applied_velocities_ = velocities;
-                    }
-                }
-                else
-                {
-                    last_applied_torques_ = torques;
-                    last_applied_velocities_ = velocities;
-                }
+                last_applied_torques_ = torques;
+                last_applied_velocities_ = velocities;
                 pending_full_register_io_ = true;
                 {
                     static rclcpp::Clock kLogClock(RCL_STEADY_TIME);
@@ -468,26 +399,13 @@ namespace marvin_hardware
             std::string name_lower = joint_name;
             std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(), ::tolower);
             
-            // Joint order mapping based on hand type (O7 vs O6/L6)
-            if constexpr (JOINT_COUNT == 7)  // O7
-            {
-                if (name_lower.find("thumb_joint1") != std::string::npos) return 0;
-                if (name_lower.find("thumb_joint2") != std::string::npos) return 1;
-                if (name_lower.find("thumb_joint3") != std::string::npos) return 6;
-                if (name_lower.find("index_joint") != std::string::npos)  return 2;
-                if (name_lower.find("middle_joint") != std::string::npos) return 3;
-                if (name_lower.find("ring_joint") != std::string::npos)   return 4;
-                if (name_lower.find("pinky_joint") != std::string::npos)  return 5;
-            }
-            else  // O6/L6 (6-DOF)
-            {
-                if (name_lower.find("thumb_joint1") != std::string::npos) return 0;
-                if (name_lower.find("thumb_joint2") != std::string::npos) return 1;
-                if (name_lower.find("index_joint") != std::string::npos)  return 2;
-                if (name_lower.find("middle_joint") != std::string::npos) return 3;
-                if (name_lower.find("ring_joint") != std::string::npos)   return 4;
-                if (name_lower.find("pinky_joint") != std::string::npos)  return 5;
-            }
+            // L6 joint order
+            if (name_lower.find("thumb_joint1") != std::string::npos) return 0;
+            if (name_lower.find("thumb_joint2") != std::string::npos) return 1;
+            if (name_lower.find("index_joint") != std::string::npos)  return 2;
+            if (name_lower.find("middle_joint") != std::string::npos) return 3;
+            if (name_lower.find("ring_joint") != std::string::npos)   return 4;
+            if (name_lower.find("pinky_joint") != std::string::npos)  return 5;
             return -1;
         }
 
@@ -593,10 +511,6 @@ namespace marvin_hardware
     };
 
     // Type aliases for specific variants
-    using DexterousHandO7 = DexterousHandTemplate<LinkerHandProduct::O7>;
-    using DexterousHandO6 = DexterousHandTemplate<LinkerHandProduct::O6>;
     using DexterousHandL6 = DexterousHandTemplate<LinkerHandProduct::L6>;
 
-    // Backward compatibility alias
-    using DexterousHand = DexterousHandO7;
 } // namespace marvin_hardware

@@ -91,7 +91,7 @@ def get_ros2_control_robot_description(
         else:
             mappings = {"ros2_control_hardware_type": hardware}
             if robot_type and robot_type.strip():
-                mappings["type"] = robot_type
+                mappings["arms"] = robot_type  # robot_type is the arm topology (m6_ccs: dual | left | right)
     # ros2_control: EEF stays actuated for the gripper controllers; OCS2 uses planning URDF only.
     mappings["eef_fixed_joints"] = "false"
 
@@ -194,12 +194,12 @@ def write_planning_urdf_cache(robot_name, urdf_content):
 
 _XACRO_SIDE_EEF_SUPPORT_CACHE: dict[str, bool] = {}
 _XACRO_SIDE_EEF_ARG_PATTERN = re.compile(
-    r'<xacro:arg\s+name=["\'](?P<name>left_type|right_type)["\']'
+    r'<xacro:arg\s+name=["\'](?P<name>left_end_effector|right_end_effector)["\']'
 )
 
 
 def _planning_xacro_supports_side_eef(robot_name: str) -> bool:
-    """True when planning xacro declares per-side EEF args (left_type/right_type)."""
+    """True when planning xacro declares per-side end effector args (left_end_effector / right_end_effector)."""
     if robot_name in _XACRO_SIDE_EEF_SUPPORT_CACHE:
         return _XACRO_SIDE_EEF_SUPPORT_CACHE[robot_name]
 
@@ -218,7 +218,7 @@ def _planning_xacro_supports_side_eef(robot_name: str) -> bool:
         _XACRO_SIDE_EEF_SUPPORT_CACHE[robot_name] = False
         return False
 
-    supported = declared.issuperset({"left_type", "right_type"})
+    supported = declared.issuperset({"left_end_effector", "right_end_effector"})
     _XACRO_SIDE_EEF_SUPPORT_CACHE[robot_name] = supported
     return supported
 
@@ -261,22 +261,10 @@ def _planning_xacro_mappings(
 
     if planning_scope == PLANNING_SCOPE_ARMS:
         mappings.pop("chassis", None)
-        if _planning_xacro_supports_side_eef(planning_robot_name):
-            left_type = mappings.get("left_type", "").strip()
-            right_type = mappings.get("right_type", "").strip()
-            if left_type and right_type:
-                mappings.pop("type", None)
-            elif not mappings.get("type", "").strip():
-                # Let xacro/robot.xacro default apply (m6_ccs: dual, galbot_one: hitbot, …).
-                mappings.pop("type", None)
-        else:
-            # xacro has no left_type/right_type: keep symmetric launch ``type``.
-            mappings.pop("left_type", None)
-            mappings.pop("right_type", None)
-            if not mappings.get("type", "").strip():
-                # Do not inject a synthetic type; let xacro/robot.xacro default apply
-                # (e.g. galaxea_a1 default a1, cr5 default empty).
-                mappings.pop("type", None)
+        if not _planning_xacro_supports_side_eef(planning_robot_name):
+            # xacro without per-side end effectors: do not pass them
+            for key in ("left_end_effector", "right_end_effector", "left_end_effector_bus", "right_end_effector_bus"):
+                mappings.pop(key, None)
 
     return mappings
 
@@ -293,7 +281,7 @@ def build_planning_urdf_launch_params(
 
     planning_scope:
       - arms  : split-body OCS2 — dual arms from arm_base (m6_ccs xacro)
-      - full  : full-body WBC — whole robot (e.g. fiveages_w2 xacro)
+      - full  : full-body WBC — whole robot (e.g. fa_w2 xacro)
 
     Returns dict with planning_urdf_variant / planning_urdf_path, or empty dict
     when xacro planning URDF cannot be generated.

@@ -4,7 +4,7 @@
   <xacro:include filename="$(find jodell_description)/xacro/ros2_control/side_system.xacro"/>
 
   <xacro:macro name="jodell_usb_side_system" params="side serial_port rw_rate:=''">
-    <xacro:side_ros2_control_system name="jodell_${side}_system" rw_rate="${rw_rate}">
+    <xacro:side_ros2_control_system name="${side}_end_effector" rw_rate="${rw_rate}">
       <contents>
         <hardware>
           <plugin>end_effector_hardware/GripperModbusHardware</plugin>

@@ -12,7 +12,7 @@
 
 分两部分：
 
-- 上半部分是**启动什么**：`robot`（机型入口、手、硬件）、`xr`、`cameras` 等。字段说明和默认值见 [`teleop.yaml`](../src/robot_hmi/teleop_app/config/teleop.yaml)，启动前用 `./scripts/start.sh check` 校验。
-- 下半部分是**这台机器的硬件参数**：`platform`、`defaults`、`hardware`、`control`，由 ROS 启动文件读取，字段见 [`fiveages_w2_description`](../src/robot_description/fiveages_w2_description/README.md) 和 [`m6_ccs_description`](../src/robot_description/component/m6_ccs_description/README.md)。
+- 上半部分是**启动什么**：`robot`（机型入口、手、硬件）、`xr`、`cameras` 等。字段说明和默认值见 [`teleop.yaml`](../src/robot_hmi/robot_app/config/teleop.yaml)，启动前用 `./scripts/start.sh check` 校验。
+- 下半部分是**这台机器的硬件参数**：`platform`、`defaults`、`hardware`、`control`，由 ROS 启动文件读取，字段见 [`fa_w2_description`](../src/robot_description/fa_w2_description/README.md) 和 [`m6_ccs_description`](../src/robot_description/component/m6_ccs_description/README.md)。
 
 首次使用用 `./scripts/setup.sh cam` 和 `./scripts/setup.sh hand` 弹窗确认相机和左右手，确认结果自动写回这个文件；天机臂 SDK 版本（`hardware.marvin_firmware`：338 或 343）由 `./scripts/setup.sh marvin` 选择并写回，编译时使用。临时改某项只对本次有效：`./scripts/start.sh --set robot.hardware=isaac`。

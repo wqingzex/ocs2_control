@@ -1,5 +1,5 @@
 /**
- * Minimal C++ example: connect to Marvin robot and initialize dual Changingtek 90D gripper.
+ * Minimal C++ example: connect to Marvin robot and initialize dual Jodell RG75 gripper.
  *
  * Build from workspace (fiveages_w2_ws):
  *   colcon build --packages-select marvin_hardware --cmake-args -DMARVIN_BUILD_EXAMPLE=ON
@@ -8,7 +8,7 @@
  *   ros2 run marvin_hardware marvin_gripper_init_example
  *   # or: ./install/marvin_hardware/lib/marvin_hardware/marvin_gripper_init_example
  *
- * Requires: Marvin SDK, gripper_hardware_common, rclcpp.
+ * Requires: Marvin SDK, gripper_protocol, rclcpp.
  */
 
 #include <iostream>
@@ -21,9 +21,9 @@
 
 #include "MarvinSDK.h"
 #include "rclcpp/rclcpp.hpp"
-#include "marvin_hardware/tool/grippers/changingtek/changingtek_gripper.h"
+#include "marvin_hardware/tool/grippers/jodell/jd_gripper.h"
 #include "marvin_hardware/tool/modbus_io.h"
-#include "gripper_hardware_common/utils/ModbusConfig.h"
+#include "end_effector_hardware/gripper_protocol/utils/ModbusConfig.h"
 #include <cstdio>
 #include <iomanip>
 #include <thread>
@@ -64,7 +64,7 @@ static bool doOneRead(marvin_hardware::ModbusGripper* gripper, GetChDataFunc get
 static void runRead100AndLogFcMatch(marvin_hardware::ModbusGripper* gripper, GetChDataFunc get_ch_data,
                                     const char* label)
 {
-    const uint8_t send_fc = gripper_hardware_common::ModbusConfig::Changingtek90D::READ_FUNCTION;
+    const uint8_t send_fc = gripper_protocol::ModbusConfig::Jodell::READ_FUNCTION;
     constexpr int expected_size = 9;
     const int num_reads = 100;
     int match_count = 0;
@@ -174,8 +174,8 @@ static void runAsync485ReadWriteTestGripper(
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     // clear_ch_data();
 
-    const uint8_t slave_id = gripper_hardware_common::ModbusConfig::Changingtek90D::SLAVE_ID;
-    const uint8_t expected_read_fc = gripper_hardware_common::ModbusConfig::Changingtek90D::READ_FUNCTION;
+    const uint8_t slave_id = gripper_protocol::ModbusConfig::Jodell::SLAVE_ID;
+    const uint8_t expected_read_fc = gripper_protocol::ModbusConfig::Jodell::READ_FUNCTION;
 
     // get-thread: only call get485 (OnGetChData*) and parse/collect stats. No sending.
     std::thread reader([&]() {
@@ -201,8 +201,8 @@ static void runAsync485ReadWriteTestGripper(
                 {
                     stats.rx_read_fc.fetch_add(1, std::memory_order_relaxed);
                 }
-                else if (fc == gripper_hardware_common::ModbusConfig::Changingtek90D::WRITE_SINGLE_FUNCTION ||
-                         fc == gripper_hardware_common::ModbusConfig::Changingtek90D::WRITE_FUNCTION)
+                else if (fc == gripper_protocol::ModbusConfig::Jodell::WRITE_SINGLE_FUNCTION ||
+                         fc == gripper_protocol::ModbusConfig::Jodell::WRITE_FUNCTION)
                 {
                     stats.rx_write_fc.fetch_add(1, std::memory_order_relaxed);
                 }
@@ -277,7 +277,7 @@ static void runAsync485ReadWriteTestGripper(
         ? (100.0 * static_cast<double>(ok) / static_cast<double>(rx))
         : 0.0;
 
-    std::cout << "\n=== Async 485 read/write test summary (Changingtek 90D, channel B) ===\n";
+    std::cout << "\n=== Async 485 read/write test summary (Jodell RG75, channel B) ===\n";
     std::cout << "Read requests (getStatus): sent=" << read_req << "\n";
     std::cout << "RX frames: total=" << rx
               << ", read_fc=" << rx_read
@@ -356,10 +356,10 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // Dual Changingtek 90D: left = channel A, right = channel B
-    auto left_gripper = std::make_unique<ChangingtekGripper90D>(
+    // Dual Jodell RG75: left = channel A, right = channel B
+    auto left_gripper = std::make_unique<JDGripper>(
         OnClearChDataA, OnSetChDataA, OnGetChDataA);
-    auto right_gripper = std::make_unique<ChangingtekGripper90D>(
+    auto right_gripper = std::make_unique<JDGripper>(
         OnClearChDataB, OnSetChDataB, OnGetChDataB);
     // OnClearChDataB();
     // OnClearChDataA();
@@ -384,7 +384,7 @@ int main(int argc, char* argv[])
     }
     std::cout << "Right gripper initialized." << std::endl;
 
-    std::cout << "Dual Changingtek 90D gripper initialization complete." << std::endl;
+    std::cout << "Dual Jodell RG75 gripper initialization complete." << std::endl;
 
     std::cout << "\nSelect test mode:\n"
               << "  1) Sync only  (100 reads per gripper + single status)\n"

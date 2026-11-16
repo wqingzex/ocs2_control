@@ -5,18 +5,65 @@
 	<xacro:include filename="$(find linkerhand_description)/xacro/ros2_control/side_systems.xacro"/>
 	<xacro:include filename="$(find wuji_description)/xacro/ros2_control/side_systems.xacro"/>
 
+	<!-- end_effector_driver: legacy (default) = the per-model plugins below, and the arm driver for arm_rs485;
+	     bus = end_effector_hardware/EndEffectorHardware on a robot_comm bus (not yet verified on the robot).
+	     On the robot: robot.local.yaml hardware: {end_effector_driver: bus}; otherwise the launch argument
+	     xacro_end_effector_driver:=bus. Declared again in the ros2_control robot.xacro files (drive of arm_rs485). -->
+	<xacro:arg name="end_effector_driver" default="legacy"/>
+	<xacro:property name="end_effector_driver" value="$(arg end_effector_driver)"/>
+	<xacro:unless value="${end_effector_driver in ['legacy', 'bus']}">
+		${xacro.fatal('end_effector_driver must be legacy or bus, got ' + end_effector_driver)}
+	</xacro:unless>
+
 	<xacro:macro name="side_usb_hand_system" params="side hand_type serial_port">
-		<xacro:property name="usb_hand_system_name" value="linkerhand_6"/>
-		<ros2_control name="${usb_hand_system_name}_${side}_system" type="system">
-			<hardware>
-				<plugin>end_effector_hardware/LinkerHandRs485Hardware</plugin>
-				<param name="serial_port">${serial_port}</param>
-				<param name="hand_type">${hand_type}</param>
-				<param name="hand_side">${side}</param>
-				<param name="max_speed_ratio">1.0</param>
-			</hardware>
-			<xacro:side_hand_interfaces side="${side}" hand_type="${hand_type}"/>
-		</ros2_control>
+		<xacro:if value="${end_effector_driver == 'bus'}">
+			<ros2_control name="${side}_end_effector" type="system">
+				<hardware>
+					<plugin>end_effector_hardware/EndEffectorHardware</plugin>
+					<param name="device">${hand_type}</param>
+					<param name="side">${side}</param>
+					<param name="bus">usb_rs485://${serial_port}?baud=115200</param>
+				</hardware>
+				<xacro:side_hand_interfaces side="${side}" hand_type="${hand_type}"/>
+			</ros2_control>
+		</xacro:if>
+		<xacro:unless value="${end_effector_driver == 'bus'}">
+			<ros2_control name="${side}_end_effector" type="system">
+				<hardware>
+					<plugin>end_effector_hardware/LinkerHandRs485Hardware</plugin>
+					<param name="serial_port">${serial_port}</param>
+					<param name="hand_type">${hand_type}</param>
+					<param name="hand_side">${side}</param>
+					<param name="max_speed_ratio">1.0</param>
+				</hardware>
+				<xacro:side_hand_interfaces side="${side}" hand_type="${hand_type}"/>
+			</ros2_control>
+		</xacro:unless>
+	</xacro:macro>
+
+	<!-- An end effector on the arm's flange RS485 (port1, SDK COM1), driven over the arm's bus by
+	     end_effector_hardware; the arm driver only carries the bytes. Jodell RG75 and LinkerHand L6. -->
+	<xacro:macro name="side_arm_bus_system" params="side hand_type gripper_type device_ip">
+		<xacro:property name="device" value="${hand_type if hand_type != '' else dict(rg75='jodell_rg75').get(gripper_type, gripper_type)}"/>
+		<xacro:unless value="${device in ['', 'jodell_rg75', 'linkerhand_l6']}">
+			${xacro.fatal(side + ' end effector ' + device + ' cannot be driven on arm_rs485 (jodell_rg75, linkerhand_l6)')}
+		</xacro:unless>
+		<xacro:if value="${device != ''}">
+			<ros2_control name="${side}_end_effector" type="system">
+				<hardware>
+					<plugin>end_effector_hardware/EndEffectorHardware</plugin>
+					<param name="device">${device}</param>
+					<param name="side">${side}</param>
+					<param name="bus">arm_rs485://${device_ip}/${side}/port1</param>
+				</hardware>
+				<xacro:if value="${hand_type != ''}">
+					<xacro:side_hand_interfaces side="${side}" hand_type="${hand_type}"/>
+				</xacro:if>
+				<xacro:if value="${hand_type == ''}">
+					<xacro:side_gripper_joint side="${side}"/>
+				</xacro:if>
+			</ros2_control>
+		</xacro:if>
 	</xacro:macro>
 
 	<!-- Dexterous hands outside the arm:
@@ -32,7 +79,14 @@
 		right_ee_rw_rate:=''
 		left_ee_can_interface:=can0
 		right_ee_can_interface:=can1
-		body_can_interface:=''">
+		body_can_interface:=''
+		device_ip:=''">
+		<xacro:if value="${left_drive_type == 'arm_bus'}">
+			<xacro:side_arm_bus_system side="left" hand_type="${left_hand_type}" gripper_type="${left_gripper_type}" device_ip="${device_ip}"/>
+		</xacro:if>
+		<xacro:if value="${right_drive_type == 'arm_bus'}">
+			<xacro:side_arm_bus_system side="right" hand_type="${right_hand_type}" gripper_type="${right_gripper_type}" device_ip="${device_ip}"/>
+		</xacro:if>
 		<xacro:if value="${left_drive_type == 'usb' and left_hand_type == 'linkerhand_l6'}">
 			<xacro:side_usb_hand_system side="left" hand_type="${left_hand_type}" serial_port="${usb_left_port}"/>
 		</xacro:if>

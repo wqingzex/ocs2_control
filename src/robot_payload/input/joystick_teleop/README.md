@@ -4,7 +4,7 @@
 
 ## 作用
 
-不需要头显时的遥操作入口，输出由 `teleop_command` 接收。Web 控制台的"手柄遥操"卡片或 `./scripts/start.sh up joystick` 启动的就是这个包。不要同时运行手柄和键盘（[`keyboard_teleop`](../keyboard_teleop/README.md)），它们发布同样的话题。
+不需要头显时的遥操作入口，输出由 `target_generator` 接收。Web 控制台的"手柄遥操"卡片或 `./scripts/start.sh up joystick` 启动的就是这个包。不要同时运行手柄和键盘（[`keyboard_teleop`](../keyboard_teleop/README.md)），它们发布同样的话题。
 
 ## 使用
 

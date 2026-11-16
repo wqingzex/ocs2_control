@@ -20,7 +20,7 @@ OCS2 控制器（`arm_controller`、`whole_body_controller`）共用的部分：
 | 服务 | `execute_left_circle` `execute_right_circle` `execute_path` | 圆弧、路径（类型见 `robot_control_msgs`） |
 | 发布 | `left_current_target` `right_current_target` | 当前生效的目标 |
 
-目标位姿通常来自 `teleop_command`。
+目标位姿通常来自 `target_generator`。
 
 ## 使用
 

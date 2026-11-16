@@ -1,6 +1,6 @@
 # motion_planning
 
-轨迹规划库：关节、笛卡尔直线、圆弧的插补，速度规划，以及 fiveages_w2 5 轴腰部的运动学。
+轨迹规划库：关节、笛卡尔直线、圆弧的插补，速度规划，以及 fa_w2 5 轴腰部的运动学。
 
 ## 作用
 
@@ -13,7 +13,7 @@
 | 模块 | 内容 |
 |---|---|
 | `common` | `JointVector`、四元数与旋转矩阵、轨迹点与约束参数（`TrajectPoint`、`TrajectoryParameter`）、混合状态 |
-| `kinematics` | `FiveAgesW2FK` / `FiveAgesW2IK`：5 轴腰部的正、逆运动学 |
+| `kinematics` | `FaW2FK` / `FaW2IK`：5 轴腰部的正、逆运动学 |
 | `velocity_planner` | `Doubles` 七段速度曲线，及起止速度、加速度为零的特化版本 |
 | `path_planner` | `moveJ` 关节插补、`moveL` 直线（含姿态 slerp）、`CircularCurver` 圆弧、`SpeedJ` 速度插补、`BezierCurve` 五阶贝塞尔、`SmoothCurveOfMultiJointsUsingBlending` 多段混合转接；基类 `Planner` 负责时间缩放与运行循环 |
 

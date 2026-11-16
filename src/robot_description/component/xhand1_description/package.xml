@@ -4,11 +4,9 @@
     <version>0.0.0</version>
     <description>URDF Description package for XHAND1 dexhands</description>
 
-    <maintainer email="biao876990970@hotmail.com">Huang Zhenbiao</maintainer>
+    <maintainer email="TODO@email.com"/>
     <license>TODO</license>
 
-    <!-- the flange visual uses changingtek_description/meshes/AG2F90-C/visual/flange.glb -->
-    <exec_depend>changingtek_description</exec_depend>
 
     <export>
         <build_type>ament_cmake</build_type>

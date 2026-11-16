@@ -12,10 +12,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(ament_cmake REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(robot_log REQUIRED)
+find_package(robot_utils REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(pluginlib REQUIRED)
-find_package(gripper_hardware_common REQUIRED)
+find_package(robot_comm_core REQUIRED)  # flange ports as buses (tool/arm_bus)
+find_package(end_effector_hardware REQUIRED)  # header-only gripper protocol target only (not the plugin library)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(EIGEN3 REQUIRED eigen3)
 
@@ -146,10 +147,8 @@ add_library(${PROJECT_NAME} SHARED
         src/sensors/kwr75_marvin485_client.cpp
         src/tool/marvin_rs485_bus.cpp
         src/tool/modbus_io.cpp
+        src/tool/arm_bus.cpp
         src/tool/grippers/jodell/jd_gripper.cpp
-        src/tool/grippers/eincinx/eincinx_gripper.cpp
-        src/tool/hands/jodell/erg32_hand.cpp
-        src/tool/hands/theo/theo_hand.cpp
 )
 
 add_dependencies(${PROJECT_NAME} build_kine_sdk build_marvin_sdk)
@@ -188,10 +187,11 @@ target_link_directories(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PUBLIC
         ${hardware_interface_TARGETS}
         ${rclcpp_TARGETS}
-        ${robot_log_TARGETS}
+        ${robot_utils_TARGETS}
         ${rclcpp_lifecycle_TARGETS}
         ${pluginlib_TARGETS}
-        gripper_hardware_common::gripper_hardware_common
+        end_effector_hardware::gripper_protocol
+        robot_comm_core::robot_comm_bus
         ${EXTERNAL_KINEMATICSO}
         MarvinSDK
         pthread
@@ -202,27 +202,25 @@ pluginlib_export_plugin_description_file(hardware_interface marvin_hardware.xml)
 
 if(BUILD_TESTING)
     find_package(ament_cmake_gtest REQUIRED)
+    # The flange buses on fake SDK channel functions (no SDK, no arm).
+    ament_add_gtest(test_arm_bus test/test_arm_bus.cpp src/tool/arm_bus.cpp)
+    target_include_directories(test_arm_bus PRIVATE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
+    target_link_libraries(test_arm_bus robot_comm_core::robot_comm_bus ${rclcpp_TARGETS})
+    # End effector components (end_effector_hardware's bus devices) on the flange buses, with simulated devices.
+    find_package(robot_comm_modbus REQUIRED)
+    ament_add_gtest(test_arm_bus_devices test/test_arm_bus_devices.cpp src/tool/arm_bus.cpp)
+    target_include_directories(test_arm_bus_devices PRIVATE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
+    target_link_libraries(test_arm_bus_devices end_effector_hardware::end_effector_hardware
+                          robot_comm_core::robot_comm_bus robot_comm_modbus::robot_comm_modbus ${rclcpp_TARGETS})
     ament_add_gtest(test_param_parsing test/test_param_parsing.cpp)
     target_include_directories(test_param_parsing PRIVATE
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
     )
 
-    set(TEST_FREEDOM_HAND_V2_SRC "${CMAKE_CURRENT_SOURCE_DIR}/test/test_freedom_hand_v2.cpp")
-    if(EXISTS "${TEST_FREEDOM_HAND_V2_SRC}")
-        add_executable(test_freedom_hand_v2 "${TEST_FREEDOM_HAND_V2_SRC}")
-        target_include_directories(test_freedom_hand_v2 PRIVATE
-            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-        )
-        target_link_libraries(test_freedom_hand_v2 PRIVATE
-            ${rclcpp_TARGETS}
-            gripper_hardware_common::gripper_hardware_common
-        )
-        add_test(NAME test_freedom_hand_v2 COMMAND test_freedom_hand_v2)
-    endif()
 
 endif()
 
-# Minimal example: connect to robot and initialize dual Changingtek 90D gripper (always build if source exists)
+# Minimal example: connect to robot and initialize dual Jodell RG75 gripper (always build if source exists)
 set(MARVIN_EXAMPLE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/examples/marvin_gripper_init_example.cpp")
 if(EXISTS "${MARVIN_EXAMPLE_SRC}")
     add_executable(marvin_gripper_init_example "${MARVIN_EXAMPLE_SRC}")
@@ -246,7 +244,7 @@ if(EXISTS "${MARVIN_EXAMPLE_SRC}")
     target_link_libraries(marvin_gripper_init_example
         ${PROJECT_NAME}
         ${rclcpp_TARGETS}
-        gripper_hardware_common::gripper_hardware_common
+        end_effector_hardware::gripper_protocol
         ${EXTERNAL_KINEMATICSO}
         MarvinSDK
         pthread
@@ -282,7 +280,7 @@ if(EXISTS "${MARVIN_HAND_EXAMPLE_SRC}")
     target_link_libraries(marvin_hand_init_example
         ${PROJECT_NAME}
         ${rclcpp_TARGETS}
-        gripper_hardware_common::gripper_hardware_common
+        end_effector_hardware::gripper_protocol
         ${EXTERNAL_KINEMATICSO}
         MarvinSDK
         pthread
@@ -372,7 +370,7 @@ if (BUILD_TESTING)
     ament_lint_auto_find_test_dependencies()
 endif ()
 
-ament_export_dependencies(hardware_interface rclcpp rclcpp_lifecycle pluginlib gripper_hardware_common)
+ament_export_dependencies(hardware_interface rclcpp rclcpp_lifecycle pluginlib end_effector_hardware)
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 
 ament_package()

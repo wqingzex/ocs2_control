@@ -1,12 +1,28 @@
 <?xml version="1.0"?>
 <library path="end_effector_hardware">
+    <class name="end_effector_hardware/EndEffectorHardware"
+           type="end_effector_hardware::EndEffectorHardware"
+           base_class_type="hardware_interface::SystemInterface">
+        <description>
+            One end effector on a robot_comm bus (parameter bus: usb_rs485://..., arm_rs485://...), chosen by the
+            parameter device: jodell_rg75, linkerhand_l6, xhand1.
+        </description>
+    </class>
+    <class name="end_effector_hardware/Kwr75Sensor"
+           type="end_effector_hardware::Kwr75Sensor"
+           base_class_type="hardware_interface::SensorInterface">
+        <description>
+            KWR75 six-axis force / torque sensor on a robot_comm bus (parameter bus: usb_rs485://..., arm_rs485://...),
+            polled once per read() without waiting.
+        </description>
+    </class>
     <class name="end_effector_hardware/GripperModbusHardware"
            type="end_effector_hardware::GripperModbusHardware"
            base_class_type="hardware_interface::SystemInterface">
         <description>
             Modbus ROS2 Control Hardware Interface
             Supports multiple Modbus-based end effectors (grippers, etc.) with different protocols.
-            Currently supports: Changingtek gripper
+            Currently supports: Jodell RG75 gripper (gripper_type: jodell)
         </description>
     </class>
     <class name="end_effector_hardware/LinkerHandRs485Hardware"
@@ -20,24 +36,6 @@
             Function codes: 04 (read), 16 (write)
         </description>
     </class>
-    <class name="end_effector_hardware/FreedomRs485Hardware"
-           type="end_effector_hardware::FreedomRs485Hardware"
-           base_class_type="hardware_interface::SystemInterface">
-        <description>
-            ROS2 Control Hardware Interface for Freedom dexterous hand over its custom RS485 protocol.
-            Defaults: /dev/ttyUSB0, slave ID 1, baudrate 115200, 8N1.
-            Commands: 0x10 motion control, 0xF1 angle query.
-        </description>
-    </class>
-    <class name="end_effector_hardware/InspireRs485Hardware"
-           type="end_effector_hardware::InspireRs485Hardware"
-           base_class_type="hardware_interface::SystemInterface">
-        <description>
-            ROS2 Control Hardware Interface for Inspire RH56 series dexterous hand over standard Modbus RTU.
-            Defaults: /dev/ttyUSB0, slave ID 1, baudrate 115200, 8N1.
-            Function codes: 03 (read holding registers), 10 (write multiple registers).
-        </description>
-    </class>
     <class name="end_effector_hardware/XHand1Rs485Hardware"
            type="end_effector_hardware::XHand1Rs485Hardware"
            base_class_type="hardware_interface::SystemInterface">
@@ -45,16 +43,6 @@
             ROS2 Control Hardware Interface for XHAND1 over its custom RS485 protocol.
             Defaults: /dev/ttyUSB0, hand ID 0, host ID 0xFE, baudrate 3000000, 8N1.
             Commands: 0x02 realtime 12-joint position control and feedback.
-        </description>
-    </class>
-    <class name="end_effector_hardware/TheoHandRs485Hardware"
-           type="end_effector_hardware::TheoHandRs485Hardware"
-           base_class_type="hardware_interface::SystemInterface">
-        <description>
-            ROS2 Control Hardware Interface for TheoHand STD16A over standard Modbus RTU.
-            Defaults: /dev/ttyUSB0, slave ID 1, baudrate 115200, 8N1.
-            Registers: control word 0x0000, target positions 0x0001-0x0010,
-            real positions 0x0051-0x0060.
         </description>
     </class>
     <class name="end_effector_hardware/Kwr75ForceTorqueSensor"

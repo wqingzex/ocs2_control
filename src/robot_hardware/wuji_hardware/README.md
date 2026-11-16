@@ -27,8 +27,8 @@
 
 ```yaml
 robot:
-  hand: wuji_hand2
-  hand_drive: ethernet
+  end_effector: wuji_hand2
+  end_effector_bus: ethernet
 ```
 
 URDF 里的 system 由 `wuji_description` 的 `wuji_hand2_ethernet_side_system` 生成，经 `m6_ccs_description` 的 `external_ee_systems` 接进整机和双臂。

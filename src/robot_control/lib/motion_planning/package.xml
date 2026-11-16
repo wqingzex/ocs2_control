@@ -4,7 +4,7 @@
     <name>motion_planning</name>
     <version>2.0.2</version>
     <description>Motion planning library: moveJ / moveL / circular arc / speed planning</description>
-    <maintainer email="18234065193@163.com">Li Na</maintainer>
+    <maintainer email="TODO@email.com"/>
     <license>Apache License 2.0</license>
 
     <buildtool_depend>ament_cmake</buildtool_depend>

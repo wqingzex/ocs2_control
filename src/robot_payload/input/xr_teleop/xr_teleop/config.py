@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict
 
-from w2_payload.config import Extension, expect
+from fa_w2_payload.config import Extension, expect
 
 NAME_RE = re.compile(r"^[A-Za-z0-9_.-]*$")  # network interface names
 

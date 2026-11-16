@@ -9,9 +9,9 @@ Nav2 导航启动，以及地图和 Nav2 参数的查找。
 ## 使用
 
 ```bash
-ros2 launch robot_navigation navigation_isaac_gt.launch.py robot:=fiveages_w2
-ros2 launch robot_navigation navigation_isaac_gt.launch.py robot:=fiveages_w2 map:=siemens_task2
-ros2 launch robot_navigation navigation_isaac_gt.launch.py robot:=fiveages_w2 nav2_profile:=map_only
+ros2 launch robot_navigation navigation_isaac_gt.launch.py robot:=fa_w2
+ros2 launch robot_navigation navigation_isaac_gt.launch.py robot:=fa_w2 map:=siemens_task2
+ros2 launch robot_navigation navigation_isaac_gt.launch.py robot:=fa_w2 nav2_profile:=map_only
 ```
 
 `map` 不填用找到的第一张；指定的地图找不到、或一张地图都没有时，启动报错并列出搜索过的包，不会悄悄换地图。
@@ -25,4 +25,4 @@ ros2 launch robot_navigation navigation_isaac_gt.launch.py robot:=fiveages_w2 na
 3. `<robot>_description`
 4. 本包（只带通用的 `config/nav2/nav2_params_isaac_gt.yaml`，不带地图）
 
-fiveages_w2 的地图和参数在 `fiveages_w2_description`。`nav2_profile:=map_only` 取 `nav2_params_isaac_gt_map_only.yaml`。
+fa_w2 的地图和参数在 `fa_w2_description`。`nav2_profile:=map_only` 取 `nav2_params_isaac_gt_map_only.yaml`。

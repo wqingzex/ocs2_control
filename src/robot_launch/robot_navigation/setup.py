@@ -17,8 +17,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Huang Zhenbiao',
-    maintainer_email='biao876990970@hotmail.com',
+    maintainer='',
+    maintainer_email='TODO@email.com',
     description='Nav2 launch and map / parameter lookup for robots',
     license='BSD-3',
 )

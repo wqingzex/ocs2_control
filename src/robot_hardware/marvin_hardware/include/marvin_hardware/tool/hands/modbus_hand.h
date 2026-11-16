@@ -1,7 +1,7 @@
 #pragma once
 
 #include "marvin_hardware/tool/modbus_io.h"
-#include "gripper_hardware_common/GripperBase.h"
+#include "end_effector_hardware/gripper_protocol/GripperBase.h"
 #include <vector>
 #include <cstdint>
 
@@ -13,7 +13,7 @@ namespace marvin_hardware
      * Combines ModbusIO (Marvin-specific) with GripperBase (shared interface).
      * This class is specific to Marvin robots due to ModbusIO dependency.
      */
-    class ModbusHand : public ModbusIO, public gripper_hardware_common::GripperBase
+    class ModbusHand : public ModbusIO, public gripper_protocol::GripperBase
     {
     public:
         ModbusHand(Clear485Func clear_485, Send485Func send_485,
@@ -29,7 +29,7 @@ namespace marvin_hardware
         bool initialize() override = 0;
         bool move_gripper(double normalized_torque, double normalized_velocity, double position) override = 0;
         // Multi-joint hand command (normalized positions per joint).
-        // Concrete hands (O7/O6/L6) should implement this.
+        // Concrete hands (LinkerHand L6) implement this.
         virtual bool move_hand(
             const std::vector<double>& torques,
             const std::vector<double>& velocities,

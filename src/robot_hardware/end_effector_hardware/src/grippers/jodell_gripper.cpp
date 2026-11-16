@@ -1,13 +1,13 @@
 #include "end_effector_hardware/grippers/jodell_gripper.h"
 #include "robot_comm/modbus.h"
-#include "gripper_hardware_common/JodellGripper.h"
+#include "end_effector_hardware/gripper_protocol/JodellGripper.h"
 #include <algorithm>
 #include <utility>
 #include <thread>
 #include <chrono>
 
-using namespace gripper_hardware_common;
-using namespace gripper_hardware_common::ModbusConfig;
+using namespace gripper_protocol;
+using namespace gripper_protocol::ModbusConfig;
 
 namespace end_effector_hardware
 {

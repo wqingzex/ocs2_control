@@ -150,20 +150,20 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'robot',
             default_value='',
-            description='Robot name without _description suffix, e.g. fiveages_w2'),
+            description='Robot name without _description suffix, e.g. fa_w2'),
         DeclareLaunchArgument(
             'map_config_package',
             default_value='',
             description=(
                 'Optional ament package for config/maps '
-                '(e.g. fiveages_w2_description)'
+                '(e.g. fa_w2_description)'
             )),
         DeclareLaunchArgument(
             'nav_config_package',
             default_value='',
             description=(
                 'Optional ament package for config/nav2 '
-                '(e.g. fiveages_w2_description)'
+                '(e.g. fa_w2_description)'
             )),
         DeclareLaunchArgument(
             'use_sim_time',

@@ -31,8 +31,8 @@ add_library(${PROJECT_NAME} STATIC
         src/velocity_planner/doubles_with_zero_boundary_of_vel_and_acc.cpp
         src/velocity_planner/doubles.cpp
         src/velocity_planner/plan_velocity_using_doubles.cpp
-        src/kinematics/fiveages_w2_fk.cpp
-        src/kinematics/fiveages_w2_ik.cpp
+        src/kinematics/fa_w2_fk.cpp
+        src/kinematics/fa_w2_ik.cpp
 )
 
 # 设置位置无关代码，以便静态库可以链接到共享库

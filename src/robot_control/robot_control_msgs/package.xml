@@ -3,8 +3,8 @@
 <package format="3">
     <name>robot_control_msgs</name>
     <version>1.1.0</version>
-    <description>TODO: Package description</description>
-    <maintainer email="biao876990970@hotmail.com">biao</maintainer>
+    <description>Messages, services and actions of the control stack: operator inputs and mode (Inputs, TeleopMode), joint and Cartesian trajectories (JointTrajectory, LinearMessage, CircleMessage, MovecUseIK), whole-body state, kinematics service</description>
+    <maintainer email="TODO@email.com"/>
     <license>Apache-2.0</license>
 
     <buildtool_depend>ament_cmake</buildtool_depend>

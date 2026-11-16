@@ -4,7 +4,7 @@
   <name>arm_mpc</name>
   <version>0.1.0</version>
   <description>MPC task for one or two arms: OCS2 mobile-manipulator interface, observation, policy evaluation and MPC reset on top of mpc_core</description>
-  <maintainer email="biao876990970@hotmail.com">Huang Zhenbiao</maintainer>
+  <maintainer email="TODO@email.com"/>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

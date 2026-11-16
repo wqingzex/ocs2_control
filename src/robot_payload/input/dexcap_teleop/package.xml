@@ -4,12 +4,14 @@
   <name>dexcap_teleop</name>
   <version>0.1.0</version>
   <description>DexCap V4 exoskeleton and gloves as a teleoperation input: device nodes (raw joint states), arm joint mapping to the dual-arm controller, glove to hand / gripper mapping. SDK in src/third_party/dexcap-sdk-cpp.</description>
-  <maintainer email="dev@fiveages.local">fiveages</maintainer>
+  <maintainer email="TODO@email.com"/>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>kdl_parser</depend>
+  <!-- libDexCap.so needs libbluetooth.so.3 (BlueZ, apt libbluetooth3) to link and run; the SDK does not ship it -->
+  <depend>libbluetooth</depend>
   <!-- headers for the DexCap SDK (it ships libserial.so itself) -->
   <depend>libserial-dev</depend>
   <depend>rclcpp</depend>

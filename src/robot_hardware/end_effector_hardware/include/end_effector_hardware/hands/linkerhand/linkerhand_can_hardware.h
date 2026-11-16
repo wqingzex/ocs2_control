@@ -27,7 +27,7 @@ namespace end_effector_hardware
      * LinkerHand dexterous hand on a CAN bus (one hand per ros2_control system).
      *
      * Hardware parameters:
-     *   hand_type      robot.hand key, selects the model (linkerhand_l6)
+     *   hand_type      robot.end_effector key, selects the model (linkerhand_l6)
      *   hand_side      left | right; selects the CAN ID (left 0x28, right 0x27) unless can_id is given
      *   can_id         optional CAN ID override
      *   CAN link       shared CAN parameters of robot_comm::parseCanConfig: can_interface (default can0),
