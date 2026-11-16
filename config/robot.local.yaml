@@ -59,7 +59,7 @@ control:
 
     arm_controller:
       ros__parameters:
-        info_file_name: task_tcp
+        info_file_name: dual_arm_tcp
         home_duration: 2.0
         home_1: [0.6129, -0.2808, -0.1198, -1.6980, -1.2582, -0.3198, -0.9920,
                  -0.6129, -0.2808, 0.1198, -1.6980, 1.2582, -0.3198, 0.9920]
@@ -70,7 +70,7 @@ control:
         # 与 500 Hz controller_manager 保持一致
         update_rate: 500
         mpc_frequency: 100
-        info_file_name: fixed_base_tcp
+        info_file_name: whole_body_fixed_tcp_xhand
         fsm_default_head_mode: HEAD_GAZE
         fsm_default_humanoid_mode: HM_DUAL_BODY_TRACKING
         home_1: [-0.64, -1.38, -0.74, 0.0,

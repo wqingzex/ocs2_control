@@ -1,5 +1,5 @@
-; m6_ccs_description：双臂 TCP 跟踪
-; 参数基准：fiveages_w2 的 fixed_base_tcp.info，仅提取手臂适用项。
+; FiveAges W2 双臂控制（arm_controller，规划模型 m6_ccs）：法兰（left_eef、right_eef）跟踪
+; 参数基准：fiveages_w2 的 whole_body_fixed_eef_l6.info（原 fixed_base.info），仅提取手臂适用项。
 ; 状态与输入为 14 维：[left_joint1~7 | right_joint1~7]。
 ; 保留本模型的基座和末端坐标系；规划 xacro 固定末端执行器关节。
 
@@ -7,8 +7,8 @@ model_information
 {
     manipulatorModelType    0
     baseFrame               "arm_base"
-    eeFrame                 "left_tcp"
-    eeFrame1                "right_tcp"
+    eeFrame                 "left_eef"
+    eeFrame1                "right_eef"
 
     removeJoints
     {
@@ -68,7 +68,7 @@ ddp
 
 mpc
 {
-    timeHorizon                     0.4     ; [s]
+    timeHorizon                     1.0     ; [s] 保留精定位配置的预测时域
     solutionTimeWindow              0.2     ; [s]
     coldStart                       false
 
@@ -77,7 +77,7 @@ mpc
     ; 独立 MPC/MRT 节点的期望频率；控制器实际频率由 ROS 参数
     ; mpc_frequency / update_rate 决定，不能仅依据本节判断实际运行频率。
     mpcDesiredFrequency             100     ; [Hz]
-    mrtDesiredFrequency             400     ; [Hz]
+    mrtDesiredFrequency             500     ; [Hz]
 }
 
 rollout
@@ -119,7 +119,7 @@ inputCost
     {
         arm
         {
-            scaling 1e-3
+            scaling 5e-2
 
             (0,0)    0.5     ; left_joint1
             (1,1)    0.5     ; left_joint2
@@ -144,13 +144,13 @@ endEffector
     dualArmMode true
     leftArm
     {
-        muPosition      10.0
-        muOrientation   5.0
+        muPosition      100.0
+        muOrientation   50.0
     }
     rightArm
     {
-        muPosition      10.0
-        muOrientation   5.0
+        muPosition      100.0
+        muOrientation   50.0
     }
 }
 
@@ -159,13 +159,13 @@ finalEndEffector
     dualArmMode true
     leftArm
     {
-        muPosition      20.0
-        muOrientation   10.0
+        muPosition      200.0
+        muOrientation   100.0
     }
     rightArm
     {
-        muPosition      20.0
-        muOrientation   10.0
+        muPosition      200.0
+        muOrientation   100.0
     }
 }
 
@@ -187,20 +187,20 @@ jointVelocityLimits
     {
         arm
         {
-            (0,0)    -2.07   ; left_joint1
-            (1,0)    -2.07   ; left_joint2
-            (2,0)    -2.07   ; left_joint3
-            (3,0)    -2.07   ; left_joint4
-            (4,0)    -2.57   ; left_joint5
-            (5,0)    -2.57   ; left_joint6
-            (6,0)    -2.57   ; left_joint7
-            (7,0)    -2.07   ; right_joint1
-            (8,0)    -2.07   ; right_joint2
-            (9,0)    -2.07   ; right_joint3
-            (10,0)   -2.07   ; right_joint4
-            (11,0)   -2.57   ; right_joint5
-            (12,0)   -2.57   ; right_joint6
-            (13,0)   -2.57   ; right_joint7
+            (0,0)    -1.57   ; left_joint1
+            (1,0)    -1.57   ; left_joint2
+            (2,0)    -1.57   ; left_joint3
+            (3,0)    -1.57   ; left_joint4
+            (4,0)    -1.57   ; left_joint5
+            (5,0)    -1.57   ; left_joint6
+            (6,0)    -1.57   ; left_joint7
+            (7,0)    -1.57   ; right_joint1
+            (8,0)    -1.57   ; right_joint2
+            (9,0)    -1.57   ; right_joint3
+            (10,0)   -1.57   ; right_joint4
+            (11,0)   -1.57   ; right_joint5
+            (12,0)   -1.57   ; right_joint6
+            (13,0)   -1.57   ; right_joint7
         }
     }
 
@@ -208,20 +208,20 @@ jointVelocityLimits
     {
         arm
         {
-            (0,0)    2.07    ; left_joint1
-            (1,0)    2.07    ; left_joint2
-            (2,0)    2.07    ; left_joint3
-            (3,0)    2.07    ; left_joint4
-            (4,0)    2.57    ; left_joint5
-            (5,0)    2.57    ; left_joint6
-            (6,0)    2.57    ; left_joint7
-            (7,0)    2.07    ; right_joint1
-            (8,0)    2.07    ; right_joint2
-            (9,0)    2.07    ; right_joint3
-            (10,0)   2.07    ; right_joint4
-            (11,0)   2.57    ; right_joint5
-            (12,0)   2.57    ; right_joint6
-            (13,0)   2.57    ; right_joint7
+            (0,0)    1.57    ; left_joint1
+            (1,0)    1.57    ; left_joint2
+            (2,0)    1.57    ; left_joint3
+            (3,0)    1.57    ; left_joint4
+            (4,0)    1.57    ; left_joint5
+            (5,0)    1.57    ; left_joint6
+            (6,0)    1.57    ; left_joint7
+            (7,0)    1.57    ; right_joint1
+            (8,0)    1.57    ; right_joint2
+            (9,0)    1.57    ; right_joint3
+            (10,0)   1.57    ; right_joint4
+            (11,0)   1.57    ; right_joint5
+            (12,0)   1.57    ; right_joint6
+            (13,0)   1.57    ; right_joint7
         }
     }
 }

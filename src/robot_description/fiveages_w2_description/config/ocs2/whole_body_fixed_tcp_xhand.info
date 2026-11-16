@@ -1,7 +1,5 @@
-; OCS2 Wheel Humanoid Configuration - FiveAges W2
+; FiveAges W2 全身控制：固定底盘 / TCP（left_tcp、right_tcp）跟踪 / XHand1 机台参数（取自 fa_gen2_ws）
 ; =================================================
-; 固定基座 EEF 精定位配置：提高位置/姿态跟踪权重，同时保留对角速度惩罚。
-; 与 fixed_base_tcp.info 区分：使用 left_eef/right_eef，默认关闭头部注视和 HOME 回拉。
 
 ;=============================================================================
 ; Model Information
@@ -19,10 +17,10 @@ model_information
     baseFrame               "base_footprint"
 
     ; eeFrame: 左臂末端执行器坐标系名
-    eeFrame                 "left_eef"
+    eeFrame                 "left_tcp"
 
     ; eeFrame1: 右臂末端执行器坐标系名
-    eeFrame1                "right_eef"
+    eeFrame1                "right_tcp"
     bodyFrame               "body_link4"
     headFrame               "head_link2"
 
@@ -86,26 +84,26 @@ initialState
 {
     arm
     {
-        (0,0)    0.0     ; body_joint1
-        (1,0)    0.0     ; body_joint2
-        (2,0)    0.0     ; body_joint3
-        (3,0)    0.0     ; body_joint4
-        (4,0)    0.0     ; left_joint1
-        (5,0)    0.0     ; left_joint2
-        (6,0)    0.0     ; left_joint3
-        (7,0)    0.0     ; left_joint4
-        (8,0)    0.0     ; left_joint5
-        (9,0)    0.0     ; left_joint6
-        (10,0)   0.0     ; left_joint7
-        (11,0)   0.0     ; right_joint1
-        (12,0)   0.0     ; right_joint2
-        (13,0)   0.0     ; right_joint3
-        (14,0)   0.0     ; right_joint4
-        (15,0)   0.0     ; right_joint5
-        (16,0)   0.0     ; right_joint6
-        (17,0)   0.0     ; right_joint7
-        (18,0)   0.0     ; head_joint1
-        (19,0)   0.0     ; head_joint2
+        (0,0)    0.0     ; body_joint1  腰部关节1
+        (1,0)    0.0     ; body_joint2  腰部关节2
+        (2,0)    0.0     ; body_joint3  腰部关节3
+        (3,0)    0.0     ; body_joint4  腰部关节4
+        (4,0)    0.0     ; left_joint1  左臂肩关节1
+        (5,0)    0.0     ; left_joint2  左臂肩关节2
+        (6,0)    0.0     ; left_joint3  左臂肘关节1
+        (7,0)    0.0     ; left_joint4  左臂肘关节2
+        (8,0)    0.0     ; left_joint5  左臂腕关节1
+        (9,0)    0.0     ; left_joint6  左臂腕关节2
+        (10,0)   0.0     ; left_joint7  左臂腕关节3
+        (11,0)   0.0     ; right_joint1 右臂肩关节1
+        (12,0)   0.0     ; right_joint2 右臂肩关节2
+        (13,0)   0.0     ; right_joint3 右臂肘关节1
+        (14,0)   0.0     ; right_joint4 右臂肘关节2
+        (15,0)   0.0     ; right_joint5 右臂腕关节1
+        (16,0)   0.0     ; right_joint6 右臂腕关节2
+        (17,0)   0.0     ; right_joint7 右臂腕关节3
+        (18,0)   0.0     ; head_joint1  头部偏航（yaw）
+        (19,0)   0.0     ; head_joint2  头部俯仰（pitch）
     }
 }
 
@@ -125,7 +123,7 @@ initialModeSchedule
         [0]
         {
             bodyMode "HM_DUAL_CUSTOM_LOCK_FIXED_BASE"
-            headMode "HEAD_DISABLE"
+            headMode "HEAD_GAZE"
         }
         ; 使用 customJointLock.lockedJointIndices 锁定指定关节
     }
@@ -181,7 +179,7 @@ ddp
 
 mpc
 {
-    timeHorizon                     1.0     ; [s] 保留精定位配置的预测时域
+    timeHorizon                     0.4     ; [s]
     solutionTimeWindow              0.2     ; [s]
     coldStart                       false
 
@@ -190,7 +188,7 @@ mpc
     ; 独立 MPC/MRT 节点的期望频率；WBC 控制器实际频率由 ROS 参数
     ; mpc_frequency / update_rate 决定，不能仅依据本节判断实际运行频率。
     mpcDesiredFrequency             100     ; [Hz]
-    mrtDesiredFrequency             500     ; [Hz]
+    mrtDesiredFrequency             400     ; [Hz]
 }
 
 ;=============================================================================
@@ -214,7 +212,7 @@ rollout
 bodyTrackingEE
 {
     activate  true
-    muPosition 10.0
+    muPosition 5.0
     muOrientation 5.0
 }
 
@@ -238,12 +236,11 @@ inputCost
     {
         arm
         {
-            ; 配合更高的末端跟踪权重，抑制目标突变时的过大关节速度。
-            scaling 5e-2
+            scaling 1e-3
 
             (0,0)    5.0     ; body_joint1 速度惩罚
             (1,1)    5.0     ; body_joint2 速度惩罚
-            (2,2)    3.0     ; body_joint3 速度惩罚
+            (2,2)    2.0     ; body_joint3 速度惩罚
             (3,3)    2.0     ; body_joint4 速度惩罚
             (4,4)    0.5     ; left_joint1 速度惩罚
             (5,5)    0.5     ; left_joint2 速度惩罚
@@ -267,20 +264,18 @@ inputCost
 
 ;=============================================================================
 ; End Effector Constraint
-; 位置/姿态过程权重高于 TCP 通用配置，减少与其他软代价折中产生的残余误差。
-; 终端权重进一步提高预测末端误差的优先级；它们不是到位判定阈值。
 ;=============================================================================
 
 endEffector
 {
-    muPosition                      100.0
-    muOrientation                   50.0
+    muPosition                      10.0
+    muOrientation                   5.0
 }
 
 finalEndEffector
 {
-    muPosition                      200.0
-    muOrientation                   100.0
+    muPosition                      20.0
+    muOrientation                   10.0
 }
 
 ;=============================================================================
@@ -303,8 +298,8 @@ bodyRelative
 bimanualCoupling
 {
     activate                        true
-    muPosition                      100.0
-    muOrientation                   12.5
+    muPosition                      10.0
+    muOrientation                   1.25
 }
 
 ;=============================================================================
@@ -427,7 +422,8 @@ headMidpointGaze
     horizontalDeadbandDeg       10.0    ; 水平免惩罚半角（度），仅惩罚超出部分
     verticalDeadbandDeg         10.0    ; 垂直免惩罚半角（度），仅惩罚超出部分
     muAlignmentHorizontal       1.0     ; 左右对齐权重
-    muAlignmentVertical         0.0     ; 上下对齐权重，0 表示关闭
+    ; AR5 HOME 下手部较低，降低垂直注视权重，减小与末端跟踪的冲突。
+    muAlignmentVertical         0.1     ; 上下对齐权重，0 表示关闭
     muFront                     1.0
     minDepth                    0.3
 }
@@ -438,8 +434,7 @@ headMidpointGaze
 homeJointReference
 {
     activate                        true
-    ; 精定位默认关闭 HOME 回拉，减少与末端目标的竞争；仍保留运行时启用能力。
-    activateDefault                 false
+    activateDefault                 true
     mu                              1e-3
     excludeJointIndices
     {
@@ -488,24 +483,24 @@ jointVelocityLimits
     {
         arm
         {
-            (0,0)    -0.5    ; body_joint1 [rad/s]
-            (1,0)    -0.5    ; body_joint2 [rad/s]
-            (2,0)    -0.5    ; body_joint3 [rad/s]
-            (3,0)    -0.5    ; body_joint4 [rad/s]
-            (4,0)    -1.07   ; left_joint1 [rad/s]
-            (5,0)    -1.07   ; left_joint2 [rad/s]
-            (6,0)    -1.07   ; left_joint3 [rad/s]
-            (7,0)    -1.07   ; left_joint4 [rad/s]
-            (8,0)    -1.07   ; left_joint5 [rad/s]
-            (9,0)    -1.07   ; left_joint6 [rad/s]
-            (10,0)   -1.07   ; left_joint7 [rad/s]
-            (11,0)   -1.07   ; right_joint1 [rad/s]
-            (12,0)   -1.07   ; right_joint2 [rad/s]
-            (13,0)   -1.07   ; right_joint3 [rad/s]
-            (14,0)   -1.07   ; right_joint4 [rad/s]
-            (15,0)   -1.07   ; right_joint5 [rad/s]
-            (16,0)   -1.07   ; right_joint6 [rad/s]
-            (17,0)   -1.07   ; right_joint7 [rad/s]
+            (0,0)    -0.2    ; body_joint1 [rad/s]
+            (1,0)    -0.2    ; body_joint2 [rad/s]
+            (2,0)    -1.0    ; body_joint3 [rad/s]
+            (3,0)    -1.0    ; body_joint4 [rad/s]
+            (4,0)    -2.07   ; left_joint1 [rad/s]
+            (5,0)    -2.07   ; left_joint2 [rad/s]
+            (6,0)    -2.07   ; left_joint3 [rad/s]
+            (7,0)    -2.07   ; left_joint4 [rad/s]
+            (8,0)    -2.57   ; left_joint5 [rad/s]
+            (9,0)    -2.57   ; left_joint6 [rad/s]
+            (10,0)   -2.57   ; left_joint7 [rad/s]
+            (11,0)   -2.07   ; right_joint1 [rad/s]
+            (12,0)   -2.07   ; right_joint2 [rad/s]
+            (13,0)   -2.07   ; right_joint3 [rad/s]
+            (14,0)   -2.07   ; right_joint4 [rad/s]
+            (15,0)   -2.57   ; right_joint5 [rad/s]
+            (16,0)   -2.57   ; right_joint6 [rad/s]
+            (17,0)   -2.57   ; right_joint7 [rad/s]
             (18,0)   -1.0    ; head_joint1 [rad/s]
             (19,0)   -1.0    ; head_joint2 [rad/s]
         }
@@ -515,24 +510,24 @@ jointVelocityLimits
     {
         arm
         {
-            (0,0)    0.5     ; body_joint1 [rad/s]
-            (1,0)    0.5     ; body_joint2 [rad/s]
-            (2,0)    0.5     ; body_joint3 [rad/s]
-            (3,0)    0.5     ; body_joint4 [rad/s]
-            (4,0)    1.07    ; left_joint1 [rad/s]
-            (5,0)    1.07    ; left_joint2 [rad/s]
-            (6,0)    1.07    ; left_joint3 [rad/s]
-            (7,0)    1.07    ; left_joint4 [rad/s]
-            (8,0)    1.07    ; left_joint5 [rad/s]
-            (9,0)    1.07    ; left_joint6 [rad/s]
-            (10,0)   1.07    ; left_joint7 [rad/s]
-            (11,0)   1.07    ; right_joint1 [rad/s]
-            (12,0)   1.07    ; right_joint2 [rad/s]
-            (13,0)   1.07    ; right_joint3 [rad/s]
-            (14,0)   1.07    ; right_joint4 [rad/s]
-            (15,0)   1.07    ; right_joint5 [rad/s]
-            (16,0)   1.07    ; right_joint6 [rad/s]
-            (17,0)   1.07    ; right_joint7 [rad/s]
+            (0,0)    0.2     ; body_joint1 [rad/s]
+            (1,0)    0.2     ; body_joint2 [rad/s]
+            (2,0)    1.0     ; body_joint3 [rad/s]
+            (3,0)    1.0     ; body_joint4 [rad/s]
+            (4,0)    2.07    ; left_joint1 [rad/s]
+            (5,0)    2.07    ; left_joint2 [rad/s]
+            (6,0)    2.07    ; left_joint3 [rad/s]
+            (7,0)    2.07    ; left_joint4 [rad/s]
+            (8,0)    2.57    ; left_joint5 [rad/s]
+            (9,0)    2.57    ; left_joint6 [rad/s]
+            (10,0)   2.57    ; left_joint7 [rad/s]
+            (11,0)   2.07    ; right_joint1 [rad/s]
+            (12,0)   2.07    ; right_joint2 [rad/s]
+            (13,0)   2.07    ; right_joint3 [rad/s]
+            (14,0)   2.07    ; right_joint4 [rad/s]
+            (15,0)   2.57    ; right_joint5 [rad/s]
+            (16,0)   2.57    ; right_joint6 [rad/s]
+            (17,0)   2.57    ; right_joint7 [rad/s]
             (18,0)   1.0     ; head_joint1 [rad/s]
             (19,0)   1.0     ; head_joint2 [rad/s]
         }

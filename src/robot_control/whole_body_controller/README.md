@@ -26,11 +26,11 @@ whole_body_controller:
     update_rate: 500
     mpc_frequency: 100
     robot_name: fiveages_w2
-    info_file_name: task
+    info_file_name: whole_body_fixed_eef_l6   # 默认值；可选值见 fiveages_w2_description README
     joints: [...]
 ```
 
-状态机、通用参数（`robot_name`、`info_file_name`、`mpc_frequency`、线程、`home_*`、`movej_*`、`waist_*` 等）和 [`arm_controller`](../arm_controller/README.md) 相同。
+状态机、通用参数（`robot_name`、`info_package`、`info_file_name`、`mpc_frequency`、线程、`home_*`、`movej_*`、`waist_*` 等）和 [`arm_controller`](../arm_controller/README.md) 相同。
 
 ## 全身专有
 

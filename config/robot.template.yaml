@@ -60,10 +60,12 @@ control:
       ros__parameters:
         home_1: [-0.9, -1.8, -0.9, 0.0]
         home_2: [-1.3, -2.6, -1.3, 0.0]
-    # OCS2 task .info override (optional, per controller):
+    # OCS2 .info 选择（可选）：<robot>_description/config/ocs2/<info_file_name>.info，命名「范围_坐标系_变体」。
+    # whole_body_controller 可选 whole_body_fixed_{eef,tcp}_{l6,xhand}、whole_body_mobile_tcp（默认 whole_body_fixed_eef_l6）；
+    # arm_controller 可选 dual_arm_eef、dual_arm_tcp（默认 dual_arm_eef）。
     # whole_body_controller:
     #   ros__parameters:
-    #     info_file_name: fixed_base
+    #     info_file_name: whole_body_fixed_tcp_l6
     # arm_controller:
     #   ros__parameters:
-    #     info_file_name: task_arm
+    #     info_file_name: dual_arm_tcp

@@ -25,8 +25,9 @@ arm_controller:
   ros__parameters:
     update_rate: 500
     mpc_frequency: 100
-    robot_name: fiveages_w2
-    info_file_name: task          # <robot_name>_description/config/ocs2/<name>.info
+    robot_name: m6_ccs            # 规划模型
+    info_package: fiveages_w2_description   # 可选，.info 所在的包；不写 = <robot_name>_description
+    info_file_name: dual_arm_eef  # <包>/config/ocs2/<name>.info，默认 dual_arm_eef
     joints: [left_joint1, ...]    # 顺序和数量必须与 .info 的状态一致
 ```
 
@@ -38,8 +39,9 @@ arm_controller:
 
 | 参数 | 说明 |
 |---|---|
-| `robot_name` | 机器人描述包名，决定规划 URDF 和 `.info` 从哪个包取 |
-| `info_file_name` | `<robot_name>_description/config/ocs2/<name>.info` |
+| `robot_name` | 机器人名，决定规划 URDF；不写 `info_package` 时 `.info` 也从 `<robot_name>_description` 取 |
+| `info_package` | `.info` 所在的包（如整机用部件臂规划时放在整机包里），默认空 |
+| `info_file_name` | `<包>/config/ocs2/<name>.info`，默认 `dual_arm_eef`；命名见 [fiveages_w2_description](../../robot_description/fiveages_w2_description/README.md#info-命名) |
 | `mpc_frequency` | MPC 求解频率 |
 | `recompile_libraries` | 重编 CppAD 库；也可由 `.info` 的 `model_settings.recompileLibraries` 覆盖，Isaac 默认不重编 |
 | `thread_priority` `cpu_affinity` | MPC 工作线程的实时优先级和绑核 |

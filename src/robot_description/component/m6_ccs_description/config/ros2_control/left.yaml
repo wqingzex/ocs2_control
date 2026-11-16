@@ -29,7 +29,7 @@ arm_controller:
   ros__parameters:
     # Joint configuration
     update_rate: 100  # Hz
-    info_file_name: single
+    info_file_name: single_arm_tcp
     joints:
       - joint1
       - joint2

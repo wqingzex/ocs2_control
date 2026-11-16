@@ -87,11 +87,13 @@ public:
         planning_urdf_variant_ = auto_declare("planning_urdf_variant", std::string(""));
         planning_urdf_path_ = auto_declare("planning_urdf_path", std::string(""));
         future_time_offset_ = auto_declare("future_time_offset", 1.0);
-        const std::string info_file_name = auto_declare("info_file_name", std::string("fixed_base"));
+        const std::string info_file_name = auto_declare("info_file_name", std::string("whole_body_fixed_eef_l6"));
         /// Subdirectory name under the /tmp CppAD cache. Not a path inside the description share.
         const std::string cppad_library_subdir = auto_declare("cppad_library_subdir", std::string("whole_body_mpc"));
         joint_names_ = node_->get_parameter("joints").as_string_array();
-        const std::string robot_pkg = robot_name_ + "_description";
+        // Package holding config/ocs2/<info_file_name>.info. Empty = <robot_name>_description.
+        const std::string info_package = auto_declare("info_package", std::string(""));
+        const std::string robot_pkg = info_package.empty() ? robot_name_ + "_description" : info_package;
         const std::string config_path = ament_index_cpp::get_package_share_directory(robot_pkg);
 
         const std::string task_file = config_path + "/config/ocs2/" + info_file_name + ".info";

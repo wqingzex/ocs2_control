@@ -1,6 +1,6 @@
 # m6_ccs_description
 
-天机 Marvin M6-S CCS 双臂的描述包，同时是**末端和 `ros2_control` 共享宏**的所在：fiveages_w2 的双臂和末端也复用这里。
+天机 Marvin M6-S CCS 双臂的描述包，同时是**末端和 `ros2_control` 共享宏**的所在：fiveages_w2 的双臂规划模型和末端也复用这里（fiveages_w2 双臂的 `.info` 在它自己的包里）。
 
 ![Marvin M6 CCS](../../../../docs/images/description/m6_ccs.png)
 
@@ -16,10 +16,21 @@ ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs hardware:=real type:=
 |---|---|
 | 单臂 | `type:=left` 或 `type:=right` |
 | 末端 | `type:=<键>`；左右不同用 `left_type` / `right_type`，此时不要再传 `type` |
-| 展台 | `variant:=desktop`（臂间距 ±0.12 m，OCS2 `desktop.info`），与末端正交，见 [docs/m6_ccs_dual_desktop.md](docs/m6_ccs_dual_desktop.md) |
+| 展台 | `variant:=desktop`（臂间距 ±0.12 m，OCS2 `dual_arm_eef_desktop.info`），与末端正交，见 [docs/m6_ccs_dual_desktop.md](docs/m6_ccs_dual_desktop.md) |
 | 臂外观 | `skin:=fiveages_w2` 用 fiveages_w2 的外观网格；碰撞始终用 `meshes/link*.glb` |
 
 `robot.local.yaml` 也可配 `defaults.end_effectors.left` / `.right`。
+
+## OCS2 `.info`
+
+`arm_controller` 按 `info_file_name` 从本包 `config/ocs2/` 选一份，命名规则同 [fiveages_w2](../../fiveages_w2_description/README.md#info-命名)（「范围_坐标系_变体」）：
+
+| 文件 | 用于 |
+|---|---|
+| `dual_arm_eef.info` | 双臂，默认值 |
+| `dual_arm_tcp.info` | 双臂，跟踪 TCP |
+| `dual_arm_eef_desktop.info` | `variant:=desktop`（`config/ros2_control/desktop.yaml`） |
+| `single_arm_tcp.info` | 单臂 `type:=left` / `right`（`left.yaml` / `right.yaml`） |
 
 ## 末端执行器
 

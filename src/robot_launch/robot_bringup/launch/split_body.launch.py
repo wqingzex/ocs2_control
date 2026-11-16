@@ -8,7 +8,7 @@ from launch_ros.actions import Node
 from launch_helpers import (
     create_launch_mode_arguments,
     create_robot_profile_launch_arguments,
-    extract_info_file_name_from_config,
+    resolve_info_file_path,
     get_robot_package_path,
     prepare_teleop_command_parameters,
 )
@@ -57,14 +57,10 @@ def launch_setup(context, *args, **kwargs):
         body_controllers, body_spawners = common.setup_body_controllers(ctx, ["body", "head"])
         joint_controller_names.extend(c["name"] for c in body_controllers)
 
-    info_file_name = extract_info_file_name_from_config(ctx.config, launch_mode="split_body")
-    task_robot_name = planning_robot_name
-    robot_pkg_path = get_robot_package_path(task_robot_name)
-    if robot_pkg_path is None:
-        print(f"[ERROR] Cannot find robot package path for '{task_robot_name}'")
+    # Same .info the arm_controller loads (info_package / robot_name + info_file_name).
+    task_file_path = resolve_info_file_path(ctx.config, "split_body", planning_robot_name)
+    if task_file_path is None:
         return []
-
-    task_file_path = os.path.join(robot_pkg_path, "config", "ocs2", f"{info_file_name}.info")
     print(f"[INFO] Using task file for TeleopCommand: {task_file_path}")
 
     config_file_path = None

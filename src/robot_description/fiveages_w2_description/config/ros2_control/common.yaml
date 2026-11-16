@@ -66,8 +66,9 @@ arm_controller:
     state_interfaces:
       - position
 
-    robot_name: m6_ccs
-    info_file_name: task
+    robot_name: m6_ccs                       # 规划模型：m6_ccs 的双臂 URDF
+    info_package: fiveages_w2_description    # .info 从本整机包读（命名规则见本包 README）
+    info_file_name: dual_arm_eef
     home_duration: 5.0
     movel_trajectory_duration: 6.0
     movej_interpolation_type: doubles
@@ -97,8 +98,8 @@ whole_body_controller:
     # Joint configuration
     update_rate: 500  # Hz
     mpc_frequency: 100
-    info_file_name: fixed_base
-    # 关节顺序须与 fixed_base.info 的 arm 状态向量一致：
+    info_file_name: whole_body_fixed_eef_l6
+    # 关节顺序须与 whole_body_fixed_*.info 的 arm 状态向量一致：
     # [body_joint1~4 | left_joint1~7 | right_joint1~7 | head_joint1~2]
     joints:
       - body_joint1

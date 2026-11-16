@@ -9,8 +9,7 @@ from launch_ros.actions import Node
 from launch_helpers import (
     create_launch_mode_arguments,
     create_robot_profile_launch_arguments,
-    extract_info_file_name_from_config,
-    get_robot_package_path,
+    resolve_info_file_path,
     parse_task_info,
     prepare_teleop_command_parameters,
 )
@@ -90,14 +89,10 @@ def launch_setup(context, *args, **kwargs):
     if hand_names:
         joint_controller_names.extend(hand_names)
 
-    info_file_name = extract_info_file_name_from_config(ctx.config, launch_mode="whole_body")
-    task_robot_name = planning_robot_name
-    robot_pkg_path = get_robot_package_path(task_robot_name)
-    if robot_pkg_path is None:
-        print(f"[ERROR] Cannot find robot package path for '{task_robot_name}'")
+    # Same .info the whole_body_controller loads (info_package / robot_name + info_file_name).
+    task_file_path = resolve_info_file_path(ctx.config, "whole_body", planning_robot_name)
+    if task_file_path is None:
         return []
-
-    task_file_path = os.path.join(robot_pkg_path, "config", "ocs2", f"{info_file_name}.info")
     print(f"[INFO] Using task file for TeleopCommand: {task_file_path}")
 
     _dual_arm, _control_base_frame, _auto_marker_frame = parse_task_info(task_file_path)

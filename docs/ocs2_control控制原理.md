@@ -324,7 +324,7 @@ ros2 action send_goal /arm_controller/execute_linear \
 ### 4.2 优化问题
 
 - 状态 x = 关节角 q；输入 u = 关节速度 q̇；模型为运动学积分器 ẋ = u（不含动力学）。
-- 维度随 `.info` 文件而变：`task_arm.info` 为 18（4 腰 + 7 左 + 7 右），`fixed_base.info` 为 20（再加 2 头）。
+- 维度随 `.info` 文件而变：全身控制的 `whole_body_fixed_*.info` 为 20（4 腰 + 7 左 + 7 右 + 2 头），双臂控制的 `dual_arm_*.info` 为 14。
 
 ```latex
 \min_{u(\cdot)} \int_{t}^{t+T} \big[ L_{input}(u) + L_{ee}(x) + L_{limits}(x,u) + L_{collision}(x) \big]\, d\tau + \Phi_{ee}\big(x(t+T)\big)
@@ -337,7 +337,7 @@ ros2 action send_goal /arm_controller/execute_linear \
 | Φ_ee | `finalEndEffector` | 时域终点末端误差，权重更大 | 位置 μ=20，姿态 μ=10 |
 | 关节位置限位 | `jointPositionLimits` | 松弛对数障碍软约束 | μ=1e-2，δ=1e-3 |
 | 关节速度限位 | `jointVelocityLimits` | 同上 | 腰 ±0.5 rad/s，臂 ±1.07 rad/s |
-| 自碰撞 | `selfCollision` | 连杆距离 ≥ `minimumDistance` | `fixed_base.info` 中启用 |
+| 自碰撞 | `selfCollision` | 连杆距离 ≥ `minimumDistance` | `whole_body_fixed_*.info` 中启用 |
 
 末端位姿是代价项而非硬约束：目标不可达时给出折中解，不会失败。
 
@@ -565,7 +565,7 @@ T 是预测时域（秒），不是控制频率。
 | 笛卡尔插补 + 调 IK | `.../trajectory_manager/src/CartesianTrajectoryManager.cpp:574, 589, 624` |
 | DLS / BFGS 实现 | `.../robot_dynamics/src/Kinematics.cpp:137-325, 962, 1326` |
 | MoveL/MoveC 消息定义 | `robot_control/robot_control_msgs/msg/LinearMessage.msg`、`CircleMessage.msg` |
-| MPC 参数 | `robot_description/fiveages_w2_description/config/ocs2/task_arm.info`、`fixed_base.info` |
+| MPC 参数 | `robot_description/fiveages_w2_description/config/ocs2/whole_body_fixed_*.info`、`dual_arm_*.info` |
 | 控制器参数 | `robot_description/fiveages_w2_description/config/ros2_control/common.yaml` |
 | 启动入口 | `config/robot.local.yaml` 的 `robot.entry`（`teleop_app/config.py` 的 `ENTRIES`） |
 | 天机臂控制模式与写入 | `robot_hardware/marvin_hardware/src/marvin_hardware.cpp:713, 960-1030, 2675-2760, 3436-3448` |

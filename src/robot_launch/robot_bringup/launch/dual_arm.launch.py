@@ -8,8 +8,7 @@ from launch_ros.actions import Node
 from launch_helpers import (
     create_launch_mode_arguments,
     create_robot_profile_launch_arguments,
-    extract_info_file_name_from_config,
-    get_robot_package_path,
+    resolve_info_file_path,
     prepare_teleop_command_parameters,
 )
 
@@ -50,13 +49,10 @@ def launch_setup(context, *args, **kwargs):
     hand_controllers, hand_spawners = common.setup_hand_controllers(ctx, enable_gripper)
     hand_names = [c["name"] for c in hand_controllers] if enable_gripper else []
 
-    info_file_name = extract_info_file_name_from_config(ctx.config, launch_mode="dual_arm")
-    robot_pkg_path = get_robot_package_path(ctx.robot_name)
-    if robot_pkg_path is None:
-        print(f"[ERROR] Cannot find robot package path for '{ctx.robot_name}'")
+    # Same .info the arm_controller loads (info_package / robot_name + info_file_name).
+    task_file_path = resolve_info_file_path(ctx.config, "dual_arm", ctx.robot_name)
+    if task_file_path is None:
         return []
-
-    task_file_path = os.path.join(robot_pkg_path, "config", "ocs2", f"{info_file_name}.info")
     print(f"[INFO] Using task file for TeleopCommand: {task_file_path}")
 
     teleop_command = None

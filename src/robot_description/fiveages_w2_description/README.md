@@ -38,9 +38,32 @@ ros2 launch robot_bringup head_body.launch.py    robot:=fiveages_w2             
 |---|---|
 | `xacro/robot.xacro`、`xacro/ros2_control/robot.xacro` | 运动学模型、加硬件的模型（薄封装，宏在 m6_ccs） |
 | `config/ros2_control/common.yaml` | 控制器参数：`whole_body_controller`（全身）、`arm_controller`（双臂）、`body_joint_controller`、`head_joint_controller` 等 |
-| `config/ocs2/*.info` | MPC 配置，控制器按参数 `info_file_name` 选一份（全身默认 `fixed_base`，`robot.local.yaml` 可覆盖，如 `fixed_base_tcp`）；改关节速度惩罚、限速在这里 |
+| `config/ocs2/*.info` | MPC 配置，命名和可选值见下方 [`.info` 命名](#info-命名)；改关节速度惩罚、限速在这里 |
 | `xacro/ros2_control/body.xacro` | 腰和头的 Juxie 硬件接口 |
 | `config/maps/`、`config/nav2/` | 导航地图（`siemens`、`siemens_task2`、`wind_turbo_task1`）、Nav2 参数和行为树 |
+
+### `.info` 命名
+
+文件名是「范围_坐标系_变体」，控制器用参数 `info_file_name` 选一份（不带 `.info`）。
+
+| 段 | 取值 | 含义 |
+|---|---|---|
+| 范围 | `whole_body_fixed` / `whole_body_mobile` | `whole_body_controller` 加载：腰 + 双臂 + 头，固定底盘 / 移动底盘 |
+| | `dual_arm` / `single_arm` | `arm_controller` 加载：只有手臂 |
+| 坐标系 | `eef` / `tcp` | 跟踪法兰（`left_eef`、`right_eef`）还是工具中心点（`left_tcp`、`right_tcp`） |
+| 变体 | `l6` / `xhand` / `desktop` …（可省略） | 按机台调的参数（末端型号）或安装方式 |
+
+本包里的文件：
+
+| 文件 | 控制器 | 说明 |
+|---|---|---|
+| `whole_body_fixed_eef_l6.info` | `whole_body_controller` | 默认值；L6 机台参数 |
+| `whole_body_fixed_tcp_l6.info` | `whole_body_controller` | L6 机台参数，跟踪 TCP |
+| `whole_body_fixed_eef_xhand.info` / `whole_body_fixed_tcp_xhand.info` | `whole_body_controller` | XHand1 机台参数（取自 fa_gen2_ws） |
+| `whole_body_mobile_tcp.info` | `whole_body_controller` | 移动底盘 |
+| `dual_arm_eef.info` / `dual_arm_tcp.info` | `arm_controller` | 双臂 / 分体控制；规划模型是 `m6_ccs` 的双臂 URDF（`robot_name: m6_ccs`），`.info` 用 `info_package: fiveages_w2_description` 从本包读 |
+
+本机选哪一份写在 `robot.local.yaml` 的 `control.patch.<控制器>.ros__parameters.info_file_name`。新增一套参数：复制一份改名，再在本机配置里指过去，重新编译本包。
 
 ## 真机
 

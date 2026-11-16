@@ -10,6 +10,7 @@ from .robot.config import (
     clear_config_cache,
     write_temp_ros2_control_yaml,
     extract_info_file_name_from_config,
+    resolve_info_file_path,
     RobotConfigMeta,
     EMPTY_ROBOT_CONFIG_META,
 )
@@ -86,6 +87,7 @@ __all__ = [
     'parse_task_info',
     'prepare_teleop_command_parameters',
     'extract_info_file_name_from_config',
+    'resolve_info_file_path',
     'detect_controllers',
     'detect_and_spawn_controllers',
     'create_controller_spawners',
