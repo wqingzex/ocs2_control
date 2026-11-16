@@ -29,7 +29,7 @@ ocs2_control 命令行入口（面向专业人员）
 
 选项（命令前后都可以）
   -c 配置文件        --set 字段=值（本次运行有效，可重复，如 --set robot.hardware=isaac）
-  --entry whole_body|split_body|dual_arm   --hand none|linkerhand_l6|xhand1   --hand-drive usb|485
+  --entry whole_body|split_body|dual_arm   --hand none|linkerhand_l6|xhand1   --hand-drive usb|485|usb_can
   --rviz             同时启动 RViz（用于 start / sim / isaac / up）；up control 默认带 RViz，不要 RViz 用 up control --no-rviz
 EOF_USAGE
 }

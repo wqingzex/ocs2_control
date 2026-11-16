@@ -56,6 +56,9 @@ def hand_status(raw: Dict[str, Any]) -> Status:
     robot = raw.get("robot") or {}
     if robot.get("hand", "linkerhand_l6") == "none":
         return Status(DEFAULT, "没有灵巧手（robot.hand: none）")
+    if robot.get("hand_drive") == "usb_can":
+        return Status(DEFAULT, "USB-CAN：左右手按 hardware.left_ee_can_interface / right_ee_can_interface 区分，"
+                               "不用 ./scripts/setup.sh hand 确认")
     if confirmed(raw, "hand"):
         return Status(CONFIGURED, "左右手实物已确认")
     return Status(NEEDED, "左右手尚未确认")

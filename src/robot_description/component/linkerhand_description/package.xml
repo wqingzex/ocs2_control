@@ -7,6 +7,9 @@
     <maintainer email="biao876990970@hotmail.com">Huang Zhenbiao</maintainer>
     <license>TODO</license>
 
+    <buildtool_depend>ament_cmake</buildtool_depend>
+    <!-- side_system.xacro (optional rw_rate) for the USB-CAN side system -->
+    <exec_depend>changingtek_description</exec_depend>
 
     <export>
         <build_type>ament_cmake</build_type>

@@ -145,6 +145,12 @@ def test_xhand_rejects_arm485_and_duplicate_port(hand):
         hand.update({'draft': {**hand.draft, 'hand': 'xhand1', 'right_port': hand.draft['left_port']}})
 
 
+def test_usb_can_is_not_confirmed_in_the_setup_tool(hand):
+    with pytest.raises(ValueError, match='USB-CAN'):
+        hand.update({'draft': {**hand.draft, 'drive': 'usb_can'}})
+    assert not hand.calls
+
+
 def test_cancelled_session_cannot_commit(hand, config):
     prepare_hand(hand)
     hand.cancel()

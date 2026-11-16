@@ -15,7 +15,7 @@ ROTATIONS = (0, 90, 180, 270)
 ROLES = ("head", "left_wrist", "right_wrist")  # camera positions
 SERIAL_RE = re.compile(r"^[A-Za-z0-9._:-]*$")
 HANDS = ("none", "linkerhand_l6", "xhand1")
-HAND_DRIVES = ("usb", "485")
+HAND_DRIVES = ("usb", "485", "usb_can")  # usb: USB-RS485 on the PC; 485: the arm's RS485; usb_can: USB-CAN (L6)
 HARDWARE = ("real", "mock_components", "isaac")
 
 DEFAULTS: Dict[str, Any] = {
@@ -130,6 +130,8 @@ def _check_robot(robot: Dict[str, Any]) -> None:
            f"'robot.hardware' must be one of {list(HARDWARE)}, got {robot['hardware']!r}")
     expect(not (robot["hand"] == "xhand1" and robot["hand_drive"] == "485"),
            "'robot.hand_drive': xhand1 only supports 'usb' (no Tianji 485 mode)")
+    expect(not (robot["hand_drive"] == "usb_can" and robot["hand"] != "linkerhand_l6"),
+           "'robot.hand_drive': usb_can is only supported for linkerhand_l6")
 
 
 def _check_cameras(cams: Dict[str, Any]) -> None:

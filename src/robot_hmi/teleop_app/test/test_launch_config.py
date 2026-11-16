@@ -158,6 +158,18 @@ def test_tianji_485_hand_uses_real_hardware(drive):
     assert args["xacro_left_ee_drive_type"] == "marvin"
 
 
+def test_usb_can_hand_uses_real_hardware_and_usb_can_drive():
+    _, args = controller_launch(make_cfg(robot={"hand_drive": "usb_can"}), "/ws/config/robot.local.yaml")
+    assert args["hardware"] == "real"
+    assert args["type"] == "linkerhand_l6"
+    assert args["xacro_left_ee_drive_type"] == args["xacro_right_ee_drive_type"] == "usb_can"
+
+
+def test_usb_can_is_only_for_l6():
+    with pytest.raises(ConfigError, match="usb_can is only supported for linkerhand_l6"):
+        make_cfg(robot={"hand": "xhand1", "hand_drive": "usb_can"})
+
+
 def test_mock_hardware_has_no_drive_args():
     _, args = controller_launch(make_cfg(robot={"hardware": "mock_components"}), "/ws/config/robot.local.yaml")
     assert args["hardware"] == "mock_components"

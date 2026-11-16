@@ -26,8 +26,12 @@ def mapping_fields(raw):
     value = {"hand": robot.get("hand", "linkerhand_l6"),
              "drive": normalize_hand_drive(robot.get("hand_drive", "usb"))}
     if value["hand"] != "none":
-        keys = {"usb_left_port": "", "usb_right_port": ""} \
-            if value["drive"] == "usb" else {"device_ip": "192.168.1.190", "left_ee_channel": 1, "right_ee_channel": 1}
+        if value["drive"] == "usb":
+            keys = {"usb_left_port": "", "usb_right_port": ""}
+        elif value["drive"] == "usb_can":
+            keys = {"left_ee_can_interface": "can1", "right_ee_can_interface": "can2"}
+        else:
+            keys = {"device_ip": "192.168.1.190", "left_ee_channel": 1, "right_ee_channel": 1}
         value.update({key: hw.get(key, default) for key, default in keys.items()})
     return value
 
@@ -89,6 +93,9 @@ class HandSetup(SetupSession):
                 raise ValueError('请选择正确的末端与接线方式')
             if draft['hand'] == 'xhand1' and draft['drive'] != 'usb':
                 raise ValueError('XHand1 仅支持 USB 接线')
+            if draft['drive'] == 'usb_can':
+                raise ValueError('USB-CAN 的左右手按 CAN 接口区分，本工具不做确认：'
+                                 '在 robot.local.yaml 写 robot.hand_drive: usb_can 和 hardware.left_ee_can_interface / right_ee_can_interface')
             if draft['hand'] != 'none':
                 if draft['drive'] == 'usb':
                     if any(not is_serial_number_path(draft[side + '_port']) for side in ('left', 'right')):

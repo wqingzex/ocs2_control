@@ -179,7 +179,29 @@ PY
   printf '%s' "${iface}"
 }
 
-# 只放行 jx_hardware.cpp 实际执行的两条 `sudo ip link set <can> ...`，参数写死、不用通配符
+# robot.hand_drive 为 usb_can 时两只手的 CAN 接口（hardware.left_ee_can_interface / right_ee_can_interface，
+# 默认 can1 / can2），每行一个；其他接线方式不输出。名字同样要合法，且不能和腰部接口相同。
+hand_can_ifaces() {
+  [[ -f "${CONFIG}" ]] || return 0
+  local body="$1" iface
+  while IFS= read -r iface; do
+    [[ -n "${iface}" ]] || continue
+    [[ "${iface}" =~ ^[A-Za-z0-9_.][A-Za-z0-9_.-]{0,14}$ ]] || die "手的 CAN 接口名不合法：'${iface}'"
+    [[ "${iface}" != "${body}" ]] || die "手的 CAN 接口 ${iface} 和腰部 body_can_interface 相同；手要用另一个 CAN 接口"
+    printf '%s\n' "${iface}"
+  done < <(python3 - "${CONFIG}" <<'PY' 2>/dev/null || true
+import sys, yaml
+data = yaml.safe_load(open(sys.argv[1])) or {}
+robot, hw = data.get("robot") or {}, data.get("hardware") or {}
+if robot.get("hand", "linkerhand_l6") != "none" and robot.get("hand_drive") == "usb_can":
+    names = [str(hw.get("left_ee_can_interface") or "can1").strip(), str(hw.get("right_ee_can_interface") or "can2").strip()]
+    print("\n".join(dict.fromkeys(names)))  # the two hands may share one interface
+PY
+)
+}
+
+# 只放行驱动实际执行的 `sudo ip link set <can> ...`，参数写死、不用通配符：
+# 腰部 jx_hardware（CAN FD），以及 hand_drive: usb_can 时手的 can_hardware（经典 CAN 1 Mbit/s）
 host_sudoers() {
   local iface file="/etc/sudoers.d/fiveages_w2-can" legacy="/etc/sudoers.d/fa-w2-can"
   if sudo test -e "${legacy}"; then  # 旧文件名写入的同一条规则：删掉，只留新文件
@@ -189,12 +211,17 @@ host_sudoers() {
   iface="$(body_can_iface)"
   local up_args="up type can bitrate 1000000 dbitrate 5000000 restart-ms 100 fd on"
   local cmds=() ip rule tmp
+  local hand_up_args="up type can bitrate 1000000 restart-ms 100" hand_ifaces hand
+  hand_ifaces="$(hand_can_ifaces "${iface}")" || exit 1
   for ip in /usr/sbin/ip /sbin/ip; do  # Ubuntu 上 /sbin 是 /usr/sbin 的软链接，两个路径都放行
     cmds+=("${ip} link set ${iface} down" "${ip} link set ${iface} ${up_args}")
+    for hand in ${hand_ifaces}; do
+      cmds+=("${ip} link set ${hand} down" "${ip} link set ${hand} ${hand_up_args}")
+    done
   done
   rule="$(id -un) ALL=(root) NOPASSWD: $(IFS=,; echo "${cmds[*]}" | sed 's/,/, /g')"
   if sudo test -f "${file}" && [[ "$(sudo cat "${file}")" == "${rule}" ]]; then  # 旧的通配符规则会被替换
-    info "腰部 CAN（${iface}）免密 sudo 规则已是最新"
+    info "CAN 免密 sudo 规则已是最新（腰部 ${iface}${hand_ifaces:+，手 $(echo ${hand_ifaces})}）"
     return
   fi
   info "写入 ${file}"

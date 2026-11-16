@@ -19,6 +19,9 @@
 	<!-- Optional ros2_control rw_rate [Hz] of the USB hand systems (XHand1); empty = controller_manager rate -->
 	<xacro:arg name="left_ee_rw_rate" default=""/>
 	<xacro:arg name="right_ee_rw_rate" default=""/>
+	<!-- USB-CAN interfaces of the hands (ee_drive_type usb_can); can0 is the waist / head bus -->
+	<xacro:arg name="left_ee_can_interface" default="can1"/>
+	<xacro:arg name="right_ee_can_interface" default="can2"/>
 
 	<xacro:property name="is_real_hardware" value="${'$(arg ros2_control_hardware_type)' == 'real' or '$(arg ros2_control_hardware_type)' == 'real_usb'}"/>
 	<xacro:property name="ee_drive_type" value="${'usb' if '$(arg ros2_control_hardware_type)' == 'real_usb' else ('marvin' if '$(arg ros2_control_hardware_type)' == 'real' else '')}"/>
@@ -65,7 +68,10 @@
 			usb_left_port="$(arg usb_left_port)"
 			usb_right_port="$(arg usb_right_port)"
 			left_ee_rw_rate="$(arg left_ee_rw_rate)"
-			right_ee_rw_rate="$(arg right_ee_rw_rate)"/>
+			right_ee_rw_rate="$(arg right_ee_rw_rate)"
+			left_ee_can_interface="$(arg left_ee_can_interface)"
+			right_ee_can_interface="$(arg right_ee_can_interface)"
+			body_can_interface="$(arg body_can_interface)"/>
 	</xacro:if>
 
 	<xacro:unless value="${is_real_hardware}">

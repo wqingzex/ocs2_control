@@ -343,6 +343,8 @@ def run(request):
     side, operation, hand, drive = (request[key] for key in ('side', 'operation', 'hand', 'drive'))
     if side not in ('left', 'right') or operation not in ('probe', 'test'):
         raise ValueError('无效的手部测试请求')
+    if drive == 'usb_can':
+        raise ValueError('USB-CAN 的手不在这里探测：左右手按 CAN 接口区分（hardware.left_ee_can_interface / right_ee_can_interface）')
     if hand not in ('linkerhand_l6', 'xhand1') or drive not in ('usb', '485'):
         raise ValueError('不支持的手型或接线方式')
     if hand == 'xhand1' and drive != 'usb':
