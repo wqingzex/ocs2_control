@@ -17,6 +17,9 @@
 	<xacro:arg name="max_joint_acceleration" default="30"/>
 	<xacro:arg name="usb_left_port" default="/dev/ttyUSB0"/>
 	<xacro:arg name="usb_right_port" default="/dev/ttyUSB2"/>
+	<!-- Optional ros2_control rw_rate [Hz] of the USB hand systems (XHand1); empty = controller_manager rate -->
+	<xacro:arg name="left_ee_rw_rate" default=""/>
+	<xacro:arg name="right_ee_rw_rate" default=""/>
 
 	<link name="world"/>
 
@@ -69,7 +72,9 @@
 	<xacro:if value="${is_real_hardware and selected_arm_config == 'dual'}">
 		<xacro:external_ee_systems
 			usb_left_port="$(arg usb_left_port)"
-			usb_right_port="$(arg usb_right_port)"/>
+			usb_right_port="$(arg usb_right_port)"
+			left_ee_rw_rate="$(arg left_ee_rw_rate)"
+			right_ee_rw_rate="$(arg right_ee_rw_rate)"/>
 	</xacro:if>
 
 	<xacro:arg name="gazebo" default="false"/>

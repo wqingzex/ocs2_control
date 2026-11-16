@@ -20,7 +20,9 @@
 	<!-- USB (RS485) dexterous hands driven by modbus_hardware: LinkerHand L6, XHand1 -->
 	<xacro:macro name="external_ee_systems" params="
 		usb_left_port:=/dev/ttyUSB0
-		usb_right_port:=/dev/ttyUSB2">
+		usb_right_port:=/dev/ttyUSB2
+		left_ee_rw_rate:=''
+		right_ee_rw_rate:=''">
 		<xacro:if value="${left_drive_type == 'usb' and left_hand_type == 'linkerhand_l6'}">
 			<xacro:side_usb_hand_system side="left" hand_type="${left_hand_type}" serial_port="${usb_left_port}"/>
 		</xacro:if>
@@ -28,10 +30,10 @@
 			<xacro:side_usb_hand_system side="right" hand_type="${right_hand_type}" serial_port="${usb_right_port}"/>
 		</xacro:if>
 		<xacro:if value="${left_drive_type == 'usb' and left_hand_type == 'xhand1'}">
-			<xacro:xhand1_rs485_side_system side="left" serial_port="${usb_left_port}"/>
+			<xacro:xhand1_rs485_side_system side="left" serial_port="${usb_left_port}" rw_rate="${left_ee_rw_rate}"/>
 		</xacro:if>
 		<xacro:if value="${right_drive_type == 'usb' and right_hand_type == 'xhand1'}">
-			<xacro:xhand1_rs485_side_system side="right" serial_port="${usb_right_port}"/>
+			<xacro:xhand1_rs485_side_system side="right" serial_port="${usb_right_port}" rw_rate="${right_ee_rw_rate}"/>
 		</xacro:if>
 	</xacro:macro>
 

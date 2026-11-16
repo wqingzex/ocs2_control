@@ -37,6 +37,9 @@ hardware:
   # XHand1 的 USB-485 适配器（取自旧工作区）
   usb_left_port: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A9BJTKUI-if00-port0
   usb_right_port: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A9BJTLG2-if00-port0
+  # XHand1 ros2_control 系统的读写频率 [Hz]（和旧工作区一致）；不写则跟随 controller_manager（500 Hz）
+  left_ee_rw_rate: 50
+  right_ee_rw_rate: 50
 
   # XHand1 负载（取自旧工作区）
   left_dyn_param: [1.28898131206235, -10.572003024465616, 4.431148917419526, 113.45649480036083, 0.001, 0.0, 0.0, 0.001, 0.0, 0.00019738396378957463]
