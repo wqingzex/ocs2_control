@@ -13,6 +13,8 @@ Marvin 臂体口（天机 SDK 的异步 485）没有接到 `ModbusMaster`，原�
 
 ## 新加一个 CAN 设备
 
+末端执行器（灵巧手、夹爪）放进 [`can_hardware`](../can_hardware/README.md)（和 `modbus_hardware` 对称）；关节模组等整机设备各自一个包（如 `juxie_hardware`）。
+
 1. 参数用同一组名字，设备前缀加在前面：`<设备>_can_interface`、`<设备>_can_bitrate`、`<设备>_can_data_bitrate`、`<设备>_can_restart_ms`、`<设备>_can_manage_interface`，用 `robot_comm::parseCanConfig(info.hardware_parameters, "<设备>_", 默认值, config, error)` 读，非法值会带着参数名报错。
 2. 驱动持有 `std::unique_ptr<robot_comm::CanBus>`，`open(config)` 之前用 `robot_comm::makeConfigurator(config)` 配接口；测试里用 `MockCanBus` 注入。
 3. 帧的构造和解析写成纯函数（参考 `juxie_hardware/juxie_protocol.h`），单元测试里直接喂 `CanFrame`。
