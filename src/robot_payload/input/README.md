@@ -7,5 +7,6 @@
 | [`xr_teleop`](xr_teleop/README.md) | Pico 头显和手柄（XRoboToolkit） | 桥节点 `xr_bridge_node`（发布 `/teleop/*`）、PC Service 启停、网卡选择、无头显联调 `xr_stub.py` |
 | [`joystick_teleop`](joystick_teleop/README.md) | 游戏手柄 | 手柄节点、按键映射 |
 | [`keyboard_teleop`](keyboard_teleop/README.md) | 键盘 | 键盘节点 |
+| [`dexcap_teleop`](dexcap_teleop/README.md) | DexCap V4 外骨骼和手套 | 设备节点（`/dexcap/*`）、臂关节映射 `arm_joint_mapper`（直接发 `/arm_controller/joint_target_position`，不经 `teleop_command`）、手套到 L6 / 夹爪的映射 |
 
 同一时刻只运行一种输入，它们发布同样的话题。头显配对（`./scripts/setup.sh xr`）在 `xr_teleop`：它用 [`robot_runtime`](../../robot_runtime/README.md) 启动桥和 PC Service，不依赖 [`teleop_app`](../../robot_hmi/teleop_app/README.md)。

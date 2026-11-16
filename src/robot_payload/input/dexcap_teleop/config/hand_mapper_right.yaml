@@ -1,0 +1,109 @@
+# Glove calibration (glove side, from ctrl) and the target range of the robot hand (L6 joint limits).
+/dexcap_right_hand_mapper:
+  ros__parameters:
+    calibration_window_seconds: 1.0
+    command_topic: /right_hand_controller/joint_target_position
+    filter_cutoff_hz: 6.0
+    allowed_fsm_states:
+    - 3
+    - 4
+    finger_flex_weights:
+    - 0.45
+    - 0.35
+    - 0.2
+    four_finger_fist_calibration:
+    - -0.3755786194103963
+    - -0.052047341882080225
+    - -0.4856601855675304
+    - 0.7610934207373851
+    - -0.5793802002650327
+    - -0.495032200538416
+    - 2.0708453347459446
+    - -0.7931912614525288
+    - 2.5342870752895332
+    - -0.5209564282890731
+    - 2.181349029338053
+    - -0.626492023361311
+    - 2.6957219131319365
+    - -0.5057477103267157
+    - 2.32240816323296
+    - -0.7835473026090524
+    - 2.5292580916959015
+    - -0.44101223073686924
+    - 2.198566905305525
+    - -0.6300557421601126
+    - 1.9912096134529071
+    input_timeout: 0.2
+    input_topic: /dexcap/right_hand
+    fsm_state_topic: /fsm_state
+    max_velocity:
+    - 2.5
+    - 2.5
+    - 4.0
+    - 4.0
+    - 4.0
+    - 4.0
+    minimum_calibration_samples: 15
+    minimum_source_range: 0.03
+    open_calibration:
+    - -0.20473394814950854
+    - 0.3436812420077864
+    - -0.12338173536934287
+    - 0.5798708882939526
+    - -0.7151404529225395
+    - -0.012299763177189121
+    - 0.38327501450106416
+    - -0.07925686488993906
+    - -0.1405232738390459
+    - -0.1678578679354352
+    - 0.18757092480771315
+    - 0.11481953602559372
+    - -0.3763186968064318
+    - -0.5409762003689453
+    - 0.04250155487519497
+    - 0.009141729650318325
+    - -0.10766437981112523
+    - -0.6498943701701575
+    - -0.039495015494227785
+    - 0.06149185466351975
+    - 0.14263064913610363
+    preview_topic: /dexcap_right_hand_mapper/joint_target_position
+    publish_rate: 100.0
+    qos_overrides:
+      /parameter_events:
+        publisher:
+          depth: 1000
+          durability: volatile
+          history: keep_last
+          reliability: reliable
+    require_current_hand_state: true
+    robot_joint_states_topic: /joint_states
+    start_type_description_service: true
+    target_at_one:
+    - 0.99
+    - 1.39
+    - 1.26
+    - 1.26
+    - 1.26
+    - 1.26
+    target_at_zero:
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    thumb_flex_calibration:
+    - 0.7165284177745775
+    - -0.4737342569860827
+    - 1.7164275471151815
+    thumb_opposition_calibration:
+    - 0.04258603374842532
+    - 0.6209920263678396
+    thumb_out_calibration:
+    - -0.4561662346515296
+    - 0.2000217135931365
+    thumb_yaw_weights:
+    - 0.7
+    - 0.3
+    use_sim_time: false

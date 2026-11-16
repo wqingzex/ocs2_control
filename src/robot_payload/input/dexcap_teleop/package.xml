@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>dexcap_teleop</name>
+  <version>0.1.0</version>
+  <description>DexCap V4 exoskeleton and gloves as a teleoperation input: device nodes (raw joint states), arm joint mapping to the dual-arm controller, glove to hand / gripper mapping. SDK in src/third_party/dexcap-sdk-cpp.</description>
+  <maintainer email="dev@fiveages.local">fiveages</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>kdl_parser</depend>
+  <!-- headers for the DexCap SDK (it ships libserial.so itself) -->
+  <depend>libserial-dev</depend>
+  <depend>rclcpp</depend>
+  <depend>ruckig</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

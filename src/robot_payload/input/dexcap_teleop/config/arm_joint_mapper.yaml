@@ -1,0 +1,47 @@
+arm_joint_mapper:
+  ros__parameters:
+    source: dexcap
+    robot: tianji
+
+    left_arm_topic: /dexcap/left_arm
+    right_arm_topic: /dexcap/right_arm
+    robot_joint_states_topic: /joint_states
+    fsm_state_topic: /fsm_state
+    output_topic: /arm_controller/joint_target_position
+    movej_state: 4
+    publish_rate: 1000.0
+    input_timeout: 0.2
+    require_robot_state: true
+
+    interpolation_type: ruckig  # online | ruckig
+    online_max_velocity: 3.0
+    online_max_acceleration: 30.0
+    online_max_jerk: 300.0
+    online_tracking_frequency: 20.0  # compatibility-only; ignored by Ruckig
+    online_target_filter_alpha: 0.8  # (0, 1], lower is smoother
+    online_position_tolerance: 0.0001
+    online_velocity_tolerance: 0.001
+    online_acceleration_tolerance: 0.01
+
+    # q_robot = sign * q_source + offset_k * pi/2.
+    # Joint 7 uses sign * (source joints 7+8+9) + offset_k * pi/2.
+    profiles.tianji.left_sign: [-1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0]
+    profiles.tianji.left_offset_k: [1.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0]
+    profiles.tianji.right_sign: [-1.0, -1.0, -1.0, 1.0, -1.0, -1.0, -1.0]
+    profiles.tianji.right_offset_k: [-1.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+    profiles.tianji.lower_limits:
+      [-3.106686, -2.059489, -2.932153, -2.495821, -2.932153, -1.012291, -1.361357,
+       -3.106686, -2.059489, -2.932153, -2.495821, -2.932153, -1.012291, -1.361357]
+    profiles.tianji.upper_limits:
+      [3.106686, 2.059489, 2.932153, 1.012291, 2.932153, 1.012291, 1.361357,
+       3.106686, 2.059489, 2.932153, 1.012291, 2.932153, 1.012291, 1.361357]
+
+    # Reserved ROKAE profile. ROS 2 does not support untyped empty arrays in a
+    # parameter file, so these remain commented until the profile is defined.
+    # Selecting robot=rokae before filling all six arrays will fail at startup.
+    # profiles.rokae.left_sign:       # 7 values
+    # profiles.rokae.left_offset_k:   # 7 values
+    # profiles.rokae.right_sign:      # 7 values
+    # profiles.rokae.right_offset_k:  # 7 values
+    # profiles.rokae.lower_limits:    # 14 values
+    # profiles.rokae.upper_limits:    # 14 values

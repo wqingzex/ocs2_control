@@ -23,6 +23,8 @@ Makefile
 *.a
 # Rokae SDK 预编译静态库需随仓库分发
 !src/robot_hardware/rokae_hardware/external/librokae/lib/**/*.a
+# DexCap SDK 预编译库（.so / .a）需随仓库分发
+!src/third_party/dexcap-sdk-cpp/libs/**
 *.dylib
 *.dll
 
