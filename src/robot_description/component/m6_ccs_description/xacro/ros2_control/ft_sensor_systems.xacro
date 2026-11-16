@@ -11,7 +11,7 @@
 	<xacro:macro name="side_ft_sensor_system" params="side serial_port">
 		<ros2_control name="${side}_ft_system" type="sensor">
 			<hardware>
-				<plugin>modbus_hardware/Kwr75ForceTorqueSensor</plugin>
+				<plugin>end_effector_hardware/Kwr75ForceTorqueSensor</plugin>
 				<param name="serial_port">${serial_port}</param>
 			</hardware>
 			<sensor name="${side}_ft_sensor">

@@ -9,7 +9,7 @@
 		<xacro:property name="usb_hand_system_name" value="linkerhand_6"/>
 		<ros2_control name="${usb_hand_system_name}_${side}_system" type="system">
 			<hardware>
-				<plugin>modbus_hardware/DexterousHandHardware</plugin>
+				<plugin>end_effector_hardware/LinkerHandRs485Hardware</plugin>
 				<param name="serial_port">${serial_port}</param>
 				<param name="hand_type">${hand_type}</param>
 				<param name="hand_side">${side}</param>
@@ -20,8 +20,8 @@
 	</xacro:macro>
 
 	<!-- Dexterous hands outside the arm:
-	       usb      USB-RS485, modbus_hardware: LinkerHand L6, XHand1
-	       usb_can  USB-CAN, can_hardware: LinkerHand L6 (classic CAN 1 Mbit/s, one interface per hand or shared)
+	       usb      USB-RS485, end_effector_hardware: LinkerHand L6, XHand1
+	       usb_can  USB-CAN, end_effector_hardware: LinkerHand L6 (classic CAN 1 Mbit/s, one interface per hand or shared)
 	       ethernet wuji_hardware: Wuji Hand 2 (found by scanning, matched by hand_side)
 	     body_can_interface: the waist / head bus (CAN FD) of a whole robot, empty for a dual-arm robot; a hand on
 	     the same interface would reconfigure it to classic CAN, so that is rejected. -->

@@ -67,7 +67,7 @@ ros2 launch robot_bringup head_body.launch.py    robot:=fiveages_w2             
 
 ## 真机
 
-真机拆成两个 system：臂和末端走 `marvin_hardware`（`M6_CCS_System`），腰和头走 `juxie_hardware`（`juxie_body`，`body_joint1~4`、`head_joint1~2`）；外接 USB 末端走 `modbus_hardware`。仿真合并为一个 system（mock / isaac）。
+真机拆成两个 system：臂和末端走 `marvin_hardware`（`M6_CCS_System`），腰和头走 `juxie_hardware`（`juxie_body`，`body_joint1~4`、`head_joint1~2`）；外接 USB 末端走 `end_effector_hardware`。仿真合并为一个 system（mock / isaac）。
 
 `robot.local.yaml` 里的 `hardware:` 段在 `real` / `real_usb` 时注入 xacro：
 

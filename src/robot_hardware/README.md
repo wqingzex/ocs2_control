@@ -7,8 +7,7 @@
 | [`marvin_hardware`](marvin_hardware/README.md) | 天机 Marvin 臂，及臂体上的末端 | `sdk`、`modbus`（臂体 RS485 工具口） | 是：双臂 |
 | [`rokae_hardware`](rokae_hardware/README.md) | 珞石 Rokae 臂 | `sdk` | 否（用于 Rokae 机型） |
 | [`juxie_hardware`](juxie_hardware/README.md) | JX 关节模组（腰、头） | `can` | 是：腰、头 |
-| [`modbus_hardware`](modbus_hardware/README.md) | 外接 USB / RS485 的夹爪、灵巧手、力传感器 | `modbus`、`serial` | 是：外接末端 |
-| [`can_hardware`](can_hardware/README.md) | 接在 CAN 上的灵巧手（目前 LinkerHand L6） | `can` | 是：L6 走 USB-CAN 时 |
+| [`end_effector_hardware`](end_effector_hardware/README.md) | 外接的夹爪、灵巧手、力传感器（原 `modbus_hardware` + `can_hardware`），按设备分目录 | `modbus`、`serial`、`can` | 是：外接末端 |
 | [`wuji_hardware`](wuji_hardware/README.md) | 舞肌 Wuji Hand 2 | `sdk`（以太网，`third_party/wuji-sdk-c`） | 否（`robot.hand: wuji_hand2` 时） |
 | [`gripper_hardware_common`](gripper_hardware_common/README.md) | 夹爪驱动共用的寄存器表、单位换算、`GripperBase` | （设备层，无通信） | 被上面的驱动使用 |
 | [`topic_based_hardware`](topic_based_hardware/README.md) | 仿真：通过话题收发，对接 Isaac 等 | `topic` | 是：Isaac 仿真 |

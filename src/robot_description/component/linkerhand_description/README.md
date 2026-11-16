@@ -18,7 +18,7 @@ ros2 launch robot_bringup hand.launch.py hand:=linkerhand type:=l6 hardware:=rea
 
 ## 真机
 
-`modbus_hardware` 驱动，Modbus RTU：115200、8N1，功能码 04（读输入寄存器）和 16（写保持寄存器）。从站号：左手 `0x28`，右手 `0x27`，必须与 `direction` 对应。串口用 `serial_port:=/dev/ttyUSB0`。
+`end_effector_hardware` 驱动，Modbus RTU：115200、8N1，功能码 04（读输入寄存器）和 16（写保持寄存器）。从站号：左手 `0x28`，右手 `0x27`，必须与 `direction` 对应。串口用 `serial_port:=/dev/ttyUSB0`。
 
 连接超时的排查：
 

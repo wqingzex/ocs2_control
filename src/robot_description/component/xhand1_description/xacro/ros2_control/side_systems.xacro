@@ -109,7 +109,7 @@
     <xacro:side_ros2_control_system name="xhand1_${side}_system" rw_rate="${rw_rate}">
       <contents>
         <hardware>
-          <plugin>modbus_hardware/XHand1RS485Hardware</plugin>
+          <plugin>end_effector_hardware/XHand1Rs485Hardware</plugin>
           <param name="serial_port">${serial_port}</param>
           <param name="baudrate">${baudrate}</param>
           <param name="host_id">${host_id}</param>

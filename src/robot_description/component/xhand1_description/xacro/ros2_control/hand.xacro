@@ -41,7 +41,7 @@
             </xacro:if>
 
             <xacro:if value="${'$(arg ros2_control_hardware_type)' == 'real'}">
-                <plugin>modbus_hardware/XHand1RS485Hardware</plugin>
+                <plugin>end_effector_hardware/XHand1Rs485Hardware</plugin>
                 <param name="serial_port">$(arg serial_port)</param>
                 <param name="baudrate">$(arg baudrate)</param>
                 <param name="host_id">$(arg host_id)</param>

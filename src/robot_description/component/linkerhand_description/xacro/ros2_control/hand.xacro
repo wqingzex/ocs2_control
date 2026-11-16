@@ -30,7 +30,7 @@
             </xacro:if>
 
             <xacro:if value="${'$(arg ros2_control_hardware_type)' == 'real'}">
-                <plugin>modbus_hardware/DexterousHandHardware</plugin>
+                <plugin>end_effector_hardware/LinkerHandRs485Hardware</plugin>
                 <param name="serial_port">/dev/ttyUSB0</param>
                 <param name="hand_type">linkerhand_$(arg type)</param>
                 <xacro:if value="${'$(arg direction)' == '1'}">

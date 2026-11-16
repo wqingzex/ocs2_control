@@ -47,7 +47,7 @@ MARVIN_FIRMWARES=(338 343)
 MARVIN_FIRMWARE_DEFAULT=343   # 和 marvin_hardware/CMakeLists.txt 的默认值一致
 # build --minimal 只编译这些包及其依赖。
 MINIMAL_PACKAGES=(
-  fiveages_w2_description juxie_hardware marvin_hardware modbus_hardware
+  fiveages_w2_description juxie_hardware marvin_hardware end_effector_hardware
   joystick_teleop keyboard_teleop xr_teleop topic_based_hardware teleop_app w2_camera w2_hand
 )
 
@@ -201,7 +201,7 @@ PY
 }
 
 # 只放行驱动实际执行的 `sudo ip link set <can> ...`，参数写死、不用通配符：
-# 腰部 jx_hardware（CAN FD），以及 hand_drive: usb_can 时手的 can_hardware（经典 CAN 1 Mbit/s）
+# 腰部 jx_hardware（CAN FD），以及 hand_drive: usb_can 时手的 end_effector_hardware（经典 CAN 1 Mbit/s）
 host_sudoers() {
   local iface file="/etc/sudoers.d/fiveages_w2-can" legacy="/etc/sudoers.d/fa-w2-can"
   if sudo test -e "${legacy}"; then  # 旧文件名写入的同一条规则：删掉，只留新文件

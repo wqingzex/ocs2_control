@@ -1,9 +1,0 @@
-<?xml version="1.0"?>
-<library path="can_hardware">
-  <class name="can_hardware/LinkerHandCanHardware" type="can_hardware::LinkerHandCanHardware" base_class_type="hardware_interface::SystemInterface">
-    <description>
-      LinkerHand dexterous hand on classic CAN (1 Mbit/s), one hand per system; hand_type selects the model
-      (linkerhand_l6). Left hand ID 0x28, right 0x27. Position feedback at 50 Hz, optional tactile.
-    </description>
-  </class>
-</library>

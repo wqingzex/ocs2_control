@@ -44,7 +44,7 @@ ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs hardware:=real type:=
 
 夹爪关节是 `left_gripper_joint` / `right_gripper_joint`，控制器是 `end_effector_controller/GripperController` 实例；`rg75` 的标定负载（`dyn_param`）已内置在 `xacro/eefs.xacro`。每条臂下面还有一个虚拟的 `<side>_tcp_offset` 坐标系（TCP 偏移，默认 0），用启动参数 `left_tcp_offset_xyz/rpy`、`right_tcp_offset_xyz/rpy` 设置，不会移动手或夹爪的模型。
 
-真机每侧独立选驱动：`left_ee_drive_type` / `right_ee_drive_type`。`hardware:=real` 默认走 `marvin`（臂体 RS485，`marvin_hardware`），`hardware:=real_usb` 默认走 `usb`（`modbus_hardware`）。`tianji_can`（臂体 CAN）只保留在 xacro 里，目前没有末端使用。
+真机每侧独立选驱动：`left_ee_drive_type` / `right_ee_drive_type`。`hardware:=real` 默认走 `marvin`（臂体 RS485，`marvin_hardware`），`hardware:=real_usb` 默认走 `usb`（`end_effector_hardware`）。`tianji_can`（臂体 CAN）只保留在 xacro 里，目前没有末端使用。
 
 ## 真机配置
 

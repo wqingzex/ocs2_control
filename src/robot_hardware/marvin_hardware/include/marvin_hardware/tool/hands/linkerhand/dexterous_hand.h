@@ -211,7 +211,7 @@ namespace marvin_hardware
             }
 
             // Convert positions to raw values (0-255) and arrange in Modbus register order
-            // According to modbus_hardware implementation: use FC 16 (Write Multiple Holding Registers)
+            // According to end_effector_hardware implementation: use FC 16 (Write Multiple Holding Registers)
             // Only write position registers (0x0000-0x0005 for 6-DOF, 0x0000-0x0006 for 7-DOF)
             // Note: positions[] array order matches mapJointNameToIndex() return order, which should match Modbus register order
             std::vector<uint16_t> raw_positions(JOINT_COUNT, 0);

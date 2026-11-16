@@ -4,7 +4,7 @@
 
 ## 作用
 
-`modbus_hardware` 和 `marvin_hardware` 都要驱动不同品牌的夹爪，位置换算、Modbus 寄存器、重复指令过滤这些逻辑放在这里，避免每个驱动各抄一份。
+`end_effector_hardware` 和 `marvin_hardware` 都要驱动不同品牌的夹爪，位置换算、Modbus 寄存器、重复指令过滤这些逻辑放在这里，避免每个驱动各抄一份。
 
 ## 内容
 

@@ -193,7 +193,7 @@ robot_launch ──启动──▶ ros2_control_node（进程，ros2_control 自
     robot_comm_modbus   485   → Modbus 夹爪、灵巧手
     robot_comm_core     接口（CanBus / SerialPort / ModbusMaster）
 
-硬件插件：marvin_hardware（臂）、juxie_hardware（腰、头）、modbus_hardware（末端）、
+硬件插件：marvin_hardware（臂）、juxie_hardware（腰、头）、end_effector_hardware（末端）、
           topic_based_hardware（仿真）、rokae_hardware（Rokae）
 Marvin 臂体走天机 SDK，不经 comm（工具口 485 也走 SDK 的异步收发）
 ```

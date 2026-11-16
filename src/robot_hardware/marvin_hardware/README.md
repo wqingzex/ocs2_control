@@ -4,7 +4,7 @@
 
 ## 作用
 
-fiveages_w2 和 M6 的双臂用它（URDF 里的 `M6_CCS_System`）。双臂时左臂走 A 通道，右臂走 B 通道。独立 USB 转接的末端不走本包，用 [`modbus_hardware`](../modbus_hardware/README.md)。
+fiveages_w2 和 M6 的双臂用它（URDF 里的 `M6_CCS_System`）。双臂时左臂走 A 通道，右臂走 B 通道。独立 USB 转接的末端不走本包，用 [`end_effector_hardware`](../end_effector_hardware/README.md)。
 
 ## 使用
 

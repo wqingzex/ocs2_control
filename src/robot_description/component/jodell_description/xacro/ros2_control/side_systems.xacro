@@ -7,7 +7,7 @@
     <xacro:side_ros2_control_system name="jodell_${side}_system" rw_rate="${rw_rate}">
       <contents>
         <hardware>
-          <plugin>modbus_hardware/ModbusHardware</plugin>
+          <plugin>end_effector_hardware/GripperModbusHardware</plugin>
           <param name="gripper_type">jodell</param>
           <param name="serial_port">${serial_port}</param>
         </hardware>

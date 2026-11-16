@@ -7,7 +7,7 @@
     <xacro:side_ros2_control_system name="changingtek_${side}_system" rw_rate="${rw_rate}">
       <contents>
         <hardware>
-          <plugin>modbus_hardware/ModbusHardware</plugin>
+          <plugin>end_effector_hardware/GripperModbusHardware</plugin>
           <param name="gripper_type">changingtek</param>
           <param name="variant">${variant}</param>
           <param name="serial_port">${serial_port}</param>

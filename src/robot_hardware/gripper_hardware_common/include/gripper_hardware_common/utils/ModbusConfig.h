@@ -235,7 +235,7 @@ namespace gripper_hardware_common
          * 
          * O7 (FC16/FC04): position 0-6, torque 7-13, speed 14-20.
          * O6/L6: position 0-5, torque 6-11, speed 12-17.
-         * Per-model start addresses are in modbus_hardware DexterousHandProductTraits.
+         * Per-model start addresses are in end_effector_hardware DexterousHandProductTraits.
          * Constants below (THUMB_PITCH_TORQUE_REG=7, etc.) are the O7 layout for legacy APIs.
          * Joint limits should be defined in URDF/Xacro or separate configuration files.
          */
@@ -351,7 +351,7 @@ namespace gripper_hardware_common
             };
         }
 
-        // Backward compatibility namespace for modbus_hardware
+        // Backward compatibility namespace for end_effector_hardware
         namespace DexterousHand
         {
             using namespace LinkerHand;

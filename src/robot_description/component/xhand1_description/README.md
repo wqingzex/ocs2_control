@@ -11,4 +11,4 @@ ros2 launch robot_visualize hand.launch.py hand:=xhand1                         
 ros2 launch robot_bringup hand.launch.py hand:=xhand1 type:=xhand1 direction:=1      # mock 控制
 ```
 
-整机上用 `type:=xhand1`，真机只支持外接 USB（RS485，`modbus_hardware`），见 [m6_ccs](../m6_ccs_description/README.md#末端执行器)。
+整机上用 `type:=xhand1`，真机只支持外接 USB（RS485，`end_effector_hardware`），见 [m6_ccs](../m6_ccs_description/README.md#末端执行器)。

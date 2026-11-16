@@ -27,7 +27,7 @@
                 <param name="initialize_commands_from_state">true</param>
             </xacro:if>
             <xacro:if value="${'$(arg ros2_control_hardware_type)' == 'real'}">
-                <plugin>modbus_hardware/ModbusHardware</plugin>
+                <plugin>end_effector_hardware/GripperModbusHardware</plugin>
                 <param name="gripper_type">changingtek</param>
             </xacro:if>
         </hardware>
