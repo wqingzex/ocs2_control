@@ -4,7 +4,7 @@
 
 | 文件 | 作用 |
 |---|---|
-| `robot.local.yaml` | 这台机器的配置：启动什么、硬件参数。`scripts/start.sh`、`scripts/setup.sh`、遥操作和推理都读它 |
+| `robot.local.yaml` | 这台机器的配置：启动什么、硬件参数。`scripts/start.sh`、`scripts/setup.sh`、遥操作和推理都读它。**不进 git**，每台机器各自一份；新机器上 `./scripts/setup.sh` 会从模板生成 |
 | `robot.template.yaml` | 模板，复制成 `robot.local.yaml` 后修改，只写与默认值不同的项 |
 | `ros_env.sh` | 可选，不进 git：`RMW_IMPLEMENTATION`、`ROS_DOMAIN_ID`、Zenoh 配置；双击启动的控制台也会读 |
 
