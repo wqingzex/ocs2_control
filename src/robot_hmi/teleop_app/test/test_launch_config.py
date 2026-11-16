@@ -244,6 +244,19 @@ def test_check_cli_reports_errors_and_success(tmp_path, capsys):
     assert "whole_body.launch.py" in out and "hardware:=real_usb" in out
 
 
+@pytest.mark.parametrize("robot,expected", [
+    ("{hand: linkerhand_l6, hand_drive: usb_can}", "USB-CAN"),
+    ("{hand: wuji_hand2, hand_drive: ethernet}", "以太网"),
+    ("{hand: linkerhand_l6, hand_drive: usb}", "尚未确认"),
+])
+def test_check_reports_hand_confirmation_by_wiring(tmp_path, capsys, robot, expected):
+    cfg = tmp_path / "robot.yaml"
+    cfg.write_text(f"robot: {robot}\ncameras: {{enable: false}}\nxr: {{start_pc_service: false}}\n")
+    assert check_main([str(cfg), str(tmp_path)]) == 0
+    line = next(l for l in capsys.readouterr().out.splitlines() if "左右手实物" in l)
+    assert expected in line
+
+
 def test_package_template_matches_schema():
     with open(os.path.join(HERE, "..", "config", "teleop.yaml"), encoding="utf-8") as handle:
         raw = yaml.safe_load(handle)

@@ -56,12 +56,18 @@ def main(argv=None) -> int:
     import w2_camera.camera_setup, w2_hand.hand_setup  # noqa: F401  (they register how a mapping is fingerprinted)
     with open(path, encoding='utf-8') as handle:
         raw = yaml.safe_load(handle) or {}
-    for section, title, enabled in (('cameras', '相机画面与位置', bool(cams)),
-                                     ('hand', '左右手实物', cfg['robot']['hand'] != 'none')):
-        if enabled:
-            status = '已确认' if confirmed(raw, section) else '尚未确认或配置已变化'
-            command = 'cam' if section == 'cameras' else 'hand'
-            print(f"  {title}: {status}（./scripts/setup.sh {command}）")
+    from w2_payload.config_status import DEFAULT, hand_status
+    if cams:
+        status = '已确认' if confirmed(raw, 'cameras') else '尚未确认或配置已变化'
+        print(f"  相机画面与位置: {status}（./scripts/setup.sh cam）")
+    if cfg['robot']['hand'] != 'none':
+        # hand_status knows the wirings that need no confirmation (usb_can, ethernet): print its reason for those.
+        hand = hand_status(raw)
+        if hand.state == DEFAULT:
+            print(f"  左右手实物: {hand.reason}")
+        else:
+            status = '已确认' if not hand.needed else '尚未确认或配置已变化'
+            print(f"  左右手实物: {status}（./scripts/setup.sh hand）")
     return 0
 
 
