@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<library path="wuji_hardware">
+  <class name="wuji_hardware/WujiHand2Hardware"
+         type="wuji_hardware::WujiHand2Hardware"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      Ethernet ros2_control hardware interface for Wuji Hand 2 via libwuji_sdk_c (src/third_party/wuji-sdk-c).
+      Commands: position only (packed as JointCommand(p,0,0)).
+      State: position / velocity / effort.
+    </description>
+  </class>
+</library>

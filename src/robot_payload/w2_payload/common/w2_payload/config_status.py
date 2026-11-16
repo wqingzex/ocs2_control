@@ -56,6 +56,8 @@ def hand_status(raw: Dict[str, Any]) -> Status:
     robot = raw.get("robot") or {}
     if robot.get("hand", "linkerhand_l6") == "none":
         return Status(DEFAULT, "没有灵巧手（robot.hand: none）")
+    if robot.get("hand_drive") == "ethernet":
+        return Status(DEFAULT, "以太网（Wuji）：左右手由驱动扫描后按 hand_side 匹配，不用 ./scripts/setup.sh hand 确认")
     if robot.get("hand_drive") == "usb_can":
         return Status(DEFAULT, "USB-CAN：左右手按 hardware.left_ee_can_interface / right_ee_can_interface 区分，"
                                "不用 ./scripts/setup.sh hand 确认")
@@ -77,8 +79,8 @@ def dyn_status(raw: Dict[str, Any]) -> Status:
         return Status(NEEDED, f"只填写了{only}臂的负载参数，另一侧会用默认值")
     if hand == "none":
         return Status(DEFAULT, "没有末端，负载为 0")
-    if hand == "linkerhand_l6":
-        return Status(DEFAULT, "使用 linkerhand_l6 的内置辨识值")
+    if hand in ("linkerhand_l6", "wuji_hand2"):
+        return Status(DEFAULT, f"使用 {hand} 的内置辨识值")
     return Status(DEFAULT, f"{hand} 没有内置辨识值，使用驱动的默认值（0）；要更准运行 ./scripts/setup.sh dyn")
 
 

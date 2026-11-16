@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-    <!-- Map a type key (rg75, linkerhand_l6, xhand1) to per-side hand/gripper/pad properties. -->
+    <!-- Map a type key (rg75, linkerhand_l6, xhand1, wuji_hand2) to per-side hand/gripper/pad properties. -->
     <xacro:macro name="set_side_eef_types" params="side type_key">
         <xacro:property name="${side}_hand_type" value="" scope="parent"/>
         <xacro:property name="${side}_gripper_type" value="" scope="parent"/>
@@ -15,6 +15,9 @@
         </xacro:if>
         <xacro:if value="${type_key == 'xhand1'}">
             <xacro:property name="${side}_hand_type" value="xhand1" scope="parent"/>
+        </xacro:if>
+        <xacro:if value="${type_key == 'wuji_hand2'}">
+            <xacro:property name="${side}_hand_type" value="wuji_hand2" scope="parent"/>
         </xacro:if>
     </xacro:macro>
 

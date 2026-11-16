@@ -343,6 +343,8 @@ def run(request):
     side, operation, hand, drive = (request[key] for key in ('side', 'operation', 'hand', 'drive'))
     if side not in ('left', 'right') or operation not in ('probe', 'test'):
         raise ValueError('无效的手部测试请求')
+    if drive == 'ethernet' or hand == 'wuji_hand2':
+        raise ValueError('Wuji Hand 2 不在这里探测：驱动扫描后按 hand_side 认左右')
     if drive == 'usb_can':
         raise ValueError('USB-CAN 的手不在这里探测：左右手按 CAN 接口区分（hardware.left_ee_can_interface / right_ee_can_interface）')
     if hand not in ('linkerhand_l6', 'xhand1') or drive not in ('usb', '485'):

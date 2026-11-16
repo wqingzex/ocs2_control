@@ -170,6 +170,20 @@ def test_usb_can_is_only_for_l6():
         make_cfg(robot={"hand": "xhand1", "hand_drive": "usb_can"})
 
 
+def test_wuji_uses_real_hardware_and_ethernet_drive():
+    _, args = controller_launch(make_cfg(robot={"hand": "wuji_hand2", "hand_drive": "ethernet"}),
+                                "/ws/config/robot.local.yaml")
+    assert args["hardware"] == "real"
+    assert args["type"] == "wuji_hand2"
+    assert args["xacro_left_ee_drive_type"] == args["xacro_right_ee_drive_type"] == "ethernet"
+
+
+@pytest.mark.parametrize("hand,drive", [("wuji_hand2", "usb"), ("linkerhand_l6", "ethernet")])
+def test_ethernet_and_wuji_go_together(hand, drive):
+    with pytest.raises(ConfigError, match="wuji_hand2 needs 'ethernet'"):
+        make_cfg(robot={"hand": hand, "hand_drive": drive})
+
+
 def test_mock_hardware_has_no_drive_args():
     _, args = controller_launch(make_cfg(robot={"hardware": "mock_components"}), "/ws/config/robot.local.yaml")
     assert args["hardware"] == "mock_components"

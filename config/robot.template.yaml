@@ -5,8 +5,8 @@
 
 robot:
   entry: whole_body
-  hand: linkerhand_l6       # none | linkerhand_l6 | xhand1（xhand1 只支持 usb）
-  hand_drive: usb           # usb（485 转 USB 接电脑）| "485"（接机械臂 485 接口）| usb_can（USB-CAN，只支持 linkerhand_l6）
+  hand: linkerhand_l6       # none | linkerhand_l6 | xhand1 | wuji_hand2（xhand1 只支持 usb，wuji_hand2 只支持 ethernet）
+  hand_drive: usb           # usb（485 转 USB 接电脑）| "485"（接机械臂 485 接口）| usb_can（USB-CAN，只支持 linkerhand_l6）| ethernet（wuji_hand2）
   hardware: real
 
 xr:

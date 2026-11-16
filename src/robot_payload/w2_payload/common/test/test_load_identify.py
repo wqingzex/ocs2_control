@@ -88,6 +88,7 @@ def test_cameras_and_hand_are_ready_only_with_a_matching_receipt():
     assert camera_status({"cameras": {"enable": False}}).state == DEFAULT
     assert hand_status({"robot": {"hand": "none"}}).state == DEFAULT
     assert hand_status({"robot": {"hand": "linkerhand_l6", "hand_drive": "usb_can"}}).state == DEFAULT
+    assert hand_status({"robot": {"hand": "wuji_hand2", "hand_drive": "ethernet"}}).state == DEFAULT
 
 
 def test_nothing_is_identified_by_default(tmp_path):

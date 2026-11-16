@@ -375,7 +375,7 @@ def create_eef_side_launch_arguments():
         DeclareLaunchArgument(
             "left_type",
             default_value="",
-            description="Left end-effector type key (linkerhand_l6, xhand1). "
+            description="Left end-effector type key (linkerhand_l6, xhand1, wuji_hand2). "
             "Use with right_type for asymmetric setups; do not pass type:=.",
         ),
         DeclareLaunchArgument(

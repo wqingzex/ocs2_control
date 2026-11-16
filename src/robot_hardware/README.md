@@ -9,6 +9,7 @@
 | [`juxie_hardware`](juxie_hardware/README.md) | JX 关节模组（腰、头） | `can` | 是：腰、头 |
 | [`modbus_hardware`](modbus_hardware/README.md) | 外接 USB / RS485 的夹爪、灵巧手、力传感器 | `modbus`、`serial` | 是：外接末端 |
 | [`can_hardware`](can_hardware/README.md) | 接在 CAN 上的灵巧手（目前 LinkerHand L6） | `can` | 是：L6 走 USB-CAN 时 |
+| [`wuji_hardware`](wuji_hardware/README.md) | 舞肌 Wuji Hand 2 | `sdk`（以太网，`third_party/wuji-sdk-c`） | 否（`robot.hand: wuji_hand2` 时） |
 | [`gripper_hardware_common`](gripper_hardware_common/README.md) | 夹爪驱动共用的寄存器表、单位换算、`GripperBase` | （设备层，无通信） | 被上面的驱动使用 |
 | [`topic_based_hardware`](topic_based_hardware/README.md) | 仿真：通过话题收发，对接 Isaac 等 | `topic` | 是：Isaac 仿真 |
 | [`comm/`](comm/README.md) 下的 `robot_comm_core`、`robot_comm_can`、`robot_comm_serial`、`robot_comm_modbus` | 通信层（见下） | — | 被驱动使用 |

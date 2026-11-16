@@ -14,8 +14,8 @@ import yaml
 ROTATIONS = (0, 90, 180, 270)
 ROLES = ("head", "left_wrist", "right_wrist")  # camera positions
 SERIAL_RE = re.compile(r"^[A-Za-z0-9._:-]*$")
-HANDS = ("none", "linkerhand_l6", "xhand1")
-HAND_DRIVES = ("usb", "485", "usb_can")  # usb: USB-RS485 on the PC; 485: the arm's RS485; usb_can: USB-CAN (L6)
+HANDS = ("none", "linkerhand_l6", "xhand1", "wuji_hand2")
+HAND_DRIVES = ("usb", "485", "usb_can", "ethernet")  # usb: USB-RS485 on the PC; 485: the arm's RS485; usb_can: USB-CAN (L6); ethernet: Wuji
 HARDWARE = ("real", "mock_components", "isaac")
 
 DEFAULTS: Dict[str, Any] = {
@@ -132,6 +132,8 @@ def _check_robot(robot: Dict[str, Any]) -> None:
            "'robot.hand_drive': xhand1 only supports 'usb' (no Tianji 485 mode)")
     expect(not (robot["hand_drive"] == "usb_can" and robot["hand"] != "linkerhand_l6"),
            "'robot.hand_drive': usb_can is only supported for linkerhand_l6")
+    expect((robot["hand"] == "wuji_hand2") == (robot["hand_drive"] == "ethernet") or robot["hand"] == "none",
+           "'robot.hand_drive': wuji_hand2 needs 'ethernet', and 'ethernet' is only for wuji_hand2")
 
 
 def _check_cameras(cams: Dict[str, Any]) -> None:

@@ -151,6 +151,12 @@ def test_usb_can_is_not_confirmed_in_the_setup_tool(hand):
     assert not hand.calls
 
 
+def test_wuji_is_not_confirmed_in_the_setup_tool(hand):
+    with pytest.raises(ValueError, match='Wuji'):
+        hand.update({'draft': {**hand.draft, 'hand': 'wuji_hand2', 'drive': 'ethernet'}})
+    assert not hand.calls
+
+
 def test_cancelled_session_cannot_commit(hand, config):
     prepare_hand(hand)
     hand.cancel()

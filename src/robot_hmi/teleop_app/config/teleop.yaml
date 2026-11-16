@@ -4,8 +4,8 @@
 
 robot:
   entry: whole_body         # whole_body (fiveages_w2 whole body, WBC) | split_body (fiveages_w2 split body) | dual_arm (M6-CCS dual arm)
-  hand: linkerhand_l6       # none | linkerhand_l6 | xhand1
-  hand_drive: usb           # usb（485 转 USB 接电脑）| "485"（接机械臂 485 接口）| usb_can（USB-CAN）；xhand1 只能 usb，usb_can 只支持 linkerhand_l6
+  hand: linkerhand_l6       # none | linkerhand_l6 | xhand1 | wuji_hand2
+  hand_drive: usb           # usb（485 转 USB 接电脑）| "485"（接机械臂 485 接口）| usb_can（USB-CAN）| ethernet（Wuji）；xhand1 只能 usb，usb_can 只支持 linkerhand_l6，wuji_hand2 只能 ethernet
   hardware: real            # real | mock_components | isaac
 
 xr:

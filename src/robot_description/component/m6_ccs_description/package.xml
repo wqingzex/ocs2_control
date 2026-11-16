@@ -16,6 +16,7 @@
     <exec_depend>jodell_description</exec_depend>
     <exec_depend>linkerhand_description</exec_depend>
     <exec_depend>xhand1_description</exec_depend>
+    <exec_depend>wuji_description</exec_depend>
 
     <export>
         <build_type>ament_cmake</build_type>

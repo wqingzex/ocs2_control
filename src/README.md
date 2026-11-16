@@ -12,7 +12,7 @@
 | [`robot_payload/`](robot_payload/README.md) | 外部设备，一个设备一个包：相机、手（`w2_payload/`），XR 头显、手柄、键盘（`input/`） |
 | [`robot_runtime/`](robot_runtime/README.md) | 进程管理：单元、监管器（启动、停止、监控、日志）、运行状态文件，不认识具体设备 |
 | [`robot_log/`](robot_log/README.md) | 日志基础设施：日志模式、链路健康统计、飞行记录器（C++ 头文件），故障码和离线分析工具（Python） |
-| `third_party/` | 子模块：`ocs2_ros2`（固定在 `ae75126f0`）、`OrbbecSDK_ROS2`；以及 `kh_ucanfd_sdk`（腰部 USB-CANFD 驱动） |
+| `third_party/` | 外部代码和厂家 SDK，见 [`third_party/README.md`](third_party/README.md)：子模块 `ocs2_ros2`、`OrbbecSDK_ROS2`、天机 SDK 338 / 343；直接放入的 `kh_ucanfd_sdk`、`wuji-sdk-c` |
 
 数据流：
 
