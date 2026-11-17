@@ -47,6 +47,10 @@ namespace target_generator
           , xr_pose_scale_(xr_pose_scale)
           , reference_link_(reference_link)
     {
+        guard_limits_.enabled = node_->declare_parameter("xr_guard.enabled", guard_limits_.enabled);
+        guard_limits_.max_distance = node_->declare_parameter("xr_guard.max_target_distance", guard_limits_.max_distance);
+        guard_limits_.max_step = node_->declare_parameter("xr_guard.max_target_step", guard_limits_.max_step);
+
         // 初始化 TF 组件（用于在 reference_link 与末端 frame 之间进行坐标变换）
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -234,6 +238,8 @@ namespace target_generator
         // Following must not outlive the headset: the bases captured before the drop-out no longer match where
         // the headset (and its origin) is after it returns, so resuming would send a far-away target.
         // The next toggleFollow() recaptures both bases.
+        last_accepted_left_.reset();
+        last_accepted_right_.reset();
         if (is_update_mode_.exchange(false))
         {
             RCLCPP_WARN(node_->get_logger(),
@@ -331,6 +337,7 @@ namespace target_generator
         {
             followArm("left", left_position_, left_orientation_, xr_base_left_position_, xr_base_left_orientation_,
                       xr_base_left_frame_, left_base_position_, left_base_orientation_,
+                      left_current_position_, last_accepted_left_,
                       prev_calculated_left_position_, prev_calculated_left_orientation_);
         }
     }
@@ -357,6 +364,7 @@ namespace target_generator
         {
             followArm("right", right_position_, right_orientation_, xr_base_right_position_, xr_base_right_orientation_,
                       xr_base_right_frame_, right_base_position_, right_base_orientation_,
+                      right_current_position_, last_accepted_right_,
                       prev_calculated_right_position_, prev_calculated_right_orientation_);
         }
     }
@@ -366,6 +374,8 @@ namespace target_generator
                                    const Eigen::Vector3d& xrBasePos, const Eigen::Quaterniond& xrBaseOri,
                                    const Eigen::Quaterniond& xrBaseFrame,
                                    const Eigen::Vector3d& robotBasePos, const Eigen::Quaterniond& robotBaseOri,
+                                   const Eigen::Vector3d& robotCurrentPos,
+                                   std::optional<Eigen::Vector3d>& lastAcceptedPos,
                                    Eigen::Vector3d& prevPos, Eigen::Quaterniond& prevOri)
     {
         // 更新模式（UPDATE）：目标 = 进入跟随时的机器人位姿 + 手柄自那时起的位移和转动
@@ -373,6 +383,22 @@ namespace target_generator
         Eigen::Quaterniond calculatedOri;
         calculatePoseFromDifference(xrPos, xrOri, xrBasePos, xrBaseOri, xrBaseFrame, robotBasePos, robotBaseOri,
                                     calculatedPos, calculatedOri);
+
+        // 守卫：不论来源（头显毛刺、跟踪原点移动、坏帧），一帧目标不能把手臂拽远。
+        // 丢弃的帧不更新参考，所以之后回到正常范围的帧仍会被接受。
+        const auto verdict = checkTarget(guard_limits_, calculatedPos, calculatedOri, robotCurrentPos, lastAcceptedPos);
+        if (verdict != TargetVerdict::Accept)
+        {
+            RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                 "[TEL-002] %s target dropped (%s): target (%.3f, %.3f, %.3f), end effector (%.3f, %.3f, %.3f), "
+                                 "%.3f m from the end effector (limit %.3f), %.3f m from the previous target (limit %.3f)",
+                                 arm.c_str(), toString(verdict), calculatedPos.x(), calculatedPos.y(), calculatedPos.z(),
+                                 robotCurrentPos.x(), robotCurrentPos.y(), robotCurrentPos.z(),
+                                 (calculatedPos - robotCurrentPos).norm(), guard_limits_.max_distance,
+                                 lastAcceptedPos ? (calculatedPos - *lastAcceptedPos).norm() : 0.0, guard_limits_.max_step);
+            return;
+        }
+        lastAcceptedPos = calculatedPos;
         // 只在位姿有明显变化时发布，避免目标话题刷屏
         if (!hasPoseChanged(calculatedPos, calculatedOri, prevPos, prevOri))
         {
@@ -915,6 +941,8 @@ namespace target_generator
             // 切换到更新模式：以当前手柄位姿和机器人位姿为基准，之后手柄的位移和转动驱动机器人
             captureLeftBase();
             captureRightBase();
+            last_accepted_left_.reset();
+            last_accepted_right_.reset();
             is_update_mode_.store(true);
             RCLCPP_INFO(node_->get_logger(), "🔘 [右摇杆按钮] 按下 - 功能: 切换跟随 - 操作: 切换到UPDATE模式（已存储基准位姿，双臂开始跟随）");
             RCLCPP_DEBUG_THROTTLE(node_->get_logger(), *node_->get_clock(), 500,

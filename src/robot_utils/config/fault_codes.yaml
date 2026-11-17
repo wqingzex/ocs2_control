@@ -67,6 +67,14 @@
   check: xr 模块是否在运行（控制台“XR”）；节点名是否仍是 xr_target_node
   source: {file: src/robot_control/target_generator/src/XrInputHandler.cpp, match: "xr_target_node not found, XR control DISABLED"}
 
+- code: TEL-002
+  class: M
+  title: XR 目标被守卫丢弃（离末端太远，或相邻两帧跳变太大，或含非有限值）
+  behavior: 记 WARN（每秒一条），只丢这一帧目标，机械臂不动；跟随状态不变，回到范围内的下一帧照常接受
+  check: 日志里的 target / end effector / 两个距离和上限；掉线恢复后头显原点是否移动；头显是否丢追踪；持续出现说明跟随基准已作废，右摇杆按两下重新开始跟随
+  escalation: 现在只丢帧不停机。参数 xr_guard.max_target_distance（默认 0.3 m）、xr_guard.max_target_step（默认 0.05 m）可调，xr_guard.enabled=false 关闭距离和跳变检查（非有限值仍会丢弃）
+  source: {file: src/robot_control/target_generator/src/XrInputHandler.cpp, match: "[TEL-002]"}
+
 - code: CTL-001
   class: M
   title: MPC 单次求解超过控制周期

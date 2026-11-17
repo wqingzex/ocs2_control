@@ -9,6 +9,13 @@
     # XR手柄位姿缩放因子（左右共用，范围建议 [0.75, 1.5]）
     xr_pose_scale: 1.0
     
+    # XR 目标守卫：丢弃离末端太远、或相邻两帧跳变太大的目标，并记 [TEL-002]（只丢这一帧，不停机）
+    xr_guard.enabled: true
+    # 目标到当前末端的距离上限（m）
+    xr_guard.max_target_distance: 0.3
+    # 相邻两个通过守卫的目标之间的距离上限（m）
+    xr_guard.max_target_step: 0.05
+
     # 是否启用XR输入处理
     enable_xr: false
 

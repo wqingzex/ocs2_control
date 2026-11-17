@@ -288,6 +288,56 @@ TEST_F(XrInputHandlerTest, followingDoesNotResumeByItselfAfterTheHeadsetDropsOut
     }
 }
 
+// Whatever the source (headset glitch, tracking origin moved, bad frame), one frame must not drag the arm far:
+// a target far from the end effector, or a big step from the previous target, is dropped.
+TEST_F(XrInputHandlerTest, aTargetFarFromTheArmIsDropped)
+{
+    fsmIs(kOcs2);
+    press(kToggleFollow);
+    moveLeftController(2.0, 1.0, 0.0);  // arm is at (0.30, 0.20, 0.40): the target would be ~2.3 m away
+    // (A stale frame from SetUp may still produce a target at the arm itself, so look at what was sent, not how many.)
+    for (const auto& target : left_targets_)
+    {
+        EXPECT_LT(target.position.x, 1.0) << "a target 2 m away was sent";
+    }
+}
+
+TEST_F(XrInputHandlerTest, aBigStepFromThePreviousTargetIsDroppedAndTheNextSmallOneIsKept)
+{
+    fsmIs(kOcs2);
+    press(kToggleFollow);
+    moveLeftController(0.04, 0.0, 0.0);
+    ASSERT_FALSE(left_targets_.empty());
+    EXPECT_NEAR(left_targets_.back().position.x, 0.34, 1e-6);
+
+    moveLeftController(0.14, 0.0, 0.0);  // +10 cm in one frame, still within reach of the arm
+    for (const auto& target : left_targets_)
+    {
+        EXPECT_LT(target.position.x, 0.40) << "a 10 cm step was sent";
+    }
+
+    moveLeftController(0.08, 0.0, 0.0);  // +4 cm from the last accepted target
+    EXPECT_NEAR(left_targets_.back().position.x, 0.38, 1e-6);
+}
+
+TEST_F(XrInputHandlerTest, theStepReferenceStartsOverWhenFollowingIsStartedAgain)
+{
+    fsmIs(kOcs2);
+    press(kToggleFollow);
+    moveLeftController(0.04, 0.0, 0.0);  // last target of this session: (0.34, 0.20, 0.40)
+    ASSERT_FALSE(left_targets_.empty());
+    EXPECT_NEAR(left_targets_.back().position.x, 0.34, 1e-6);
+
+    press(kToggleFollow);  // stop
+    moveLeftController(0.0, 0.0, 0.0);
+    press(kToggleFollow);  // start again, base = controller now
+    left_targets_.clear();
+    moveLeftController(0.0, 0.04, 0.0);  // new target (0.30, 0.24, 0.40) is 5.6 cm from the old one, 4 cm from the arm
+    ASSERT_FALSE(left_targets_.empty());
+    EXPECT_NEAR(left_targets_.back().position.y, 0.24, 1e-6)
+        << "the previous session's target was used as the step reference";
+}
+
 TEST_F(XrInputHandlerTest, leavingOcs2StopsFollowingAndNeedsTheStickAgain)
 {
     fsmIs(kOcs2);

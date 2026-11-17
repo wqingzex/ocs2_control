@@ -26,6 +26,8 @@
 #include <tf2_ros/transform_listener.hpp>
 #include "target_generator/TargetGenerator.h"
 #include "target_generator/xr_alignment.h"
+#include "target_generator/target_guard.h"
+#include <optional>
 #include "robot_controller_core/FSMCommandPublisher.h"
 
 namespace target_generator
@@ -165,6 +167,7 @@ namespace target_generator
                        const Eigen::Vector3d& xrBasePos, const Eigen::Quaterniond& xrBaseOri,
                        const Eigen::Quaterniond& xrBaseFrame,
                        const Eigen::Vector3d& robotBasePos, const Eigen::Quaterniond& robotBaseOri,
+                       const Eigen::Vector3d& robotCurrentPos, std::optional<Eigen::Vector3d>& lastAcceptedPos,
                        Eigen::Vector3d& prevPos, Eigen::Quaterniond& prevOri);
 
         /**
@@ -304,6 +307,12 @@ namespace target_generator
         Eigen::Quaterniond prev_calculated_left_orientation_ = Eigen::Quaterniond::Identity();
         Eigen::Vector3d prev_calculated_right_position_ = Eigen::Vector3d::Zero();
         Eigen::Quaterniond prev_calculated_right_orientation_ = Eigen::Quaterniond::Identity();
+
+        // 目标守卫（见 target_guard.h）：丢弃离末端太远、或相邻两帧跳变太大的目标
+        TargetGuardLimits guard_limits_;
+        // 本次跟随里最近一个通过守卫的目标；开始/停止跟随、XR 掉线时清空，下一帧只做距离检查
+        std::optional<Eigen::Vector3d> last_accepted_left_;
+        std::optional<Eigen::Vector3d> last_accepted_right_;
 
         // 状态管理
         std::atomic<bool> enabled_;
