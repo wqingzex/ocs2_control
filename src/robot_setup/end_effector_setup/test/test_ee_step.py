@@ -5,9 +5,9 @@ import pytest
 import yaml
 
 from end_effector_setup import session as ee_setup
-from robot_config import config_edit
+from robot_config import config_file
 from robot_config.testing import full_config
-from robot_config.device_setup import Io
+from robot_config.setup_steps import Io
 
 SCAN = """\
 [INFO] [1.0] [list_device_node]: SDK file log enabled: false
@@ -60,7 +60,7 @@ def test_hand_step_uses_window_and_preserves_cancelled_config(ws_root):
         seen.append(session.draft)
         return False
     assert not ee_setup.step_ee(path, str(ws_root), answers, ports=lambda: ["/dev/ttyUSB1", "/dev/ttyUSB3"], runner=window)
-    _, prof = config_edit.load_rt(path)
+    _, prof = config_file.load_rt(path)
     interface = prof["robot"]["end_effector"]["interface"]
     assert interface["left"]["port"] == "/dev/ttyUSB0" and interface["right"]["port"] == "/dev/ttyUSB2"
     assert seen[0]['left_port'] == '/dev/ttyUSB1' and seen[0]['right_port'] == '/dev/ttyUSB3'
@@ -75,7 +75,7 @@ def test_hand_unattended_first_confirmation_is_rejected(ws_root):
 
 def test_arm_rs485_is_the_485_wiring_in_the_native_window(ws_root):
     path = str(ws_root / "config/robot.local.yaml")
-    config_edit.set_fields(path, "robot.end_effector.interface", {"bus": "arm_rs485"})
+    config_file.set_fields(path, "robot.end_effector.interface", {"bus": "arm_rs485"})
     seen = []
     def window(session, io):
         seen.append(session.draft['drive'])

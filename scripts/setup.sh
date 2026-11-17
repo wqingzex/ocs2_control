@@ -362,7 +362,7 @@ step_marvin() {
   is_marvin_firmware "${choice}" || die "天机臂 SDK 版本只能是 338 或 343，输入的是 '${choice}'"
   PYTHONPATH="${SETUP_PYTHONPATH}:${PYTHONPATH:-}" python3 - "${CONFIG}" "${choice}" <<'PY'
 import sys
-from robot_config.config_edit import set_fields
+from robot_config.config_file import set_fields
 set_fields(sys.argv[1], "robot.arm.interface", {"firmware": int(sys.argv[2])})
 PY
   info "已写入 robot.arm.interface.firmware: ${choice}（之后编译 marvin_hardware 都用这个版本）"

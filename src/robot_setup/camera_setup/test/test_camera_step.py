@@ -4,8 +4,8 @@ import io
 import pytest
 
 from camera_setup import discovery as devices, session as camera_setup
-from robot_config import config_edit
-from robot_config.device_setup import Io
+from robot_config import config_file
+from robot_config.setup_steps import Io
 
 SCAN = """\
 [INFO] [1.0] [list_device_node]: SDK file log enabled: false
@@ -95,7 +95,7 @@ def test_camera_step_cannot_confirm_first_setup_unattended(ws_root):
     ok = camera_setup.step_cameras(path, str(ws_root), camera_setup.Io(assume_yes=True, out=io.StringIO()),
                                  scanner=lambda: devices.parse_list_devices(SCAN))
     assert not ok
-    serials = config_edit.camera_serials(path)
+    serials = config_file.camera_serials(path)
     assert not any(serials.values())
 
 
@@ -125,7 +125,7 @@ def test_camera_step_releases_own_resources_when_window_fails(ws_root):
         camera_setup.step_cameras(path, str(ws_root), ScriptedIo([]),
                                scanner=lambda: devices.parse_list_devices(SCAN), runner=window)
     assert closed == [True]
-    assert config_edit.camera_serials(path)["head"] == ""
+    assert config_file.camera_serials(path)["head"] == ""
 
 
 def test_unattended_camera_step_does_not_save_when_a_camera_is_missing(ws_root):
@@ -134,7 +134,7 @@ def test_unattended_camera_step_does_not_save_when_a_camera_is_missing(ws_root):
     out = io.StringIO()
     assert not camera_setup.step_cameras(path, str(ws_root), camera_setup.Io(assume_yes=True, out=out),
                                        scanner=lambda: two)
-    assert config_edit.camera_serials(path)["head"] == ""  # nothing written
+    assert config_file.camera_serials(path)["head"] == ""  # nothing written
     assert "2" in out.getvalue() and "未保存" in out.getvalue()
 
 
@@ -194,16 +194,16 @@ def test_camera_failure_prints_single_step_retry_command(ws_root, monkeypatch, c
 
 def test_camera_setup_does_not_enable_disabled_cameras_when_cancelled(ws_root):
     path = str(ws_root / "config/robot.local.yaml")
-    config_edit.set_fields(path, "cameras", {"enable": False})
+    config_file.set_fields(path, "cameras", {"enable": False})
     answers = ScriptedIo(["y"])
     assert not camera_setup.step_cameras(path, str(ws_root), answers,
                                       scanner=lambda: devices.parse_list_devices(SCAN), runner=lambda *args: False)
-    _, data = config_edit.load_rt(path)
+    _, data = config_file.load_rt(path)
     assert data["cameras"]["enable"] is False
 
 
 def test_disabled_cameras_require_explicit_skip(ws_root):
     path = str(ws_root / "config/robot.local.yaml")
-    config_edit.set_fields(path, "cameras", {"enable": False})
+    config_file.set_fields(path, "cameras", {"enable": False})
     assert camera_setup.step_cameras(path, str(ws_root), ScriptedIo(["n"]),
                                   scanner=lambda: pytest.fail("user chose not to configure cameras"))

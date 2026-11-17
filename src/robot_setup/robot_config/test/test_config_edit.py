@@ -1,7 +1,7 @@
 """Config editing keeps comments and unrelated fields."""
 import pytest
 
-from robot_config import config_edit
+from robot_config import config_file
 
 SCAN = """\
 [INFO] [1.0] [list_device_node]: SDK file log enabled: false
@@ -55,18 +55,18 @@ def ws_root(tmp_path):
 
 def test_camera_edit_keeps_comments_and_other_fields(ws_root):
     path = str(ws_root / "config" / "robot.local.yaml")
-    config_edit.set_cameras(path, {"head": {"serial": "CP1", "usb_port": "2-1"}, "left_wrist": {"enable": False}})
+    config_file.set_cameras(path, {"head": {"serial": "CP1", "usb_port": "2-1"}, "left_wrist": {"enable": False}})
     text = (ws_root / "config" / "robot.local.yaml").read_text(encoding="utf-8")
     assert "# 本机遥操作配置（注释必须保留）" in text and "# 末端" in text and "# Gemini 335Lg" in text
-    assert config_edit.camera_serials(path) == {"head": "CP1", "left_wrist": "", "right_wrist": ""}
-    _, data = config_edit.load_rt(path)
+    assert config_file.camera_serials(path) == {"head": "CP1", "left_wrist": "", "right_wrist": ""}
+    _, data = config_file.load_rt(path)
     assert data["cameras"]["left_wrist"]["enable"] is False
     assert data["robot"]["entry"] == "split_body"
 
 
 def test_unknown_role_is_rejected(ws_root):
     with pytest.raises(ValueError, match="未知相机角色"):
-        config_edit.set_cameras(str(ws_root / "config" / "robot.local.yaml"), {"tail": {"serial": "x"}})
+        config_file.set_cameras(str(ws_root / "config" / "robot.local.yaml"), {"tail": {"serial": "x"}})
 
 
 def test_saving_keeps_the_mode_of_the_file(tmp_path):
@@ -74,6 +74,6 @@ def test_saving_keeps_the_mode_of_the_file(tmp_path):
     path = tmp_path / "robot.yaml"
     path.write_text("robot: {entry: whole_body}\n")
     os.chmod(path, 0o664)
-    config_edit.set_fields(str(path), "robot", {"hardware": "real"})
+    config_file.set_fields(str(path), "robot", {"hardware": "real"})
     assert (os.stat(path).st_mode & 0o777) == 0o664
 

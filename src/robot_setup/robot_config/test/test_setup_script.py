@@ -151,7 +151,7 @@ def _merge(target, values):
 def configured_config(**overrides):
     """A complete config whose camera and hand mappings carry valid confirmation receipts and a paired headset."""
     import yaml
-    from robot_config.config_edit import receipt
+    from robot_config.config_file import receipt
     from robot_config.testing import full_config
     raw = full_config(cameras={"head": {"serial": "A"}, "left_wrist": {"serial": "B"}, "right_wrist": {"serial": "C"}},
                       xr={"device_id": "PICO-1"}, robot={"arm": {"interface": {"firmware": 338}}})
@@ -187,7 +187,7 @@ def test_a_single_step_always_runs_even_when_it_is_configured(tmp_path, step, ex
 def test_a_half_filled_load_is_not_a_usable_default(tmp_path):
     text = configured_config(robot={"end_effector": {"dyn_param": {"left": [1.0] * 10}}})
     result, steps = run_init(tmp_path, container=True, config_text=text)
-    assert steps == ["deps", "sdk", "build", "dyn", "summary"]  # the reason (only the left arm is filled) is config_status's, tested there
+    assert steps == ["deps", "sdk", "build", "dyn", "summary"]  # the reason (only the left arm is filled) is config_file's, tested there
 
 
 def test_simulation_and_no_hand_need_no_load_identification(tmp_path):

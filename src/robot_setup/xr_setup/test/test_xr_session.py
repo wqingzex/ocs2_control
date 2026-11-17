@@ -4,10 +4,10 @@ import io
 import pytest
 import yaml
 
-from robot_config import config_edit
+from robot_config import config_file
 from robot_config.config import section_defaults
 from robot_config.testing import full_config
-from robot_config.device_setup import Io
+from robot_config.setup_steps import Io
 from xr_setup import session as pairing
 
 def config_text(**xr):
@@ -87,7 +87,7 @@ def test_xr_step_can_enable_and_verify_pairing(ws_root, connected_xr):
     path = ws_root / "config/robot.local.yaml"
     path.write_text(config_text(enable=False, start_pc_service=False), encoding="utf-8")
     assert pairing.step_xr(str(path), str(ws_root), ScriptedIo(["y"]), probe_factory=ConnectedProbe)
-    _, data = config_edit.load_rt(str(path))
+    _, data = config_file.load_rt(str(path))
     assert data["xr"]["enable"] is True
     assert data["xr"]["network_mode"] == "ethernet"
     assert data["xr"]["network_interface"] == "eth0"
@@ -147,7 +147,7 @@ def test_xr_does_not_pair_without_device_identity(ws_root, connected_xr, monkeyp
     path = ws_root / "config/robot.local.yaml"
     path.write_text(config_text(start_pc_service=False), encoding="utf-8")
     assert not pairing.step_xr(str(path), str(ws_root), ScriptedIo([]), timeout_s=0.01, probe_factory=probe)
-    _, raw = config_edit.load_rt(str(path))
+    _, raw = config_file.load_rt(str(path))
     assert not raw["xr"].get("device_id")
 
 
@@ -159,7 +159,7 @@ def test_failed_rebinding_preserves_previous_headset(ws_root, connected_xr, monk
     path.write_text(config_text(start_pc_service=False, device_id="PICO-OLD"), encoding="utf-8")
     assert not pairing.step_xr(str(path), str(ws_root), ScriptedIo(["ethernet", "y"]),
                                  timeout_s=0.01, probe_factory=probe)
-    _, raw = config_edit.load_rt(str(path))
+    _, raw = config_file.load_rt(str(path))
     assert raw["xr"]["device_id"] == "PICO-OLD"
 
 
@@ -175,7 +175,7 @@ def test_xr_network_can_select_wifi(ws_root, monkeypatch):
 
     monkeypatch.setattr(pairing, "network_addresses", addresses)
     assert pairing._xr_network(path, xr, ScriptedIo(["wifi"]))
-    _, raw = config_edit.load_rt(path)
+    _, raw = config_file.load_rt(path)
     assert modes == ["wifi"]
     assert raw["xr"]["network_mode"] == "wifi"
     assert raw["xr"]["network_interface"] == "wlan0"
@@ -191,7 +191,7 @@ def test_the_cable_to_the_arm_is_not_offered_and_the_only_other_adapter_is_taken
     assert pairing._xr_network(path, section_defaults("xr"), io)
     assert "enp4s0" not in io.out.getvalue()
     assert not any("网卡编号" in question for question, _ in io.questions)  # one adapter left: no question
-    _, raw = config_edit.load_rt(path)
+    _, raw = config_file.load_rt(path)
     assert raw["xr"]["network_interface"] == "enx1"
 
 

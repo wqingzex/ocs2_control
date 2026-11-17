@@ -6,8 +6,8 @@ import pytest
 import yaml
 
 from end_effector_setup import session as ee_setup
-from robot_config.device_setup import Io
-from robot_config import config_edit
+from robot_config.setup_steps import Io
+from robot_config import config_file
 
 from conftest import CONFIG, LEFT_BY_ID, PORTS, RIGHT_BY_ID, prepare_hand, wait_qt
 
@@ -22,7 +22,7 @@ def test_hand_requires_feedback_and_manual_confirmation(hand, config):
     hand.save({'revision': hand.revision, 'confirmed': ['left', 'right']})
     assert [call['operation'] for call in hand.calls] == ['test'] * 2 + ['probe'] * 2  # the recheck at save never moves
     raw = yaml.safe_load(config.read_text())
-    assert config_edit.confirmed(raw, 'ee')
+    assert config_file.confirmed(raw, 'ee')
     assert raw['control']['limits']['max_joint_speed'] == 17 and raw['xr']['device_id'] == 'PICO-BOUND'
 
 
@@ -39,8 +39,8 @@ def test_hand_swap_invalidates_feedback_and_confirmation(hand, config):
     hand.save({'revision': hand.revision, 'confirmed': ['left', 'right']})
     raw = yaml.safe_load(config.read_text())
     assert raw['robot']['end_effector']['interface']['left']['port'] == RIGHT_BY_ID
-    config_edit.set_usb_ports(str(config), '/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_CCCC-if00-port0', None)
-    assert not config_edit.confirmed(yaml.safe_load(config.read_text()), 'ee')
+    config_file.set_usb_ports(str(config), '/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_CCCC-if00-port0', None)
+    assert not config_file.confirmed(yaml.safe_load(config.read_text()), 'ee')
 
 
 def test_serial_devices_lists_only_by_id_serial_number_links(tmp_path, monkeypatch):
@@ -172,7 +172,7 @@ def test_unattended_setup_cannot_claim_first_hand_confirmation(config):
 
 
 def test_native_hand_window_changes_are_drafts_until_both_sides_confirm(hand, config, qt_app, monkeypatch):
-    from robot_config.device_setup import create_window
+    from robot_config.setup_steps import create_window
     from PyQt5.QtWidgets import QMessageBox
     monkeypatch.setattr(QMessageBox, 'question', lambda *args, **kwargs: QMessageBox.Yes)
     window = create_window(hand)
@@ -188,7 +188,7 @@ def test_native_hand_window_changes_are_drafts_until_both_sides_confirm(hand, co
     assert config.read_text() == CONFIG
     window.save()
     wait_qt(qt_app, window)
-    assert hand.saved and config_edit.confirmed(yaml.safe_load(config.read_text()), 'ee')
+    assert hand.saved and config_file.confirmed(yaml.safe_load(config.read_text()), 'ee')
     assert [call['operation'] for call in hand.calls] == ['test'] * 2 + ['probe'] * 2
 
 
@@ -202,7 +202,7 @@ def test_hand_disconnect_between_confirmation_and_save_does_not_write(hand, conf
 
 def test_native_hand_test_dialog_no_never_moves_a_finger(hand, qt_app, monkeypatch):
     from PyQt5.QtWidgets import QMessageBox
-    from robot_config.device_setup import create_window
+    from robot_config.setup_steps import create_window
     window = create_window(hand)
     monkeypatch.setattr(QMessageBox, 'question', lambda *args: QMessageBox.No)
     window.panel.hand_action('left', 'test')
@@ -211,7 +211,7 @@ def test_native_hand_test_dialog_no_never_moves_a_finger(hand, qt_app, monkeypat
 
 
 def test_native_window_close_discards_draft(hand, config, qt_app):
-    from robot_config.device_setup import create_window
+    from robot_config.setup_steps import create_window
     window = create_window(hand)
     window.panel.hand.setCurrentIndex(window.panel.hand.findData('none'))
     window.apply()
@@ -222,7 +222,7 @@ def test_native_window_close_discards_draft(hand, config, qt_app):
 
 def test_native_setup_event_loop_closes_without_changing_config(hand, config, qt_app, monkeypatch):
     from PyQt5 import QtCore
-    from robot_config import device_setup as setup_wizard
+    from robot_config import setup_steps as setup_wizard
     create = setup_wizard.create_window
     def auto_close(session):
         window = create(session)

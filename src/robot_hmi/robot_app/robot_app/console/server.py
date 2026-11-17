@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 
-from robot_config import config_edit
+from robot_config import config_file
 from camera_setup import discovery as devices
 from .. import navigation
 from . import health
@@ -176,7 +176,7 @@ class Console:
         if not JOYSTICK_RE.match(device):
             raise HTTPException(400, {"message": f"手柄设备应为空（自动）或 /dev/input/jsN，收到 {device!r}"})
         with self.lock:
-            config_edit.set_fields(self.config_path, "joystick", {"device": device})
+            config_file.set_fields(self.config_path, "joystick", {"device": device})
             self.reload()
             return {"selected": device}
 
@@ -251,9 +251,9 @@ class Console:
                 if not_restored:
                     message += f"；以下相机未能恢复运行，请手动启动：{'、'.join(not_restored)}"
                 raise HTTPException(500, {"message": message})
-            current = config_edit.camera_serials(self.config_path)
+            current = config_file.camera_serials(self.config_path)
             suggestion = devices.suggest_roles(devs, current)
-            _, raw = config_edit.load_rt(self.config_path)
+            _, raw = config_file.load_rt(self.config_path)
             cams = raw.get("cameras") or {}
             return {
                 "devices": [d.__dict__ for d in devs],
@@ -269,7 +269,7 @@ class Console:
             raise HTTPException(400, {"message": "同一台相机被分配给了多个角色"})
         with self.lock:
             try:
-                config_edit.set_cameras(self.config_path, assignments)
+                config_file.set_cameras(self.config_path, assignments)
             except (ValueError, RuntimeError) as exc:
                 raise HTTPException(400, {"message": str(exc)})
             self.reload()

@@ -39,9 +39,8 @@ def test_check_prints_the_summary(config, capsys):
 
 
 def test_dyn_goes_to_the_load_identification(monkeypatch):
-    from robot_config import load_identify
     seen = []
-    monkeypatch.setattr(load_identify, "main", lambda args: seen.append(args) or 0)
+    monkeypatch.setattr(setup_steps, "dyn_command", lambda args: seen.append(args) or 0)
     assert setup_steps.main(["dyn", "--config", "c.yaml", "--ws-root", "/ws", "--reset"]) == 0
     assert seen == [["--config", "c.yaml", "--ws-root", "/ws", "--reset"]]
 

@@ -7,8 +7,8 @@ import pytest
 import yaml
 
 from camera_setup import session as camera_setup
-from robot_config import config_edit
-from robot_config.device_setup import Io
+from robot_config import config_file
+from robot_config.setup_steps import Io
 
 from conftest import CONFIG, DEVICES, prepare_camera, wait_qt
 
@@ -33,9 +33,9 @@ def test_camera_visual_confirmation_saves_rotations_and_preserves_other_sections
     assert raw['cameras']['right_wrist']['rotation'] == 90
     assert raw['cameras']['left_wrist']['rotation'] == 270
     assert raw['xr']['device_id'] == 'PICO-BOUND' and raw['control']['limits']['max_joint_speed'] == 17
-    assert '# preserve this comment' in config.read_text() and config_edit.confirmed(raw, 'cameras')
-    config_edit.set_cameras(str(config), {'left_wrist': {'rotation': 180}})
-    assert not config_edit.confirmed(yaml.safe_load(config.read_text()), 'cameras')
+    assert '# preserve this comment' in config.read_text() and config_file.confirmed(raw, 'cameras')
+    config_file.set_cameras(str(config), {'left_wrist': {'rotation': 180}})
+    assert not config_file.confirmed(yaml.safe_load(config.read_text()), 'cameras')
 
 
 def test_camera_requires_fresh_frame_and_every_enabled_role_confirmation(camera):
@@ -78,7 +78,7 @@ def test_camera_does_not_stop_other_modules(camera, monkeypatch):
 
 def test_camera_does_not_overwrite_concurrent_config_changes(camera, config):
     prepare_camera(camera)
-    config_edit.set_fields(str(config), 'xr', {'device_id': 'NEW-ID'})
+    config_file.set_fields(str(config), 'xr', {'device_id': 'NEW-ID'})
     changed = config.read_text()
     with pytest.raises(ValueError, match='其他程序修改'):
         camera.save({'revision': camera.revision, 'confirmed': list(camera_setup.ROLES)})
@@ -87,7 +87,7 @@ def test_camera_does_not_overwrite_concurrent_config_changes(camera, config):
 
 def test_native_camera_window_requires_new_images_after_rotating(camera, config, qt_app):
     from PyQt5 import QtCore, QtGui
-    from robot_config.device_setup import create_window
+    from robot_config.setup_steps import create_window
     image = QtGui.QImage(80, 60, QtGui.QImage.Format_RGB32)
     image.fill(QtGui.QColor('green'))
     encoded = QtCore.QByteArray()
@@ -121,7 +121,7 @@ def test_native_camera_window_requires_new_images_after_rotating(camera, config,
 
 def test_camera_window_declining_old_process_cleanup_does_not_start_or_stop(camera, qt_app, monkeypatch):
     from PyQt5.QtWidgets import QMessageBox
-    from robot_config.device_setup import create_window
+    from robot_config.setup_steps import create_window
     old = [{'pid': 123, 'start_ticks': 5, 'camera': 'camera_left_wrist', 'serial': 'LEFT'}]
     monkeypatch.setattr(camera, 'conflicts', lambda: old)
     monkeypatch.setattr(QMessageBox, 'question', lambda *args: QMessageBox.No)
@@ -133,7 +133,7 @@ def test_camera_window_declining_old_process_cleanup_does_not_start_or_stop(came
 
 def test_camera_window_confirming_cleanup_restarts_preview_without_saving(camera, config, qt_app, monkeypatch):
     from PyQt5.QtWidgets import QMessageBox
-    from robot_config.device_setup import create_window
+    from robot_config.setup_steps import create_window
     old = [{'pid': 123, 'start_ticks': 5, 'camera': 'camera_left_wrist', 'serial': 'LEFT'}]
     monkeypatch.setattr(camera, 'conflicts', lambda: old)
     calls = []

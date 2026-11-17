@@ -14,7 +14,7 @@ class BlockTeleop(importlib.abc.MetaPathFinder):
             raise ImportError('teleoperation is deliberately unavailable')
 sys.meta_path.insert(0, BlockTeleop())
 from robot_config import config
-from robot_config import config_edit, config_status, device_setup, load_identify
+from robot_config import config_file, config_file, setup_steps, setup_steps
 assert not any(name.startswith('robot_app') for name in sys.modules)
 '''], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr

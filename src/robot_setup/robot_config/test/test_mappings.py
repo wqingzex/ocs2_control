@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from robot_config import config, config_edit
+from robot_config import config, config_file
 
 # case -> (cameras fingerprint, hand fingerprint)
 GOLDEN = {
@@ -44,14 +44,14 @@ CASES = {
 @pytest.mark.parametrize("case", sorted(CASES))
 def test_fingerprints_are_the_same_as_before_the_fields_moved(case):
     cameras, hand = GOLDEN[case]
-    assert config_edit.fingerprint(CASES[case], "cameras") == cameras
-    assert config_edit.fingerprint(CASES[case], "ee") == hand
+    assert config_file.fingerprint(CASES[case], "cameras") == cameras
+    assert config_file.fingerprint(CASES[case], "ee") == hand
 
 
 def test_a_camera_field_that_changes_changes_the_camera_fingerprint_only():
     base, changed = CASES["defaults"], CASES["cam_changed"]
-    assert config_edit.fingerprint(base, "cameras") != config_edit.fingerprint(changed, "cameras")
-    assert config_edit.fingerprint(base, "ee") == config_edit.fingerprint(changed, "ee")
+    assert config_file.fingerprint(base, "cameras") != config_file.fingerprint(changed, "cameras")
+    assert config_file.fingerprint(base, "ee") == config_file.fingerprint(changed, "ee")
 
 
 @pytest.mark.parametrize("bus, expected_keys", [
@@ -71,7 +71,7 @@ def test_no_end_effector_has_no_wiring_fields():
 
 def test_an_unknown_section_is_an_error_naming_the_known_ones():
     with pytest.raises(KeyError) as raised:
-        config_edit.fingerprint({}, "dyn")
+        config_file.fingerprint({}, "dyn")
     assert "cameras" in str(raised.value) and "ee" in str(raised.value)
 
 
@@ -79,9 +79,9 @@ def test_status_and_check_work_without_importing_the_device_packages():
     """The shared package must not need camera / end_effector for fingerprints (they depend on it, not the reverse)."""
     code = (
         "import sys\n"
-        "from robot_config import config_status\n"
+        "from robot_config import config_file\n"
         "raw = {'robot': {'end_effector': {'type': 'xhand1', 'interface': {'bus': 'usb_rs485'}}}}\n"
-        "print(config_status.camera_status(raw).state, config_status.ee_status(raw).state)\n"
+        "print(config_file.camera_status(raw).state, config_file.ee_status(raw).state)\n"
         "loaded = [m for m in ('camera', 'end_effector') if m in sys.modules]\n"
         "assert not loaded, loaded\n")
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)

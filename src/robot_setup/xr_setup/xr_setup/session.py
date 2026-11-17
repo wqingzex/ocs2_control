@@ -8,14 +8,14 @@ import argparse
 import os
 import sys
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 from pathlib import Path
 
 from robot_runtime.supervisor import Supervisor, UnitError
 from robot_runtime.units import UnitSet
-from robot_config import config_edit
+from robot_config import config_file
 from robot_config.config import load_lenient
-from robot_config.device_setup import Io
+from robot_config.setup_steps import Io
 
 from xr_teleop.config import EXTENSION
 from xr_teleop.xr_network import arm_ip, network_addresses, without_arm_link
@@ -30,7 +30,7 @@ def _xr_network(config_path: str, xr: Dict, io: Io) -> bool:
     if mode not in ("ethernet", "wifi"):
         io.error("请选择 ethernet（网线）或 wifi（无线）")
         return False
-    arm = arm_ip(config_edit.load_rt(config_path)[1])
+    arm = arm_ip(config_file.load_rt(config_path)[1])
     addresses = without_arm_link(network_addresses(mode), arm)  # the cable to the arm is not offered
     if not addresses:
         io.error(f"没有找到可用的{'有线' if mode == 'ethernet' else 'Wi-Fi'} IPv4 地址；请检查网卡和网络连接"
@@ -46,7 +46,7 @@ def _xr_network(config_path: str, xr: Dict, io: Io) -> bool:
         return False
     selected = addresses[int(answer) - 1]
     xr.update(network_mode=mode, network_interface=selected.interface)
-    config_edit.set_fields(config_path, "xr", {"network_mode": mode, "network_interface": selected.interface})
+    config_file.set_fields(config_path, "xr", {"network_mode": mode, "network_interface": selected.interface})
     io.info(f"在 Pico 的 XRoboToolkit App 中选择 PC Service 地址：{selected.address}（{selected.interface}）")
     io.info("头显 App：Tracking 至少勾选 Head 或 Controller 一项，开启 Data & Control 的 Send（本次无需开启 Data Collection）")
     interface_path = (Path("/sys/class/net") / selected.interface).resolve()
@@ -64,7 +64,7 @@ def step_xr(config_path: str, ws_root: str, io: Io, timeout_s: Optional[float] =
         if answer.lower() not in ("y", "yes", "是"):
             io.info("按选择保持 XR 关闭")
             return True
-        config_edit.set_fields(config_path, "xr", {"enable": True})
+        config_file.set_fields(config_path, "xr", {"enable": True})
         cfg = load_lenient(config_path, EXTENSION)
         xr = cfg["xr"]
     if xr["start_pc_service"] and not os.path.isfile(xr["pc_service_script"]):
@@ -107,7 +107,7 @@ def step_xr(config_path: str, ws_root: str, io: Io, timeout_s: Optional[float] =
             if answer.lower() not in ("y", "yes", "是"):
                 io.error("未绑定头显，配对未完成")
                 return False
-        config_edit.set_fields(config_path, "xr", {"device_id": device_id})
+        config_file.set_fields(config_path, "xr", {"device_id": device_id})
         io.info(f"头显已连接并保存 ID: {device_id}；日常启动自动匹配，断线后等待同一设备恢复")
         return True
     except UnitError as exc:
@@ -141,7 +141,7 @@ def main(argv=None) -> int:
     parser.add_argument("step", choices=["xr"])
     args = parser.parse_args(argv)
     if args.status:
-        needed, reason = xr_status(config_edit.load_rt(args.config)[1])
+        needed, reason = xr_status(config_file.load_rt(args.config)[1])
         print(f"{'需配置' if needed else '已配置'}：{reason}")
         return 1 if needed else 0
     io = Io(assume_yes=args.yes)

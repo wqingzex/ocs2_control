@@ -5,10 +5,10 @@ import time
 
 import pytest
 
-from robot_config import config_edit
-from robot_config import load_identify as dyn
-from robot_config.config_status import CONFIGURED, DEFAULT, NEEDED, camera_status, dyn_status, ee_status
-from robot_config.config_edit import receipt
+from robot_config import config_file
+from robot_config import setup_steps as dyn
+from robot_config.config_file import CONFIGURED, DEFAULT, NEEDED, camera_status, dyn_status, ee_status
+from robot_config.config_file import receipt
 
 TEN = [0.5, -1.0, 2.0, 3.0, 0.001, 0.0, 0.0, 0.002, 0.0, 0.003]
 CONFIG = """\
@@ -174,11 +174,11 @@ def test_reset_empties_both_overrides_and_keeps_the_old_values(tmp_path):
     text = open(path, encoding="utf-8").read()
     assert "left: []" in text and "right: []" in text and "# my robot" in text
     assert [f for f in os.listdir(dyn.output_dir(str(tmp_path))) if f.startswith("previous_left_")]
-    assert dyn_status(config_edit.load_rt(path)[1]).state == DEFAULT
+    assert dyn_status(config_file.load_rt(path)[1]).state == DEFAULT
 
 
 def test_set_float_list_keeps_comments_and_creates_missing_sections(tmp_path):
     path = write_config(tmp_path, "# top\nrobot: {hardware: real}\n")
-    config_edit.set_float_list(path, "robot.end_effector.dyn_param", "left", [1, 2])
+    config_file.set_float_list(path, "robot.end_effector.dyn_param", "left", [1, 2])
     text = open(path, encoding="utf-8").read()
     assert text.startswith("# top") and "left: [1.0, 2.0]" in text

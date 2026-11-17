@@ -11,12 +11,12 @@ import sys
 from pathlib import Path
 from typing import Callable, List
 
-from robot_config import config_edit
+from robot_config import config_file
 from robot_config.config import (DRIVE_TO_BUS, END_EFFECTORS as HANDS, HAND_DRIVES, arm_ip, ee_drive, ee_side, ee_type,
                                  validate)
 
-from robot_config.config_edit import confirmed
-from robot_config.device_setup import Io, SetupSession, main_for, run_wizard
+from robot_config.config_file import confirmed
+from robot_config.setup_steps import Io, SetupSession, main_for, run_wizard
 from robot_runtime.processes import require_idle
 
 from .discovery import is_serial_number_path, serial_devices
@@ -166,7 +166,7 @@ class EeSetup(SetupSession):
             _deep_update(candidate.setdefault('robot', {}), changes['robot'])
             candidate.setdefault('cameras', {})['enable'] = False
             validate(candidate)
-            config_edit.save_setup(self.config_path, self.kind, changes, self.original)
+            config_file.save_setup(self.config_path, self.kind, changes, self.original)
             self.saved = True
             self.done.set()
             return self.state()
@@ -301,7 +301,7 @@ def serial_ports() -> List[str]:
 
 def step_ee(config_path: str, ws_root: str, io: Io, ports: Callable[[], List[str]] = serial_ports,
               runner=None) -> bool:
-    _, raw = config_edit.load_rt(config_path)
+    _, raw = config_file.load_rt(config_path)
     if io.assume_yes:
         if confirmed(raw, 'ee'):
             robot = raw.get('robot') or {}

@@ -15,10 +15,10 @@ from typing import Callable, List
 
 import yaml
 
-from robot_config import config_edit
+from robot_config import config_file
 from robot_config.config import ROLES, ROTATIONS, section_defaults, validate_camera_assignments
-from robot_config.config_edit import confirmed
-from robot_config.device_setup import Io, SetupSession, main_for, run_wizard
+from robot_config.config_file import confirmed
+from robot_config.setup_steps import Io, SetupSession, main_for, run_wizard
 from robot_runtime.processes import OwnedDrivers, require_idle
 
 from launch_helpers.devices.camera import DRIVER_READY_LOG, DRIVER_READY_TIMEOUT_S
@@ -122,7 +122,7 @@ class CameraSetup(SetupSession):
             raise ValueError('没有发现相机；检查连接与容器 USB 映射')
         self.preview_factory, self.previews, self.errors = preview_factory, None, {}
         self.mapping = {d.serial: {'role': '', 'rotation': 0} for d in found}
-        suggestions = discovery.suggest_roles(found, config_edit.camera_serials(config_path))
+        suggestions = discovery.suggest_roles(found, config_file.camera_serials(config_path))
         for role, device in suggestions.items():
             if device:
                 self.mapping[device.serial] = {'role': role,
@@ -203,7 +203,7 @@ class CameraSetup(SetupSession):
                 assignments[role] = {'enable': True, 'serial': serial,
                     'usb_port': self.by_serial[serial].usb_port, 'rotation': self.mapping[serial]['rotation']}
             validate_camera_assignments(assignments)
-            config_edit.save_setup(self.config_path, self.kind, {'cameras': {'enable': True, **assignments}}, self.original)
+            config_file.save_setup(self.config_path, self.kind, {'cameras': {'enable': True, **assignments}}, self.original)
             self.saved = True
             self.done.set()
             return self.state()
@@ -317,7 +317,7 @@ class CameraPanel:
 
 def step_cameras(config_path: str, ws_root: str, io: Io,
                  scanner: Callable[[], List[discovery.Device]] = discovery.scan, runner=None) -> bool:
-    _, raw = config_edit.load_rt(config_path)
+    _, raw = config_file.load_rt(config_path)
     if (raw.get("cameras") or {}).get("enable") is False:
         answer = io.ask("相机当前关闭，是否现在配置并启用？y/n", "y")
         if answer.lower() not in ("y", "yes", "是"):

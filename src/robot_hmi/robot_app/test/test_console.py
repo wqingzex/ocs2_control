@@ -9,7 +9,7 @@ import yaml
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
-from robot_config import config_edit  # noqa: E402
+from robot_config import config_file  # noqa: E402
 from robot_config.testing import full_config  # noqa: E402
 from robot_app.console import server  # noqa: E402
 from camera_setup.discovery import parse_list_devices  # noqa: E402
@@ -260,7 +260,7 @@ def test_assign_writes_config_keeping_comments(setup):
             "left_wrist": {"enable": True, "serial": "CP0000000009", "usb_port": "2-2"},
             "right_wrist": {"enable": False}}
     assert client.post("/api/cameras/assign", json=body).status_code == 200
-    assert config_edit.camera_serials(str(cfg))["left_wrist"] == "CP0000000009"
+    assert config_file.camera_serials(str(cfg))["left_wrist"] == "CP0000000009"
     text = cfg.read_text(encoding="utf-8")
     assert "# 控制台测试配置" in text and "# Gemini 335Lg" in text and "rotation: 180" in text
 
