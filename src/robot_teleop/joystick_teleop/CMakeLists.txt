@@ -8,7 +8,6 @@ endif ()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(ament_cmake REQUIRED)
-find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -32,9 +31,8 @@ target_link_libraries(joystick_teleop PUBLIC
         ${rclcpp_action_TARGETS}
 )
 
-ament_python_install_package(joystick_teleop)
 install(TARGETS joystick_teleop DESTINATION lib/${PROJECT_NAME})
-install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME}/)
+install(DIRECTORY config DESTINATION share/${PROJECT_NAME}/)
 
 if (BUILD_TESTING)
     find_package(ament_lint_auto REQUIRED)

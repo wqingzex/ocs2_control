@@ -21,11 +21,11 @@ SDK 在 [`src/third_party/dexcap-sdk-cpp`](../../third_party/README.md)（预编
 先用 `split_body` 或 `dual_arm` 启动运控（`whole_body` 下手臂归 `whole_body_controller` 管，臂映射不起作用），再启动 DexCap：
 
 ```bash
-ros2 launch dexcap_teleop dexcap.launch.py                                    # 外骨骼 + 两只手套，臂映射
-ros2 launch dexcap_teleop dexcap.launch.py left_eef:=hand right_eef:=hand     # 手套驱动 L6
-ros2 launch dexcap_teleop dexcap.launch.py left_eef:=gripper right_eef:=gripper
-ros2 launch dexcap_teleop dexcap.launch.py arm_mapper:=false                  # 只要原始 /dexcap/* 话题
-ros2 launch dexcap_teleop dexcap.launch.py start_upper_body:=false \
+ros2 launch robot_bringup dexcap.launch.py                                    # 外骨骼 + 两只手套，臂映射
+ros2 launch robot_bringup dexcap.launch.py left_eef:=hand right_eef:=hand     # 手套驱动 L6
+ros2 launch robot_bringup dexcap.launch.py left_eef:=gripper right_eef:=gripper
+ros2 launch robot_bringup dexcap.launch.py arm_mapper:=false                  # 只要原始 /dexcap/* 话题
+ros2 launch robot_bringup dexcap.launch.py start_upper_body:=false \
     left_hand_serial_port:=/dev/ttyUSB0 right_hand_serial_port:=/dev/ttyUSB1  # 只开手套，端口按本次枚举
 ```
 

@@ -58,7 +58,7 @@ def test_joystick_is_an_on_demand_unit_that_needs_control():
     units = build_units(make_cfg(joystick={"device": "/dev/input/js2"}), "/c.yaml", "/ws")
     joystick = units["joystick"]
     assert joystick.on_demand and joystick.depends == ("control",)
-    assert joystick.cmd[:4] == ("ros2", "launch", "joystick_teleop", "joystick_teleop.launch.py")
+    assert joystick.cmd[:4] == ("ros2", "launch", "robot_bringup", "joystick.launch.py")
     assert "joy_dev:=/dev/input/js2" in joystick.cmd
     auto = build_units(make_cfg(), "/c.yaml", "/ws")["joystick"]
     assert not any(a.startswith("joy_dev") for a in auto.cmd)

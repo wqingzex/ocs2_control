@@ -71,6 +71,6 @@ install(DIRECTORY "${DEXCAP_SDK_LIB_DIR}/"
   DESTINATION lib/${PROJECT_NAME}/sdk
   USE_SOURCE_PERMISSIONS
   FILES_MATCHING PATTERN "*.so*")
-install(DIRECTORY config launch urdf DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY config urdf DESTINATION share/${PROJECT_NAME})
 
 ament_package()
