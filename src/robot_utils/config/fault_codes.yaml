@@ -82,6 +82,14 @@
   check: CPU 负载和绑核；mpc_frequency 是否设得太高；MpcHealth 的 overruns 是否持续增加（CTL-002）
   source: {file: src/robot_control/lib/mpc/mpc_core/src/MpcRuntimeBase.cpp, match: "exceeds period"}
 
+- code: CTL-014
+  class: M
+  title: MPC 收到的外部目标比当前跟踪的目标远得多（单条消息跳变超过 0.1 m）
+  behavior: 记 WARN（每秒一条），目标照常接受，MPC 会去追；这条只留证，不拦截。XR 来源另有 TEL-002 在发布前拦截
+  check: 日志里的 tracked 和 new 坐标；进入 OCS2 后的第一条目标就跳变，多半是目标来源（XR / marker / 脚本）的基准不对；对照 TEL-002 和 TEL-001
+  escalation: 现在只记录。要在 MPC 侧也拦截，需要另行确认阈值和处理（丢帧还是切 HOLD）
+  source: {file: src/robot_control/lib/mpc/mpc_core/src/reference/PoseReferenceCallbacks.cpp, match: "[CTL-014]"}
+
 - code: CTL-002
   class: M
   title: MPC 窗口汇总里有超期或失败

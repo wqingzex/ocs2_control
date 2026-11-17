@@ -22,6 +22,25 @@
 namespace ocs2::mpc_core
 {
 
+    void PoseBasedReferenceManager::logTargetJump(bool is_left, const vector_t& goal7) const
+    {
+        constexpr double kJumpLogDistance = 0.1;  // m
+        const vector_t& tracked = is_left ? left_target_state_ : right_target_state_;
+        if (!clock_ || tracked.size() < 3 || goal7.size() < 3)
+        {
+            return;
+        }
+        const double jump = (goal7.head<3>() - tracked.head<3>()).norm();
+        if (jump <= kJumpLogDistance)
+        {
+            return;
+        }
+        RCLCPP_WARN_THROTTLE(
+            logger_, *clock_, 1000,
+            "[CTL-014] %s target jumped %.3f m in one message: tracked (%.3f, %.3f, %.3f) -> new (%.3f, %.3f, %.3f)",
+            is_left ? "left" : "right", jump, tracked(0), tracked(1), tracked(2), goal7(0), goal7(1), goal7(2));
+    }
+
     void PoseBasedReferenceManager::leftPoseCallback(
         const geometry_msgs::msg::Pose::SharedPtr msg)
     {
@@ -37,6 +56,7 @@ namespace ocs2::mpc_core
         target_state(4) = msg->orientation.y;
         target_state(5) = msg->orientation.z;
         target_state(6) = msg->orientation.w;
+        logTargetJump(true, target_state);
         applyLeftAbsoluteTarget(target_state, false);
     }
 
@@ -55,6 +75,7 @@ namespace ocs2::mpc_core
         target_state(4) = msg->orientation.y;
         target_state(5) = msg->orientation.z;
         target_state(6) = msg->orientation.w;
+        logTargetJump(false, target_state);
         applyRightAbsoluteTarget(target_state, false);
     }
 
