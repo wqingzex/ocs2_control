@@ -47,6 +47,27 @@ def test_faults_are_found_per_unit_with_count_times_and_stop_class_first():
     assert evidence.fault_section([]) == ["fault codes in the window: none"]
 
 
+def test_a_fault_comes_with_the_errors_and_warnings_just_before_it_because_the_cause_is_usually_there():
+    # On the robot: "[ERROR] Motor 1 emergency frame errors: undervoltage" came first, then "[HW-006] motor error".
+    cause = line(7, "Motor 1 emergency frame errors: undervoltage (SEVERE)", severity="ERROR", node="juxie_body")
+    found = evidence.faults_in({"control": [
+        line(30, "an old error long before", severity="ERROR"),
+        line(8, "a plain info line", severity="INFO"),
+        cause,
+        line(7, f"[{STOP}] motor error ,return", severity="ERROR", node="juxie_body"),
+        line(6, f"[{STOP}] motor error ,return", severity="ERROR", node="juxie_body")]})
+
+    assert found[0].before == [cause.strip()]  # only the error right before the first time; not the old one, not info
+    text = "\n".join(evidence.fault_section(found))
+    assert "undervoltage" in text and text.index("undervoltage") < text.index("motor error")
+
+
+def test_a_fault_with_nothing_wrong_just_before_it_has_no_context():
+    found = evidence.faults_in({"control": [line(8, "all fine"), line(7, f"[{STOP}] stopped")]})
+
+    assert found[0].before == [] and "before" not in "\n".join(evidence.fault_section(found))
+
+
 def test_health_lines_are_summed_up_per_component_for_cycles_and_for_rates():
     health = evidence.health_in({"control": [
         line(5, "[HEALTH] arm_controller window=10.0s cycles=1000 period_avg_ms=10.00 period_max_ms=12.00 late=0 "

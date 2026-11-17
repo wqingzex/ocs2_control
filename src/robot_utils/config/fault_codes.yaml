@@ -230,7 +230,7 @@
   class: S2
   title: Juxie 电机状态读取失败
   behavior: read() 返回 ERROR，交给 ros2_control 处理；腰、头的指令不再下发
-  check: CAN 线和电源；candump -e can0 看错误帧；ip -details -statistics link show can0
+  check: "先看这行日志前面紧挨着的 `Motor N emergency frame errors: <原因> (raw: 0x…, SEVERE)`，原因在那里（过压、欠压、过温、堵转、过载、速度或位置跟踪误差过大、正负限位保护、输出端编码器异常、位置跃迁过大、电流采样错误、电流跟踪误差超差；急停断电时是欠压）；再查 CAN 线和电源；candump -e can0 看错误帧；ip -details -statistics link show can0"
   source: {file: src/robot_hardware/juxie_hardware/src/jx_hardware.cpp, match: "motor error ,return"}
 
 - code: HW-007

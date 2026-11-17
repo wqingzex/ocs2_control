@@ -30,6 +30,10 @@ EVENTS_TAIL_LINES = 200
 MAX_FAULT_ROWS = 40
 _TIME = re.compile(r"\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.(\d{3})\]")
 _CODE = re.compile(r"\[([A-Z]{2,4}-\d{3})\]")
+_SEVERE = re.compile(r"\[(ERROR|WARN|WARNING)\]")
+CONTEXT_SECONDS = 1.0   # how far before a fault code line its context reaches
+CONTEXT_LINES = 3       # at most this many errors and warnings are shown with it
+CONTEXT_SCAN = 40       # and at most this many lines back are looked at
 _HEALTH = re.compile(r"\[HEALTH\] (\S+) window=([\d.]+)s (.*)$")
 _PAIR = re.compile(r"(\w+)=(-?[\d.]+)")
 
@@ -104,6 +108,25 @@ class FaultSeen:
     first: str = ""
     last: str = ""
     sample: str = ""
+    before: List[str] = field(default_factory=list)  # the errors and warnings right before the first time, oldest first
+
+
+def context_before(lines: List[str], index: int) -> List[str]:
+    """The errors and warnings in the second before lines[index]: the line that names a fault code is often the
+    second of the two, and the first one says why (an undervoltage emergency frame, then 'motor error')."""
+    moment = line_time(lines[index])
+    if moment is None:
+        return []
+    found: List[str] = []
+    for earlier in reversed(lines[max(0, index - CONTEXT_SCAN):index]):
+        when = line_time(earlier)
+        if when is not None and (moment - when).total_seconds() > CONTEXT_SECONDS:
+            break
+        if _SEVERE.search(earlier):
+            found.append(earlier.strip()[:200])
+        if len(found) == CONTEXT_LINES:
+            break
+    return found[::-1]
 
 
 def faults_in(lines_by_unit: Dict[str, List[str]],
@@ -112,11 +135,13 @@ def faults_in(lines_by_unit: Dict[str, List[str]],
     known = known_faults() if known is None else known
     seen: Dict[Tuple[str, str], FaultSeen] = {}
     for unit, lines in lines_by_unit.items():
-        for line in lines:
+        for index, line in enumerate(lines):
             for code in dict.fromkeys(_CODE.findall(line)):
                 if code not in known:
                     continue
-                item = seen.setdefault((code, unit), FaultSeen(code, unit, sample=line.strip()[:200]))
+                if (code, unit) not in seen:
+                    seen[(code, unit)] = FaultSeen(code, unit, sample=line.strip()[:200], before=context_before(lines, index))
+                item = seen[(code, unit)]
                 match = _TIME.search(line)
                 stamp = f"{match.group(1)}.{match.group(2)}" if match else ""
                 item.count += 1
@@ -134,6 +159,7 @@ def fault_section(found: List[FaultSeen], known: Optional[Dict[str, fault_codes.
         cls = known[item.code].fault_class if item.code in known else "?"
         lines.append(f"  {item.code} [{cls}] {item.unit:<14} x{item.count:<5} first {item.first or '-'}  "
                      f"last {item.last or '-'}")
+        lines.extend(f"      before: {earlier}" for earlier in item.before)
         lines.append(f"      {item.sample}")
     if len(found) > MAX_FAULT_ROWS:
         lines.append(f"  ... {len(found) - MAX_FAULT_ROWS} more")
