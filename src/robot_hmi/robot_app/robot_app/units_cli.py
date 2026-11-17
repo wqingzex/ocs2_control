@@ -164,7 +164,7 @@ def up_names(units, names: List[str], extra: List[str], no_rviz: bool = False) -
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="start.sh", description="ocs2_control teleop units")
+    parser = argparse.ArgumentParser(prog="start.sh", description="robot_control_suite teleop units")
     parser.add_argument("--config", required=True)
     parser.add_argument("--ws-root", required=True)
     parser.add_argument("--set", dest="overrides", action="append", default=[], metavar="SECTION.FIELD=VALUE",

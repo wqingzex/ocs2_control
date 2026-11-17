@@ -16,12 +16,12 @@ find_package(ament_cmake_python REQUIRED)
 get_filename_component(ROBOT_APP_WS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 add_executable(console_launcher src/console_launcher.cpp)
 set_target_properties(console_launcher PROPERTIES
-  OUTPUT_NAME "ocs2_control控制台"
+  OUTPUT_NAME "robot_control_suite控制台"
   RUNTIME_OUTPUT_DIRECTORY "${ROBOT_APP_WS_ROOT}")
 # Use an ELF executable rather than a PIE shared-object MIME type in desktop file managers.
 target_link_options(console_launcher PRIVATE -no-pie)
 
-# Module supervision, command line, web console, recording and diagnostics (start.sh, ocs2_control控制台)
+# Module supervision, command line, web console, recording and diagnostics (start.sh, robot_control_suite控制台)
 ament_python_install_package(robot_app)
 
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME} OPTIONAL)

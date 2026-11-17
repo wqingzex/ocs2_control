@@ -191,7 +191,7 @@ def _play(cmd: Sequence[str], xr: bool) -> int:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="start.sh", description="ocs2_control recording and playback")
+    parser = argparse.ArgumentParser(prog="start.sh", description="robot_control_suite recording and playback")
     parser.add_argument("--config", required=True)
     parser.add_argument("--ws-root", required=True)
     parser.add_argument("--set", dest="overrides", action="append", default=[], metavar="SECTION.FIELD=VALUE")

@@ -53,7 +53,7 @@ def main(argv=None) -> int:
     from xr_teleop.pairing import host_ips
     local_only = args.host in ("127.0.0.1", "localhost")
     console.access_urls = [] if local_only else access_urls(host_ips(), args.port)
-    print(">>> ocs2_control 控制台（Ctrl+C 退出；已启动的模块不受影响）")
+    print(">>> robot_control_suite 控制台（Ctrl+C 退出；已启动的模块不受影响）")
     if not local_only:
         print("[WARN] 没有登录：同一网络里能访问这个端口的人都能控制机器人，只在机器人内网使用", file=sys.stderr)
     for url in [f"http://127.0.0.1:{args.port}/"] + console.access_urls:

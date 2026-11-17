@@ -1,4 +1,4 @@
-// ocs2_control teleop console front end. No framework, no build step. All text from the server is
+// robot_control_suite teleop console front end. No framework, no build step. All text from the server is
 // inserted with textContent (log lines and error messages may contain anything).
 "use strict";
 

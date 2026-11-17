@@ -4,7 +4,7 @@
 
 ## 作用
 
-日常使用 `./scripts/start.sh` 或双击仓库根目录的 `ocs2_control控制台`，背后就是这个包。每个模块是独立进程、独立日志，出问题直接看对应模块：
+日常使用 `./scripts/start.sh` 或双击仓库根目录的 `robot_control_suite控制台`，背后就是这个包。每个模块是独立进程、独立日志，出问题直接看对应模块：
 
 | 模块 | 内容 |
 |---|---|
@@ -31,7 +31,7 @@
 
 | 路径 | 内容 |
 |---|---|
-| `src/` | C++：`console_launcher`（生成 `ocs2_control控制台`） |
+| `src/` | C++：`console_launcher`（生成 `robot_control_suite控制台`） |
 | `robot_app/` | Python：配置加载与校验、构造运控和 RViz 单元并汇总各设备包的单元（`units`）、命令行（`units_cli`）、Web 控制台（`console/`，FastAPI）、导航、录制、诊断。进程管理在 [`robot_utils`](../../robot_utils/README.md)，头显配对在 [`xr_teleop`](../../robot_payload/input/xr_teleop/README.md) |
 | `config/teleop.yaml` | 配置段的默认值：`robot`、`xr`、`cameras` |
 | `launch/teleop.launch.py` | 旧的"一个 launch 起全部" |
@@ -46,4 +46,4 @@ python3 -m robot_app.check config/robot.local.yaml <工作区根目录>
 
 ## 测试
 
-`pytest test`（需要 ROS 环境）。`test_console_launcher.py` 要先编译本包生成 `ocs2_control控制台`，否则报错。
+`pytest test`（需要 ROS 环境）。`test_console_launcher.py` 要先编译本包生成 `robot_control_suite控制台`，否则报错。

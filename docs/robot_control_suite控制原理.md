@@ -1,8 +1,8 @@
-# ocs2_control 控制原理
+# robot_control_suite 控制原理
 
 > 整理日期：2026-11-08　|　路径均相对 `src/`　|　范围： `arm_controller`、`robot_controller_core`，示例参数取自 fa_w2 的描述包（`robot_description/fa_w2_description`）
 
-ocs2_control 把末端目标变成关节角的主路径是 **OCS2 MPC**：它直接优化未来 1 s 的关节轨迹，不单独求逆解。
+robot_control_suite 把末端目标变成关节角的主路径是 **OCS2 MPC**：它直接优化未来 1 s 的关节轨迹，不单独求逆解。
 数值 IK（DLS，失败改 BFGS）只用于 MOVEJ 状态下的 MoveL / MoveC，以及外部调用的运动学服务。
 天机臂的 POSITION / 阻抗模式位于 MPC 之下，只决定电机如何跟踪 MPC 给出的关节角。
 

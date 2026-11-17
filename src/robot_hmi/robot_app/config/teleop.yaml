@@ -1,4 +1,4 @@
-# ocs2_control bringup config: the defaults of the sections below (every field optional). They live in
+# robot_control_suite bringup config: the defaults of the sections below (every field optional). They live in
 # config/robot.local.yaml together with platform / defaults / hardware / control (see config/robot.template.yaml).
 # Check without starting:  python3 -m robot_app.check <config file> <ws_root>
 

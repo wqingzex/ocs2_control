@@ -14,16 +14,16 @@ import pytest
 
 @pytest.fixture
 def launcher():
-    default = Path(__file__).resolve().parents[4] / "ocs2_control控制台"
+    default = Path(__file__).resolve().parents[4] / "robot_control_suite控制台"
     path = Path(os.environ.get("CONSOLE_LAUNCHER", default))
-    assert path.is_file(), "Build robot_app to generate ocs2_control控制台 first"
+    assert path.is_file(), "Build robot_app to generate robot_control_suite控制台 first"
     return path
 
 
 def workspace(tmp_path, launcher, name):
     root = tmp_path / name
     root.mkdir()
-    shutil.copy2(launcher, root / "ocs2_control控制台")
+    shutil.copy2(launcher, root / "robot_control_suite控制台")
     # Bash reads this non-executable script; no shell expansion should touch its path.
     (root / "scripts").mkdir()
     (root / "scripts" / "start.sh").write_text('''python3 - "$@" <<'PY'
@@ -37,7 +37,7 @@ PY
 @pytest.mark.parametrize("name", ["workspace", "机器人 空格 '$`\"%; 目录"])
 def test_opens_only_console_from_any_working_directory(tmp_path, launcher, name):
     root = workspace(tmp_path, launcher, name)
-    result = subprocess.run([str(root / "ocs2_control控制台")], cwd=tmp_path,
+    result = subprocess.run([str(root / "robot_control_suite控制台")], cwd=tmp_path,
                             capture_output=True, text=True, check=True, timeout=5)
     assert json.loads(result.stdout) == {"cwd": str(root), "args": ["console", "--open"]}
 
@@ -45,13 +45,13 @@ def test_opens_only_console_from_any_working_directory(tmp_path, launcher, name)
 def test_workspace_can_move_without_rebuilding(tmp_path, launcher):
     root = workspace(tmp_path, launcher, "before")
     moved = root.rename(tmp_path / "移动后的 仓库")
-    result = subprocess.run([str(moved / "ocs2_control控制台")], cwd=tmp_path,
+    result = subprocess.run([str(moved / "robot_control_suite控制台")], cwd=tmp_path,
                             capture_output=True, text=True, check=True, timeout=5)
     assert json.loads(result.stdout)["cwd"] == str(moved)
 
 
 def test_missing_script_reports_failure_in_notification(tmp_path, launcher):
-    shutil.copy2(launcher, tmp_path / "ocs2_control控制台")
+    shutil.copy2(launcher, tmp_path / "robot_control_suite控制台")
     commands = tmp_path / "bin"
     commands.mkdir()
     notify = commands / "notify-send"
@@ -60,11 +60,11 @@ def test_missing_script_reports_failure_in_notification(tmp_path, launcher):
     message = tmp_path / "notification.txt"
     env = dict(os.environ, PATH=str(commands) + os.pathsep + os.environ["PATH"],
                TEST_NOTIFICATION=str(message))
-    result = subprocess.run([str(tmp_path / "ocs2_control控制台")], env=env,
+    result = subprocess.run([str(tmp_path / "robot_control_suite控制台")], env=env,
                             capture_output=True, text=True, timeout=5)
     assert result.returncode == 1
     assert "start.sh" in result.stderr
-    assert "请将 ocs2_control控制台 保留在仓库根目录" in message.read_text()
+    assert "请将 robot_control_suite控制台 保留在仓库根目录" in message.read_text()
 
 
 def console_workspace(tmp_path, launcher):
@@ -76,12 +76,12 @@ def console_workspace(tmp_path, launcher):
         (root / name).mkdir(parents=True, exist_ok=True)
     (root / "scripts").mkdir()
     shutil.copy2(repo / "scripts" / "start.sh", root / "scripts" / "start.sh")
-    shutil.copy2(launcher, root / "ocs2_control控制台")
+    shutil.copy2(launcher, root / "robot_control_suite控制台")
     (root / "config/robot.local.yaml").write_text(
         "robot: {hardware: mock_components, end_effector: none}\nxr: {enable: false}\ncameras: {enable: false}\n")
     package = shlex.quote(str(Path(__file__).resolve().parents[1]))
     (root / "install/setup.bash").write_text(f'export PYTHONPATH={package}:"${{PYTHONPATH:-}}"\n')
-    (root / "src/robot_hmi/robot_app/web/index.html").write_text("<html>ocs2_control console</html>")
+    (root / "src/robot_hmi/robot_app/web/index.html").write_text("<html>robot_control_suite console</html>")
     browser_log = root / "browser.txt"
     for name, script in (
         ("xdg-open", '#!/bin/bash\nprintf "%s\\n" "$1" >> "$TEST_BROWSER"\n'),
@@ -115,18 +115,18 @@ def test_executable_opens_console_and_reuses_process_without_starting_modules(tm
         return None
 
     try:
-        subprocess.run([str(root / "ocs2_control控制台")], env=env, cwd=tmp_path,
+        subprocess.run([str(root / "robot_control_suite控制台")], env=env, cwd=tmp_path,
                        check=True, capture_output=True, text=True, timeout=20)
         pid = server_pid()
         assert pid is not None
-        subprocess.run([str(root / "ocs2_control控制台")], env=env, cwd=tmp_path,
+        subprocess.run([str(root / "robot_control_suite控制台")], env=env, cwd=tmp_path,
                        check=True, capture_output=True, text=True, timeout=10)
         assert server_pid() == pid
         assert len(browser_log.read_text().splitlines()) == 2
         url = f"http://127.0.0.1:{port}"
         direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # a http_proxy in the environment must not catch loopback
         with direct.open(url, timeout=5) as response:
-            assert b"ocs2_control console" in response.read()
+            assert b"robot_control_suite console" in response.read()
         with direct.open(url + "/api/state", timeout=5) as response:
             state = json.load(response)
         assert state["units"]

@@ -1,4 +1,4 @@
-# ocs2_control
+# robot_control_suite
 
 基于 OCS2 的通用机器人运控框架：MPC 末端控制、状态机、ros2_control 硬件驱动，以及配套的遥操作（XR 头显、手柄）、相机和网页控制台。支持多种机型（双臂、全身人形等），机型的模型和参数在 [`src/robot_description`](src/robot_description)，外部设备（相机、手、输入设备）在 [`src/robot_payload`](src/robot_payload/README.md)。源码、驱动、模型都在本仓库，另有子模块 `OrbbecSDK_ROS2` 和 `ocs2_ros2`（固定在 `ae75126f0`，升级时改子模块指针并重新验证）。
 
@@ -7,13 +7,13 @@
 Ubuntu 24.04 + ROS 2 Jazzy：
 
 ```bash
-git clone --recurse-submodules --shallow-submodules git@github.com:wqingzex/ocs2_control.git
-cd ocs2_control
+git clone --recurse-submodules --shallow-submodules git@github.com:wqingzex/robot_control_suite.git
+cd robot_control_suite
 ./scripts/setup.sh        # 依赖、SDK、编译、相机、手、XR 配对、检查，相机和手弹窗确认
 ./scripts/start.sh        # 前台启动运控、XR、相机，Ctrl+C 停止
 ```
 
-- 想用网页操作：编译后双击仓库根目录的控制台启动器（`ocs2_control控制台`），它会在后台启动并打开浏览器，见 [`docs/使用手册.md`](docs/使用手册.md) 第 4 节。
+- 想用网页操作：编译后双击仓库根目录的控制台启动器（`robot_control_suite控制台`），它会在后台启动并打开浏览器，见 [`docs/使用手册.md`](docs/使用手册.md) 第 4 节。
 - 容器里同样运行 `./scripts/setup.sh`，只是不执行物理机的 udev 和 CAN 操作。
 - 全部命令（单步重试、模块启停、导航、录制、诊断）见 [`scripts/README.md`](scripts/README.md)；遥操作按键、坐标对齐、故障排查、真机验证见 [`docs/使用手册.md`](docs/使用手册.md)。
 
@@ -84,11 +84,11 @@ ros2 launch robot_bringup split_body.launch.py robot:=fa_w2 launch_mode:=rviz_on
 ## 目录结构
 
 ```text
-ocs2_control/
+robot_control_suite/
 ├─ scripts/       setup.sh（初始化）、start.sh（启动）                       → scripts/README.md
 ├─ config/        robot.local.yaml 本机配置、robot.template.yaml 模板        → config/README.md
 ├─ docs/          使用手册、控制原理、故障码                                  → docs/README.md
-├─ ocs2_control控制台       编译 robot_app 时生成的控制台启动器，双击打开网页控制台（不进 git）
+├─ robot_control_suite控制台       编译 robot_app 时生成的控制台启动器，双击打开网页控制台（不进 git）
 ├─ logs/ run/     运行时生成：各模块日志、模块状态（不进 git）
 └─ src/           源码                                                        → src/README.md
 ```
@@ -96,5 +96,5 @@ ocs2_control/
 ## 文档
 
 - [`docs/使用手册.md`](docs/使用手册.md)：部署、启动、网页控制台、遥操作按键、相机、录制回放、故障排查、真机验证
-- [`docs/ocs2_control控制原理.md`](docs/ocs2_control控制原理.md)：MPC / MRT、状态机、控制器与驱动的调用关系、数值逆解
+- [`docs/robot_control_suite控制原理.md`](docs/robot_control_suite控制原理.md)：MPC / MRT、状态机、控制器与驱动的调用关系、数值逆解
 - 各目录的 README：见上面的"目录结构"和 [`src/README.md`](src/README.md)

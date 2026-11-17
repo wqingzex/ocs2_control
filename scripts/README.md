@@ -29,7 +29,7 @@
 ./scripts/start.sh dyn-identify    # 机械臂负载辨识向导，需要终端
 ./scripts/start.sh console         # Web 控制台，前台运行（Ctrl+C 停止）
 ./scripts/start.sh console start|stop|restart|status [--port N]   # 后台启动 / 停止 / 重启 / 查看，默认端口 8765
-./scripts/start.sh console --open  # 后台启动并用浏览器打开（双击 ocs2_control控制台 用的就是它）
+./scripts/start.sh console --open  # 后台启动并用浏览器打开（双击 robot_control_suite控制台 用的就是它）
 ./scripts/start.sh diag            # 打包日志、事件时间线、配置，出问题时发给开发者
 ./scripts/start.sh record [名称] [--topics joint|xr|collect|/a,/b]   # 录制，默认只录关节
 ./scripts/start.sh play 名称 [--rate 0.5] [--loop] [--paused] [--start 秒] [--xr]

@@ -25,7 +25,7 @@ def _xr_bridge_installed() -> bool:
 def launch_setup(context):
     config_path = LaunchConfiguration("config").perform(context)
     cfg = load(config_path)
-    actions = [LogInfo(msg=f"ocs2_control teleop bringup: {config_path}")]
+    actions = [LogInfo(msg=f"robot_control_suite teleop bringup: {config_path}")]
 
     # 1. PC Service
     xr = cfg["xr"]

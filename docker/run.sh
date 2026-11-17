@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 在宿主机运行：在持久容器 ocs2_control 里执行命令（真机运控、仿真、RViz、测试都用它）。
+# 在宿主机运行：在持久容器 robot_control_suite 里执行命令（真机运控、仿真、RViz、测试都用它）。
 #   ./docker/run.sh                          进入容器 shell
 #   ./docker/run.sh ./scripts/setup.sh       首次：依赖、编译、相机、手、XR 配对
 #   ./docker/run.sh ./scripts/start.sh       启动运控、XR、相机（Ctrl+C 停止）
@@ -8,15 +8,15 @@
 #
 # 仓库以和宿主机相同的绝对路径挂进容器，容器里改的代码就是宿主机上的文件；build/、install/ 里记录的绝对路径
 # （CMake 缓存、install/setup.bash）在宿主机和容器里都有效。
-# 容器是持久的：setup.sh 装的依赖、编译结果（仓库里的 build/、install/）都保留；停掉用 docker stop ocs2_control，
+# 容器是持久的：setup.sh 装的依赖、编译结果（仓库里的 build/、install/）都保留；停掉用 docker stop robot_control_suite，
 # 删掉重建用 OCS2_CONTROL_RECREATE=1 ./docker/run.sh（装过的依赖会丢，要重新 setup.sh deps）。
-# 环境变量：IMAGE（默认 ocs2_control）、CONTAINER（默认 ocs2_control）、DISPLAY（默认 :1）。
+# 环境变量：IMAGE（默认 robot_control_suite）、CONTAINER（默认 robot_control_suite）、DISPLAY（默认 :1）。
 set -Eeuo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO="$(cd -- "${HERE}/.." && pwd -P)"
-IMAGE="${IMAGE:-ocs2_control}"
-CONTAINER="${CONTAINER:-ocs2_control}"
+IMAGE="${IMAGE:-robot_control_suite}"
+CONTAINER="${CONTAINER:-robot_control_suite}"
 DISPLAY="${DISPLAY:-:1}"
 X11_DIR="/tmp/fiveages_w2-ocs2-x11"          # 固定目录挂进容器；每次运行刷新里面的 cookie（容器是持久的，不能每次换挂载）
 
@@ -67,4 +67,4 @@ tty_flags=()
 
 exec docker exec "${tty_flags[@]}" \
   -e DISPLAY="${DISPLAY}" -e XAUTHORITY=/tmp/fiveages_w2-x11/xauth \
-  "${CONTAINER}" bash -c '. ~/.fiveages_w2_env.sh; exec "$@"' ocs2_control "$@"
+  "${CONTAINER}" bash -c '. ~/.fiveages_w2_env.sh; exec "$@"' robot_control_suite "$@"

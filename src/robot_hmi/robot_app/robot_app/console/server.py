@@ -291,7 +291,7 @@ class Console:
 
 
 def create_app(console: Console, static_dir: Optional[str]) -> FastAPI:
-    app = FastAPI(title="ocs2_control 控制台", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="robot_control_suite 控制台", docs_url=None, redoc_url=None, openapi_url=None)
 
     def unit_or_404(name: str) -> str:
         if name not in console.supervisor.units:

@@ -1,1 +1,1 @@
-"""ocs2_control teleop web console (FastAPI backend + static page in share/robot_app/console)."""
+"""robot_control_suite teleop web console (FastAPI backend + static page in share/robot_app/console)."""

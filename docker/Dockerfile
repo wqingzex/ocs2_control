@@ -1,9 +1,9 @@
-# ocs2_control 运行环境镜像：Ubuntu 24.04 + ROS 2 Jazzy，只准备系统环境和 fiveages 用户，不含源码，不编译。
+# robot_control_suite 运行环境镜像：Ubuntu 24.04 + ROS 2 Jazzy，只准备系统环境和 fiveages 用户，不含源码，不编译。
 # 仓库由 docker/run.sh 以和宿主机相同的绝对路径挂进去（环境变量 WS 就是这个路径），在容器里改代码、用仓库自己的 ./scripts/setup.sh 装依赖和编译
 # （setup.sh 在容器里会自动跳过物理机的 udev 和 CAN 配置）。
 #
 #   git submodule update --init --recursive --depth 1       # 子模块要在宿主机上先拉好
-#   docker build --network=host -f docker/Dockerfile -t ocs2_control .
+#   docker build --network=host -f docker/Dockerfile -t robot_control_suite .
 #   ./docker/run.sh ./scripts/setup.sh                      # 首次：依赖、编译、相机、手、XR 配对
 #   ./docker/run.sh ./scripts/start.sh                      # 之后：启动运控
 #
