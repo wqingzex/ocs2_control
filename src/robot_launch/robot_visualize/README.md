@@ -16,6 +16,6 @@ ros2 launch robot_visualize component.launch.py   robot:=fa_w2_body
 ros2 launch robot_visualize visualize.launch.py   robot:=<名字>
 ```
 
-常用参数：`type`、`left_end_effector` / `right_end_effector`（左右不同末端）、`collider`、`direction`、`skin`、`variant`、`chassis`。
+常用参数：`type`、`left_end_effector` / `right_end_effector`（左右不同末端）、`collider`、`direction`、`skin`、`variant`、`base`。
 
 `robot_app` 的"只看模型"也是调用这里的 `humanoid.launch.py` / `manipulator.launch.py`。RViz 配置在 `config/rviz/`，公共函数在 `robot_visualize/visualize.py`。

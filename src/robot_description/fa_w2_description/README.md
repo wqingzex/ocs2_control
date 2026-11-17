@@ -10,7 +10,7 @@
 
 | 部分 | 来源 |
 |---|---|
-| 底盘（`linkhou_s2_v2`，默认；或 `linkhou_s2`） | [`linkhou_s2_description`](../component/linkhou_s2_description/README.md)，参数 `chassis` |
+| 底盘（`linkhou_s2_v2`，默认；或 `linkhou_s2`） | [`linkhou_s2_description`](../component/linkhou_s2_description/README.md)，参数 `base` |
 | 躯干、头 | [`fa_w2_body_description`](../component/fa_w2_body_description/README.md)、[`fa_w2_head_description`](../component/fa_w2_head_description/README.md)，参数 `variant`（头限位：`stand` / `v1.5`） |
 | 双臂（`skin:=fa_w2`）、末端、`ros2_control` 宏 | [`m6_ccs_description`](../component/m6_ccs_description/README.md) |
 

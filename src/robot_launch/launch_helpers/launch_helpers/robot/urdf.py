@@ -3,7 +3,7 @@
 Both views render the same robot description package with different xacro parameters:
 - ros2_control: ``xacro/ros2_control/robot.xacro`` (includes ``robot.xacro`` plus the hardware blocks),
   end-effector joints stay actuated; the XML string is cached in-process.
-- planning: ``xacro/robot.xacro`` with chassis and end-effector joints frozen; the XML is written to a
+- planning: ``xacro/robot.xacro`` with base and end-effector joints frozen; the XML is written to a
   content-addressed file because OCS2 reads its URDF by path.
 """
 
@@ -249,18 +249,18 @@ def _planning_xacro_mappings(
     planning_scope=PLANNING_SCOPE_FULL,
     planning_robot_name="",
 ):
-    """Xacro mappings for OCS2 planning URDF (kinematic tree without EEF/chassis actuation DOF)."""
+    """Xacro mappings for OCS2 planning URDF (kinematic tree without EEF/base actuation DOF)."""
     configs = launch_configurations or {}
 
     mappings = build_xacro_mappings(hardware, configs, robot_profile)
     mappings.pop("ros2_control_hardware_type", None)
     mappings.pop("gazebo", None)
-    # Planning URDF: freeze chassis wheels/steer and EEF actuation in xacro (not via .info removeJoints).
+    # Planning URDF: freeze base wheels/steer and EEF actuation in xacro (not via .info removeJoints).
     mappings["eef_fixed_joints"] = "true"
-    mappings["chassis_joints_movable"] = "false"
+    mappings["base_joints_movable"] = "false"
 
     if planning_scope == PLANNING_SCOPE_ARMS:
-        mappings.pop("chassis", None)
+        mappings.pop("base", None)
         if not _planning_xacro_supports_side_eef(planning_robot_name):
             # xacro without per-side end effectors: do not pass them
             for key in ("left_end_effector", "right_end_effector", "left_end_effector_bus", "right_end_effector_bus"):

@@ -3,16 +3,16 @@
 	<xacro:arg name="variant" default=""/>
 	<xacro:arg name="collider" default="simple"/>
 	<xacro:arg name="isaac" default="true"/>
-	<!-- chassis:= linkhou_s2_v2 (default) or linkhou_s2 -->
-	<xacro:arg name="chassis" default="linkhou_s2_v2"/>
-	<xacro:arg name="chassis_joints_movable" default="true"/>
+	<!-- base:= linkhou_s2_v2 (default) or linkhou_s2 -->
+	<xacro:arg name="base" default="linkhou_s2_v2"/>
+	<xacro:arg name="base_joints_movable" default="true"/>
 
-	<xacro:if value="${'$(arg chassis)' == 'linkhou_s2_v2'}">
+	<xacro:if value="${'$(arg base)' == 'linkhou_s2_v2'}">
 		<xacro:include filename="$(find linkhou_s2_description)/xacro/linkhou_s2_v2.xacro"/>
-		<xacro:linkhou_s2 joints_movable="$(arg chassis_joints_movable)" variant="$(arg variant)" collider="$(arg collider)" isaac="$(arg isaac)"/>
+		<xacro:linkhou_s2 joints_movable="$(arg base_joints_movable)" variant="$(arg variant)" collider="$(arg collider)" isaac="$(arg isaac)"/>
 	</xacro:if>
-	<xacro:if value="${'$(arg chassis)' == 'linkhou_s2'}">
+	<xacro:if value="${'$(arg base)' == 'linkhou_s2'}">
 		<xacro:include filename="$(find linkhou_s2_description)/xacro/linkhou_s2.xacro"/>
-		<xacro:linkhou_s2 joints_movable="$(arg chassis_joints_movable)" variant="$(arg variant)" collider="$(arg collider)" isaac="$(arg isaac)"/>
+		<xacro:linkhou_s2 joints_movable="$(arg base_joints_movable)" variant="$(arg variant)" collider="$(arg collider)" isaac="$(arg isaac)"/>
 	</xacro:if>
 </robot>

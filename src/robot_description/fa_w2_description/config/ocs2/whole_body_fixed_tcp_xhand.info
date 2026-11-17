@@ -25,7 +25,7 @@ model_information
     headFrame               "head_link2"
 
     ; removeJoints: fallback when using static URDF (non-xacro planning).
-    ; Dynamic planning URDF sets eef_fixed_joints + chassis_joints_movable=false in xacro.
+    ; Dynamic planning URDF sets eef_fixed_joints + base_joints_movable=false in xacro.
     ; Head joints are in MPC; entries below mainly cover legacy static models.
     removeJoints
     {

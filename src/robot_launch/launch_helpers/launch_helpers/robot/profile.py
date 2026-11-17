@@ -59,7 +59,8 @@ def extract_prefixed_args(
     return result
 
 
-_PLATFORM_XACRO_KEYS = ("chassis", "variant", "chassis_joints_movable")
+# config key (platform.*) -> xacro argument
+_PLATFORM_XACRO_KEYS = {"chassis": "base", "variant": "variant", "chassis_joints_movable": "base_joints_movable"}
 
 
 def create_platform_launch_arguments():
@@ -68,14 +69,14 @@ def create_platform_launch_arguments():
 
     return [
         DeclareLaunchArgument(
-            "chassis",
+            "base",
             default_value="",
-            description="Xacro chassis model key (robot-specific). Empty means no chassis parameter passed to xacro.",
+            description="Xacro mobile base model key (robot-specific). Empty means no base parameter passed to xacro.",
         ),
         DeclareLaunchArgument(
-            "chassis_joints_movable",
+            "base_joints_movable",
             default_value="",
-            description="Xacro flag for movable chassis joints (true/false). Empty means no chassis_joints_movable parameter passed to xacro.",
+            description="Xacro flag for movable base joints (true/false). Empty means no base_joints_movable parameter passed to xacro.",
         ),
     ]
 
@@ -85,7 +86,7 @@ def normalize_robot_profile(data: Dict[str, Any]) -> Dict[str, Any]:
     Normalize robot profile to {xacro, hardware, control} for launch code.
 
     New schema (recommended):
-      platform:  chassis / variant / arm_ctrl_mode — always apply (also when end effectors come from the config)
+      platform:  chassis (xacro: base) / variant / arm_ctrl_mode — always apply (also when end effectors come from the config)
       robot.end_effector / robot.end_effector_bus: loaded into profile["eef"] (launch arguments override them)
       control.patch: inline ros2_control overrides (deep-merged after compose)
     """
@@ -112,11 +113,11 @@ def normalize_robot_profile(data: Dict[str, Any]) -> Dict[str, Any]:
     control: Dict[str, Any] = {}
 
     plat = platform if isinstance(platform, dict) else {}
-    for key in _PLATFORM_XACRO_KEYS:
+    for key, xacro_name in _PLATFORM_XACRO_KEYS.items():
         if key in plat:
-            xacro[key] = plat[key]
+            xacro[xacro_name] = plat[key]
         elif key in legacy_x:
-            xacro[key] = legacy_x[key]
+            xacro[xacro_name] = legacy_x[key]
 
     arm_mode = plat.get("arm_ctrl_mode") or legacy_hw.get("arm_ctrl_mode")
     if arm_mode is not None and str(arm_mode).strip():

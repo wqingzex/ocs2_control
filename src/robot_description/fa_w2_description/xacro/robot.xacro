@@ -2,10 +2,10 @@
 <robot name="FiveAges W2" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
     <xacro:arg name="collider" default="simple"/>
-    <!-- OCS2 planning URDF: eef_fixed_joints + chassis_joints_movable=false (see robot_utils planning mappings) -->
+    <!-- OCS2 planning URDF: eef_fixed_joints + base_joints_movable=false (see robot_utils planning mappings) -->
     <xacro:arg name="eef_fixed_joints" default="false"/>
-    <xacro:arg name="chassis" default="linkhou_s2"/>
-    <xacro:arg name="chassis_joints_movable" default="false"/>
+    <xacro:arg name="base" default="linkhou_s2"/>
+    <xacro:arg name="base_joints_movable" default="false"/>
     <xacro:arg name="variant" default=""/>
 
     <!-- End effectors (robot.end_effector names): both sides, or one side with left_/right_end_effector -->
@@ -27,17 +27,17 @@
     <xacro:set_side_eef_types side="left" type_key="${effective_left_type}"/>
     <xacro:set_side_eef_types side="right" type_key="${effective_right_type}"/>
 
-    <xacro:property name="chassis_arg" value="$(arg chassis)"/>
-    <!-- platform-wide OEM visual variant (launch/profile: variant); not the chassis model selector -->
+    <xacro:property name="base_arg" value="$(arg base)"/>
+    <!-- platform-wide OEM visual variant (launch/profile: variant); not the base model selector -->
     <xacro:property name="platform_variant" value="$(arg variant)"/>
 
-    <xacro:if value="${chassis_arg == 'linkhou_s2'}">
+    <xacro:if value="${base_arg == 'linkhou_s2'}">
         <xacro:include filename="$(find linkhou_s2_description)/xacro/linkhou_s2.xacro"/>
-        <xacro:linkhou_s2 joints_movable="$(arg chassis_joints_movable)" variant="${platform_variant}" collider="$(arg collider)"/>
+        <xacro:linkhou_s2 joints_movable="$(arg base_joints_movable)" variant="${platform_variant}" collider="$(arg collider)"/>
     </xacro:if>
-    <xacro:if value="${chassis_arg == 'linkhou_s2_v2'}">
+    <xacro:if value="${base_arg == 'linkhou_s2_v2'}">
         <xacro:include filename="$(find linkhou_s2_description)/xacro/linkhou_s2_v2.xacro"/>
-        <xacro:linkhou_s2 joints_movable="$(arg chassis_joints_movable)" variant="${platform_variant}" collider="$(arg collider)"/>
+        <xacro:linkhou_s2 joints_movable="$(arg base_joints_movable)" variant="${platform_variant}" collider="$(arg collider)"/>
     </xacro:if>
 
     <xacro:include filename="$(find fa_w2_body_description)/xacro/body.xacro"/>
