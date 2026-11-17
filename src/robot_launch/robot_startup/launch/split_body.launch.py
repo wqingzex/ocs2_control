@@ -9,13 +9,14 @@ from launch_helpers import (
     create_launch_mode_arguments,
     create_robot_profile_launch_arguments,
     resolve_info_file_path,
+    get_robot_package_path,
     prepare_target_generator_parameters,
 )
 
 _launch_dir = os.path.dirname(os.path.abspath(__file__))
 if _launch_dir not in sys.path:
     sys.path.insert(0, _launch_dir)
-import _bringup_common as common
+import _startup_common as common
 
 
 def launch_setup(context, *args, **kwargs):
@@ -38,6 +39,7 @@ def launch_setup(context, *args, **kwargs):
     main_spawner, ocs2_planning_param_file = common.create_main_controller_spawner(
         "arm_controller", planning_urdf_params
     )
+
     controller_stack_nodes = common.create_controller_stack_nodes(
         ctx,
         ocs2_planning_param_file=ocs2_planning_param_file,
@@ -47,18 +49,37 @@ def launch_setup(context, *args, **kwargs):
         context.launch_configurations.get("enable_gripper", "true").lower() == "true"
     )
     hand_controllers, hand_spawners = common.setup_hand_controllers(ctx, enable_gripper)
-    hand_names = [c["name"] for c in hand_controllers] if enable_gripper else []
+
+    enable_body = context.launch_configurations.get("enable_body", "true").lower() == "true"
+    body_spawners = []
+    joint_controller_names = ["arm_controller"]
+    if enable_body:
+        body_controllers, body_spawners = common.setup_body_controllers(ctx, ["body", "head"])
+        joint_controller_names.extend(c["name"] for c in body_controllers)
 
     # Same .info the arm_controller loads (info_package / robot_name + info_file_name).
-    task_file_path = resolve_info_file_path(ctx.config, "dual_arm", ctx.robot_name)
+    task_file_path = resolve_info_file_path(ctx.config, "split_body", planning_robot_name)
     if task_file_path is None:
         return []
     print(f"[INFO] Using task file for TargetGenerator: {task_file_path}")
 
+    config_file_path = None
+    whole_body_pkg = get_robot_package_path(ctx.robot_name)
+    if whole_body_pkg is not None:
+        candidate = os.path.join(whole_body_pkg, "config", "ocs2", "target_generator.yaml")
+        if os.path.exists(candidate):
+            config_file_path = candidate
+            print(f"[INFO] Using target_generator.yaml from full body robot description: {config_file_path}")
+        else:
+            print(f"[WARN] target_generator.yaml not found at: {candidate}")
+
+    hand_names = [c["name"] for c in hand_controllers] if enable_gripper else []
+    if hand_names:
+        joint_controller_names.extend(hand_names)
     target_generator = None
     target_generator_params = prepare_target_generator_parameters(
         task_file_path=task_file_path,
-        config_file_path=None,
+        config_file_path=config_file_path,
         hand_controllers=hand_names or None,
     )
     if target_generator_params and (
@@ -75,9 +96,10 @@ def launch_setup(context, *args, **kwargs):
 
     rviz_node = common.build_rviz_node(
         ctx,
-        common.resolve_rviz_config(ctx.robot_name, "dual_arm.rviz"),
+        common.resolve_rviz_config(ctx.robot_name, "split_body.rviz"),
         hand_names,
-        ["arm_controller"] + hand_names,
+        joint_controller_names,
+        extra_rviz_parameters=[{"whole_body_available": False}],
     )
 
     return common.assemble_nodes(
@@ -85,7 +107,7 @@ def launch_setup(context, *args, **kwargs):
         rviz_node=rviz_node,
         controller_stack_nodes=controller_stack_nodes,
         main_spawner=main_spawner,
-        extra_spawners=hand_spawners,
+        extra_spawners=hand_spawners + body_spawners,
         optional_nodes=[target_generator] if target_generator else [],
     )
 
@@ -94,10 +116,10 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("robot", default_value="cr5"),
-            DeclareLaunchArgument("arms", default_value="", description="Which arms: dual (default) | left | right"),
             DeclareLaunchArgument("hardware", default_value="mock_components"),
             DeclareLaunchArgument("enable_target_generator", default_value="true"),
             DeclareLaunchArgument("enable_gripper", default_value="true"),
+            DeclareLaunchArgument("enable_body", default_value="true"),
             *create_launch_mode_arguments(),
         ]
         + create_robot_profile_launch_arguments()

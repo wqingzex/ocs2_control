@@ -8,8 +8,8 @@
 
 ```bash
 ros2 launch robot_visualize manipulator.launch.py robot:=m6_ccs collider:=simple     # 看模型（双臂）
-ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs                         # 控制，默认 mock
-ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs hardware:=real end_effector:=linkerhand_l6
+ros2 launch robot_startup dual_arm.launch.py robot:=m6_ccs                         # 控制，默认 mock
+ros2 launch robot_startup dual_arm.launch.py robot:=m6_ccs hardware:=real end_effector:=linkerhand_l6
 ```
 
 | 场景 | 做法 |

@@ -28,9 +28,9 @@ robot_control_suite 把末端目标变成关节角的主路径是 **OCS2 MPC**�
 ```mermaid
 flowchart TD
     A["./scripts/start.sh（控制台）"] --> B{"选择入口<br/>config/robot.local.yaml 的 robot.entry"}
-    B -->|split| L1["ros2 launch robot_bringup<br/>split_body.launch.py"]
-    B -->|dual| L2["ros2 launch robot_bringup<br/>dual_arm.launch.py"]
-    B -->|full| L3["ros2 launch robot_bringup<br/>whole_body.launch.py<br/>（主控制器 whole_body_controller）"]
+    B -->|split| L1["ros2 launch robot_startup<br/>split_body.launch.py"]
+    B -->|dual| L2["ros2 launch robot_startup<br/>dual_arm.launch.py"]
+    B -->|full| L3["ros2 launch robot_startup<br/>whole_body.launch.py<br/>（主控制器 whole_body_controller）"]
     A -.->|"hardware:= real / mock_components / isaac<br/>launch_mode:= control_only / rviz_only"| L2
 
     L1 & L2 & L3 --> N["启动节点（assemble_nodes）"]

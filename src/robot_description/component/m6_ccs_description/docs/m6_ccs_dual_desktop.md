@@ -36,14 +36,14 @@ ros2 launch robot_visualize manipulator.launch.py robot:=m6_ccs variant:=desktop
 
 ```bash
 source ~/ros2_ws/install/setup.bash
-ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs variant:=desktop
+ros2 launch robot_startup dual_arm.launch.py robot:=m6_ccs variant:=desktop
 ```
 
 * Desktop + Jodell RG75
 
 ```bash
 source ~/ros2_ws/install/setup.bash
-ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs variant:=desktop end_effector:=jodell_rg75
+ros2 launch robot_startup dual_arm.launch.py robot:=m6_ccs variant:=desktop end_effector:=jodell_rg75
 ```
 
 
@@ -53,13 +53,13 @@ ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs variant:=desktop end_
 
 ```bash
 source ~/ros2_ws/install/setup.bash
-ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs variant:=desktop hardware:=isaac
+ros2 launch robot_startup dual_arm.launch.py robot:=m6_ccs variant:=desktop hardware:=isaac
 ```
 
 * Desktop + Jodell RG75
 
 ```bash
 source ~/ros2_ws/install/setup.bash
-ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs variant:=desktop end_effector:=jodell_rg75 hardware:=isaac
+ros2 launch robot_startup dual_arm.launch.py robot:=m6_ccs variant:=desktop end_effector:=jodell_rg75 hardware:=isaac
 ```
 

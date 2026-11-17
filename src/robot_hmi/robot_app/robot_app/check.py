@@ -29,7 +29,7 @@ def main(argv=None) -> int:
 
     arg_text = " ".join(f"{k}:={v}" for k, v in args.items())
     print(f"配置: {path}")
-    print(f"  运控: ros2 launch robot_bringup {launch_file} {arg_text}")
+    print(f"  运控: ros2 launch robot_startup {launch_file} {arg_text}")
     xr = cfg["xr"]
     if xr["enable"]:
         suffix = "（自动启动 PC Service）" if xr["start_pc_service"] else ""

@@ -15,8 +15,8 @@ Jodell（钧舵）夹爪的描述：**RG75-300**（平行夹爪），本仓库�
 fa_w2 和 M6 的类型解析认 `rg75`：
 
 ```bash
-ros2 launch robot_bringup split_body.launch.py robot:=fa_w2 hardware:=mock_components end_effector:=jodell_rg75
-ros2 launch robot_bringup dual_arm.launch.py  robot:=m6_ccs      hardware:=mock_components end_effector:=jodell_rg75
+ros2 launch robot_startup split_body.launch.py robot:=fa_w2 hardware:=mock_components end_effector:=jodell_rg75
+ros2 launch robot_startup dual_arm.launch.py  robot:=m6_ccs      hardware:=mock_components end_effector:=jodell_rg75
 ```
 
 真机上夹爪走 Marvin 工具端口（`left_end_effector_bus: arm_rs485`）。夹爪的标定负载（`dyn_param`）已经写在 `m6_ccs_description/xacro/eefs.xacro` 里。真机上的动作没有验证过。

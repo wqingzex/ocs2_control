@@ -40,7 +40,7 @@ def launch_setup(context):
 
     # 2. Controllers (+ target_generator / XrInputHandler)
     launch_file, args = controller_launch(cfg, os.path.abspath(config_path))
-    controller_dir = os.path.join(get_package_share_directory("robot_bringup"), "launch")
+    controller_dir = os.path.join(get_package_share_directory("robot_startup"), "launch")
     actions.append(IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(controller_dir, launch_file)),
         launch_arguments=args.items()))
@@ -67,7 +67,7 @@ def launch_setup(context):
     if cfg["cameras"]["enable"]:
         actions.append(IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(
-                get_package_share_directory("robot_bringup"), "launch", "cameras.launch.py")),
+                get_package_share_directory("robot_startup"), "launch", "cameras.launch.py")),
             launch_arguments={"config": config_path}.items()))
     return actions
 

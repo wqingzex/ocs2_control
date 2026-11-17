@@ -15,7 +15,7 @@ MPC 任务本身在 [`arm_mpc`](../lib/mpc/arm_mpc)；共用的运行时在 [`mp
 
 ## 使用
 
-整机由 `robot_launch/robot_bringup` 的启动文件起（`./scripts/start.sh` 按 `robot.entry` 选）。在机器人描述包的 `config/ros2_control/*.yaml` 里声明（fa_w2 见 `fa_w2_description/config/ros2_control/common.yaml`）：
+整机由 `robot_launch/robot_startup` 的启动文件起（`./scripts/start.sh` 按 `robot.entry` 选）。在机器人描述包的 `config/ros2_control/*.yaml` 里声明（fa_w2 见 `fa_w2_description/config/ros2_control/common.yaml`）：
 
 ```yaml
 controller_manager:

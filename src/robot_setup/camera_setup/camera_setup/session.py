@@ -63,7 +63,7 @@ class CameraPreviews:
         topic = f'/{prefix}camera_{role}/color/image_raw/compressed'
         self.probe.watch_image(topic)
         self.supervisor.configure(name,
-            ('ros2', 'launch', 'robot_bringup', 'cameras.launch.py', f'config:={path}', f'name_prefix:={prefix}'))
+            ('ros2', 'launch', 'robot_startup', 'cameras.launch.py', f'config:={path}', f'name_prefix:={prefix}'))
         self.entries[device.serial] = {'unit': name, 'topic': topic, 'rotation': rotation,
                                       'since': time.monotonic(), 'generation': uuid.uuid4().hex}
         # Return once this driver has initialized the device: the drivers share one lock, so a camera started

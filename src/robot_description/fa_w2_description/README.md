@@ -21,9 +21,9 @@
 ```bash
 ros2 launch robot_visualize humanoid.launch.py robot:=fa_w2 collider:=simple end_effector:=linkerhand_l6   # 看模型
 ./scripts/start.sh                                                                                                  # 整机启动（日常用这个）
-ros2 launch robot_bringup whole_body.launch.py  robot:=fa_w2 end_effector:=linkerhand_l6                # 全身，默认 mock
-ros2 launch robot_bringup split_body.launch.py robot:=fa_w2 end_effector:=linkerhand_l6                # 分体：腰、头、臂各自的控制器
-ros2 launch robot_bringup head_body.launch.py    robot:=fa_w2                                    # 只有腰和头
+ros2 launch robot_startup whole_body.launch.py  robot:=fa_w2 end_effector:=linkerhand_l6                # 全身，默认 mock
+ros2 launch robot_startup split_body.launch.py robot:=fa_w2 end_effector:=linkerhand_l6                # 分体：腰、头、臂各自的控制器
+ros2 launch robot_startup head_body.launch.py    robot:=fa_w2                                    # 只有腰和头
 ```
 
 腰、头的 CAN FD 口默认 `can0`，换口在 `config/robot.local.yaml` 的 `hardware:` 下写 `body_can_interface: can1`（真机模式生效；改完重新运行 `./scripts/setup.sh host`，让免密 sudo 规则用同一个名字，名字只允许 1 到 15 个字母、数字、`_`、`.`、`-`）。

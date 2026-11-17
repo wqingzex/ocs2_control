@@ -229,7 +229,7 @@ def find_camera_processes(devices, excluded_names=()):
             serial, name = values.get('serial_number'), values.get('camera_name')
             if serial in serials and name and name not in excluded_names:
                 matched[name] = serial
-        elif package == 'robot_bringup' and launch == 'cameras.launch.py':
+        elif package == 'robot_startup' and launch == 'cameras.launch.py':
             try:
                 raw = yaml.safe_load(Path(values['config']).read_text()) or {}
                 cams = raw.get('cameras') or {}

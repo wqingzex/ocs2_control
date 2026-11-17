@@ -11,7 +11,7 @@ from xr_teleop.config import EXTENSION as XR_EXTENSION
 JOYSTICK_RE = re.compile(r"^(/dev/input/js\d+)?$")
 NAME_RE = re.compile(r"^[A-Za-z0-9_.-]*$")  # map ids and ROS package names
 
-# entry -> (whole-robot launch file in robot_bringup, robot name); same entries as the former quick_start menu
+# entry -> (whole-robot launch file in robot_startup, robot name); same entries as the former quick_start menu
 ENTRIES = {
     "split_body": ("split_body.launch.py", "fa_w2"),
     "dual_arm": ("dual_arm.launch.py", "m6_ccs"),

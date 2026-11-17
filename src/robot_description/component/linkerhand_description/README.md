@@ -10,8 +10,8 @@ LinkerHand **L6**（6 自由度灵巧手）的 URDF 和 `ros2_control` 描述。
 
 ```bash
 ros2 launch robot_visualize hand.launch.py hand:=linkerhand type:=l6                   # 看模型
-ros2 launch robot_bringup hand.launch.py type:=l6                             # mock 控制
-ros2 launch robot_bringup hand.launch.py hand:=linkerhand type:=l6 hardware:=real direction:=1   # 真机
+ros2 launch robot_startup hand.launch.py type:=l6                             # mock 控制
+ros2 launch robot_startup hand.launch.py hand:=linkerhand type:=l6 hardware:=real direction:=1   # 真机
 ```
 
 整机上用 `end_effector:=linkerhand_l6`，见 [m6_ccs](../m6_ccs_description/README.md#末端执行器)。

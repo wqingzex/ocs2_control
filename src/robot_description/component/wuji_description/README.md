@@ -8,7 +8,7 @@
 
 ```bash
 ros2 launch robot_visualize hand.launch.py hand:=wuji type:=hand2                    # 看模型
-ros2 launch robot_bringup hand.launch.py hand:=wuji type:=hand2 direction:=1         # mock 控制
+ros2 launch robot_startup hand.launch.py hand:=wuji type:=hand2 direction:=1         # mock 控制
 ```
 
 整机上用 `robot.end_effector.type: wuji_hand2`、`robot.end_effector.interface.bus: ethernet`；真机走以太网（`wuji_hardware`，扫描后按 `hand_side` 认左右，不写 IP），见 [wuji_hardware](../../../robot_hardware/wuji_hardware/README.md)。装到臂上的方式：

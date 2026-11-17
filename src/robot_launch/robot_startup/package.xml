@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>robot_bringup</name>
+  <name>robot_startup</name>
   <version>0.1.0</version>
-  <description>Whole-robot launch files: split-body, whole-body and dual-arm bringup that assemble the URDF, ros2_control and the controllers</description>
+  <description>Whole-robot launch files: split-body, whole-body and dual-arm startup that assemble the URDF, ros2_control and the controllers</description>
   <maintainer email="TODO@email.com"/>
   <license>Apache-2.0</license>
 

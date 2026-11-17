@@ -48,7 +48,7 @@ export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/192.168.1.10
 
 ```bash
 rosdep install --from-paths src --ignore-src -r -y
-colcon build --symlink-install --packages-up-to robot_bringup \
+colcon build --symlink-install --packages-up-to robot_startup \
     juxie_hardware marvin_hardware fa_w2_description      # 真机：分体 / 双臂 / 全身
 # 只仿真（含 Isaac Sim）：把 juxie、marvin 换成 topic_based_hardware
 ```
@@ -58,8 +58,8 @@ colcon build --symlink-install --packages-up-to robot_bringup \
 ```bash
 ros2 launch robot_visualize humanoid.launch.py    robot:=fa_w2           # 全身模型
 ros2 launch robot_visualize manipulator.launch.py robot:=m6_ccs arms:=dual    # 双臂；type 也可为 right
-ros2 launch robot_bringup dual_arm.launch.py       robot:=m6_ccs            # 双臂控制，默认 mock
-ros2 launch robot_bringup whole_body.launch.py     robot:=fa_w2          # 全身 WBC
+ros2 launch robot_startup dual_arm.launch.py       robot:=m6_ccs            # 双臂控制，默认 mock
+ros2 launch robot_startup whole_body.launch.py     robot:=fa_w2          # 全身 WBC
 ```
 
 全身控制启动后可用 `mode_command` 切换模式，例如 `ros2 topic pub --once /mode_command std_msgs/msg/String "data: 'BODY_LOCK'"`，命令见 [`whole_body_mpc`](src/robot_control/lib/mpc/whole_body_mpc/README.md)。
@@ -69,16 +69,16 @@ ros2 launch robot_bringup whole_body.launch.py     robot:=fa_w2          # 全�
 日常用 `./scripts/start.sh`。手动启动：
 
 ```bash
-ros2 launch robot_bringup dual_arm.launch.py   robot:=m6_ccs     hardware:=real [end_effector:=linkerhand_l6]   # 双臂
-ros2 launch robot_bringup split_body.launch.py robot:=fa_w2 hardware:=real [end_effector:=linkerhand_l6]   # 分体
-ros2 launch robot_bringup whole_body.launch.py robot:=fa_w2 hardware:=real [end_effector:=linkerhand_l6]   # 全身
+ros2 launch robot_startup dual_arm.launch.py   robot:=m6_ccs     hardware:=real [end_effector:=linkerhand_l6]   # 双臂
+ros2 launch robot_startup split_body.launch.py robot:=fa_w2 hardware:=real [end_effector:=linkerhand_l6]   # 分体
+ros2 launch robot_startup whole_body.launch.py robot:=fa_w2 hardware:=real [end_effector:=linkerhand_l6]   # 全身
 ```
 
 **远程可视化**：控制节点在机器人上无头运行，RViz 在另一台电脑上。两台机器的 `ROS_DOMAIN_ID` 必须相同，调试电脑按上面的 Client 模式连机器人，并保证 7447 端口通。
 
 ```bash
 ./scripts/start.sh up control                                                              # 机器人上，不起 RViz
-ros2 launch robot_bringup split_body.launch.py robot:=fa_w2 launch_mode:=rviz_only    # 调试电脑上
+ros2 launch robot_startup split_body.launch.py robot:=fa_w2 launch_mode:=rviz_only    # 调试电脑上
 ```
 
 ## 目录结构

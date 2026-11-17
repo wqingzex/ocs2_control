@@ -24,6 +24,6 @@ Orbbec 相机的**配置**：头部 Gemini 335Lg，左右腕 Gemini 305。依赖
 | 内容 | 位置 |
 |---|---|
 | 配置转驱动参数 `camera_specs`、单元定义 `camera_units` | [`launch_helpers/devices/camera.py`](../../robot_launch/launch_helpers/launch_helpers/devices/camera.py) |
-| 启动文件 | `ros2 launch robot_bringup cameras.launch.py config:=/绝对路径/config/robot.local.yaml [only:=camera_head]` |
+| 启动文件 | `ros2 launch robot_startup cameras.launch.py config:=/绝对路径/config/robot.local.yaml [only:=camera_head]` |
 
-设置窗口的预览会调用上面的启动文件，所以 `camera_setup` 依赖 `launch_helpers` 和 `robot_bringup`，反过来不依赖。
+设置窗口的预览会调用上面的启动文件，所以 `camera_setup` 依赖 `launch_helpers` 和 `robot_startup`，反过来不依赖。

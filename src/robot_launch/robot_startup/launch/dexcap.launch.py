@@ -1,9 +1,9 @@
 """DexCap teleoperation: device nodes, arm joint mapping and glove mapping in one launch.
 
-  ros2 launch robot_bringup dexcap.launch.py                                   # exoskeleton + both gloves, arm mapping
-  ros2 launch robot_bringup dexcap.launch.py left_eef:=hand right_eef:=hand    # + gloves drive the LinkerHand L6
-  ros2 launch robot_bringup dexcap.launch.py left_eef:=gripper right_eef:=gripper
-  ros2 launch robot_bringup dexcap.launch.py arm_mapper:=false                 # raw /dexcap/* topics only
+  ros2 launch robot_startup dexcap.launch.py                                   # exoskeleton + both gloves, arm mapping
+  ros2 launch robot_startup dexcap.launch.py left_eef:=hand right_eef:=hand    # + gloves drive the LinkerHand L6
+  ros2 launch robot_startup dexcap.launch.py left_eef:=gripper right_eef:=gripper
+  ros2 launch robot_startup dexcap.launch.py arm_mapper:=false                 # raw /dexcap/* topics only
 
 The arm mapping streams to /arm_controller/joint_target_position: run the robot in split_body or dual_arm (in
 whole_body the arms belong to whole_body_controller). It only follows while the controller is in MOVEJ.

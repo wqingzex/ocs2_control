@@ -4,7 +4,7 @@
 
 ## 作用
 
-`robot_bringup` 的 launch 文件和 `robot_visualize` 调用它，避免每个 launch 各写一遍"找包、读 xacro、拼参数"。
+`robot_startup` 的 launch 文件和 `robot_visualize` 调用它，避免每个 launch 各写一遍"找包、读 xacro、拼参数"。
 
 ## 使用
 

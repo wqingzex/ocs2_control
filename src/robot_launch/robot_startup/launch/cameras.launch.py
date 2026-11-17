@@ -1,6 +1,6 @@
 """Start the Orbbec cameras of a teleop YAML, one driver process each (only:= picks some).
 
-    ros2 launch robot_bringup cameras.launch.py config:=/path/to/robot.local.yaml [only:=camera_head]"""
+    ros2 launch robot_startup cameras.launch.py config:=/path/to/robot.local.yaml [only:=camera_head]"""
 import os
 import re
 

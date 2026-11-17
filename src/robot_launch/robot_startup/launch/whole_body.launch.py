@@ -17,7 +17,7 @@ from launch_helpers import (
 _launch_dir = os.path.dirname(os.path.abspath(__file__))
 if _launch_dir not in sys.path:
     sys.path.insert(0, _launch_dir)
-import _bringup_common as common
+import _startup_common as common
 
 
 def launch_setup(context, *args, **kwargs):

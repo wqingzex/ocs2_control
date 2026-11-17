@@ -144,7 +144,7 @@ def launch_setup(context, *args, **kwargs):
     use_rviz = context.launch_configurations.get('use_rviz', 'true').lower() == 'true'
     if use_rviz:
         rviz_base = os.path.join(
-            get_package_share_directory("robot_bringup"), "config",
+            get_package_share_directory("robot_startup"), "config",
         )
         rviz_full_config = os.path.join(rviz_base, "hand.rviz")
 

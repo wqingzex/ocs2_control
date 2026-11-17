@@ -7,7 +7,7 @@ import pytest
 
 PACKAGE_DIR = Path(__file__).resolve().parents[1]
 SRC_ROOT = PACKAGE_DIR.parents[1]
-RETIRED_NAMES = ("w2_bringup", "w2_devices")
+RETIRED_NAMES = ("w2_bringup", "w2_devices", "robot_bringup")
 
 
 def _sources():

@@ -28,7 +28,7 @@
   <exec_depend>end_effector_setup</exec_depend>
   <exec_depend>orbbec_camera</exec_depend>
   <exec_depend>target_generator</exec_depend>
-  <exec_depend>robot_bringup</exec_depend>
+  <exec_depend>robot_startup</exec_depend>
   <exec_depend>joystick_teleop</exec_depend>
   <exec_depend>xr_teleop</exec_depend>
   <exec_depend>robot_control_msgs</exec_depend>

@@ -49,7 +49,7 @@ hardware:
 单手调试：
 
 ```bash
-ros2 launch robot_bringup hand.launch.py hand:=linkerhand type:=l6 hardware:=real direction:=1
+ros2 launch robot_startup hand.launch.py hand:=linkerhand type:=l6 hardware:=real direction:=1
 ```
 
 用户要在 `dialout` 组里才能读写串口。

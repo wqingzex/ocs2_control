@@ -26,7 +26,7 @@ def test_all_units_are_generated_from_the_config():
     assert units["xr"].depends == ("pc_service",)
     assert "__node:=xr_target_node" in units["xr"].cmd
     assert "only:=camera_head" in units["camera_head"].cmd
-    assert units["control"].cmd[:4] == ("ros2", "launch", "robot_bringup", "whole_body.launch.py")
+    assert units["control"].cmd[:4] == ("ros2", "launch", "robot_startup", "whole_body.launch.py")
 
 
 def test_disabled_parts_produce_no_units():
@@ -57,7 +57,7 @@ def test_joystick_is_an_on_demand_unit_that_needs_control():
     units = build_units(make_cfg(joystick={"device": "/dev/input/js2"}), "/c.yaml", "/ws")
     joystick = units["joystick"]
     assert joystick.on_demand and joystick.depends == ("control",)
-    assert joystick.cmd[:4] == ("ros2", "launch", "robot_bringup", "joystick.launch.py")
+    assert joystick.cmd[:4] == ("ros2", "launch", "robot_startup", "joystick.launch.py")
     assert "joy_dev:=/dev/input/js2" in joystick.cmd
     auto = build_units(make_cfg(), "/c.yaml", "/ws")["joystick"]
     assert not any(a.startswith("joy_dev") for a in auto.cmd)

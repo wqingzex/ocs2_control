@@ -41,7 +41,7 @@ def build_units(cfg: Dict[str, Any], config_path: str, ws_root: str) -> UnitSet:
     launch_file, args = controller_launch(cfg, config_path)
 
     def controller_cmd(launch_args: Dict[str, str]) -> Tuple[str, ...]:
-        return ("ros2", "launch", "robot_bringup", launch_file, *(f"{k}:={v}" for k, v in launch_args.items()))
+        return ("ros2", "launch", "robot_startup", launch_file, *(f"{k}:={v}" for k, v in launch_args.items()))
 
     control = Unit(
         name="control",

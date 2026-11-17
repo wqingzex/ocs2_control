@@ -1,4 +1,4 @@
-"""Map the 'robot' section of the config to robot_bringup launch arguments (as the former quick_start.sh)."""
+"""Map the 'robot' section of the config to robot_startup launch arguments (as the former quick_start.sh)."""
 from __future__ import annotations
 
 from typing import Any, Dict, Tuple
@@ -7,7 +7,7 @@ from .config import ENTRIES
 
 
 def controller_launch(cfg: Dict[str, Any], profile_path: str) -> Tuple[str, Dict[str, str]]:
-    """Return (launch file in robot_bringup, launch arguments). RViz is not included (own unit)."""
+    """Return (launch file in robot_startup, launch arguments). RViz is not included (own unit)."""
     robot = cfg["robot"]
     launch_file, robot_name = ENTRIES[robot["entry"]]
     eef = robot["end_effector"]

@@ -25,7 +25,7 @@ def cameras(tmp_path, monkeypatch):
                             'camera_name:=camera_left_wrist', 'serial_number:=SERIAL'])
     process(tmp_path, 102, ['/opt/ros/lib/component_container', '--ros-args',
                             '__node:=camera_container', '__ns:=/camera_left_wrist'])
-    process(tmp_path, 103, ['ros2', 'launch', 'robot_bringup', 'split_body.launch.py',
+    process(tmp_path, 103, ['ros2', 'launch', 'robot_startup', 'split_body.launch.py',
                             'camera_name:=camera_left_wrist', 'serial_number:=SERIAL'])
     process(tmp_path, 104, ['ros2', 'launch', 'orbbec_camera', 'gemini305.launch.py',
                             'camera_name:=camera_other', 'serial_number:=OTHER'])

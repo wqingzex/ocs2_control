@@ -14,7 +14,7 @@
 
 ```bash
 ./scripts/start.sh                                         # 运控 + XR
-ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs
+ros2 launch robot_startup dual_arm.launch.py robot:=m6_ccs
 ```
 
 在 RViz 里加 `InteractiveMarkers` 显示，Fixed Frame 设为 `marker_fixed_frame`，拖 marker 即发目标。XR 的使用和按键见 [`docs/使用手册.md`](../../../docs/使用手册.md)。

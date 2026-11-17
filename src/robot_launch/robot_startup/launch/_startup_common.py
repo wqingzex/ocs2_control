@@ -1,4 +1,4 @@
-"""Shared setup for the robot_bringup launch files."""
+"""Shared setup for the robot_startup launch files."""
 
 from __future__ import annotations
 
@@ -219,7 +219,7 @@ def resolve_rviz_config(
             print(f"[INFO] Using rviz config from robot description package: {robot_rviz_config}")
             return robot_rviz_config
 
-    rviz_base = os.path.join(get_package_share_directory("robot_bringup"), "config")
+    rviz_base = os.path.join(get_package_share_directory("robot_startup"), "config")
     rviz_config_path = os.path.join(rviz_base, fallback_filename)
     print(f"[INFO] Using default rviz config: {rviz_config_path}")
     return rviz_config_path

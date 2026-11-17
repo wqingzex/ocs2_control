@@ -11,8 +11,8 @@
 手柄：
 
 ```bash
-ros2 launch robot_bringup joystick.launch.py                  # 默认 auto
-ros2 launch robot_bringup joystick.launch.py joy_dev:=/dev/input/js1
+ros2 launch robot_startup joystick.launch.py                  # 默认 auto
+ros2 launch robot_startup joystick.launch.py joy_dev:=/dev/input/js1
 ros2 run joy joy_enumerate_devices                                 # 列出手柄
 ```
 
