@@ -17,6 +17,7 @@ ALLOWED = {
     "config_status": {"config", "config_edit"},
     "load_identify": {"config_edit", "config_status", "device_setup"},
     "sync": {"config", "config_edit", "device_setup"},
+    "setup_steps": {"sync", "load_identify", "config_status"},  # the command line of the steps
 }
 
 

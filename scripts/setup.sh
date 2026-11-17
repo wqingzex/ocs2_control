@@ -386,25 +386,25 @@ step_build() {
 SETUP_PYTHONPATH="${WS_DIR}/src/robot_setup/robot_config:${WS_DIR}/src/robot_setup/camera_setup:${WS_DIR}/src/robot_setup/end_effector_setup:${WS_DIR}/src/robot_setup/xr_setup"
 run_python_step() {
   source_ros --workspace
-  local python_status=0 module python_path="${SETUP_PYTHONPATH}"
+  local python_status=0 module command="" python_path="${SETUP_PYTHONPATH}"
   case "$1" in
     cameras) module=camera_setup.session ;;
     ee) module=end_effector_setup.session ;;
-    dyn) module=robot_config.load_identify ;;
+    dyn) module=robot_config.setup_steps command=dyn ;;
     xr)
       module=xr_setup.session
       python_path="${python_path}:${WS_DIR}/src/robot_teleop/xr_teleop" ;;
   esac
   # shellcheck disable=SC2086
   PYTHONPATH="${python_path}:${PYTHONPATH:-}" \
-    python3 -m "${module}" --config "${CONFIG}" --ws-root "${WS_DIR}" ${YES} ${RESET} $([[ "$1" == "xr" ]] && echo xr) || python_status=$?
+    python3 -m "${module}" ${command} --config "${CONFIG}" --ws-root "${WS_DIR}" ${YES} ${RESET} $([[ "$1" == "xr" ]] && echo xr) || python_status=$?
   if (( python_status == 130 )); then exit 130; fi  # Ctrl+C cancels the full init, not only this step.
   return "${python_status}"
 }
 # 本机配置：不需要编译过的工作区，只要源码路径和 ruamel.yaml
 step_config() {
   PYTHONPATH="${SETUP_PYTHONPATH}:${PYTHONPATH:-}" \
-    python3 -m robot_config.sync --config "${CONFIG}" ${ENTRY:+--entry "${ENTRY}"} ${YES}
+    python3 -m robot_config.setup_steps config --config "${CONFIG}" ${ENTRY:+--entry "${ENTRY}"} ${YES}
 }
 step_cameras() { run_python_step cameras; }
 step_ee() { run_python_step ee; }
@@ -423,9 +423,9 @@ step_ready() {  # 返回 0 表示不用配置；原因写入 READY_REASON
       [[ -n "${firmware}" ]] || return 1
       READY_REASON="已选择 ${firmware}" ;;
     config)
-      READY_REASON="$(PYTHONPATH="${python_path}" python3 -m robot_config.sync --config "${CONFIG}" --status 2>/dev/null)" || status=$? ;;
+      READY_REASON="$(PYTHONPATH="${python_path}" python3 -m robot_config.setup_steps config --config "${CONFIG}" --status 2>/dev/null)" || status=$? ;;
     cameras|ee|dyn)
-      READY_REASON="$(PYTHONPATH="${python_path}" python3 -m robot_config.config_status status --config "${CONFIG}" "$1" 2>/dev/null)" || status=$? ;;
+      READY_REASON="$(PYTHONPATH="${python_path}" python3 -m robot_config.setup_steps status --config "${CONFIG}" "$1" 2>/dev/null)" || status=$? ;;
     xr)
       READY_REASON="$(PYTHONPATH="${WS_DIR}/src/robot_teleop/xr_teleop:${python_path}" python3 -m xr_setup.session \
         --config "${CONFIG}" --ws-root "${WS_DIR}" --status xr 2>/dev/null)" || status=$? ;;
@@ -438,7 +438,7 @@ step_ready() {  # 返回 0 表示不用配置；原因写入 READY_REASON
 step_summary() {
   source_ros --workspace
   PYTHONPATH="${SETUP_PYTHONPATH}:${PYTHONPATH:-}" \
-    python3 -m robot_config.config_status check "${CONFIG}"
+    python3 -m robot_config.setup_steps check "${CONFIG}"
   local chosen built
   chosen="$(marvin_firmware_config)"
   built="$(marvin_firmware_built)"
