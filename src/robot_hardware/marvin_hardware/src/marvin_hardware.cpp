@@ -2842,13 +2842,10 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
             action.right = (robot_arm_index_ == ARM_RIGHT || robot_arm_index_ == ARM_DUAL);
             action.total_steps = (action.left ? 1 : 0) + (action.right ? 1 : 0);
 
-            requestPendingAction(action);
-            if (!waitPendingActionDone(2000))
-            {
-                RCLCPP_WARN(get_logger(),
-                            "on_deactivate: control loop not running, direct send fallback");
-                executePendingActionDirect(action);
-            }
+            // 直发，不交给 write()：ros2_control 在这个回调期间不会再调用 write()，交给它的请求从不会被执行，等待只会
+            // 耗掉超时（2026-11-17 两次真机停机，每次空等 2 秒）。直发和 write() 通过 sdk_access_mutex_ 互斥，
+            // write() 恰好在跑也安全。
+            executePendingActionDirect(action);
         }
 
         robot_ctrl_mode_ = "POWER_OFF";
@@ -2871,12 +2868,8 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
             action.right = (robot_arm_index_ == ARM_RIGHT || robot_arm_index_ == ARM_DUAL);
             action.total_steps = 4;
 
-            requestPendingAction(action);
-            if (!waitPendingActionDone(2000))
-            {
-                RCLCPP_WARN(get_logger(), "on_shutdown: control loop not running, direct send fallback");
-                executePendingActionDirect(action);
-            }
+            // 直发，理由同 on_deactivate。
+            executePendingActionDirect(action);
             disconnectFromHardware();
         }
 
@@ -2899,13 +2892,8 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
             action.right = (robot_arm_index_ == ARM_RIGHT || robot_arm_index_ == ARM_DUAL);
             action.total_steps = 4;
 
-            requestPendingAction(action);
-            // 短超时：write() 已因错误停止时立即走兜底直发，保证急停低延迟。
-            if (!waitPendingActionDone(300))
-            {
-                RCLCPP_WARN(get_logger(), "on_error: control loop not running, direct send fallback");
-                executePendingActionDirect(action);
-            }
+            // 直发，理由同 on_deactivate；on_error 是急停，更不该等。
+            executePendingActionDirect(action);
             disconnectFromHardware();
         }
 
@@ -4267,6 +4255,15 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
         }
         RCLCPP_INFO(get_logger(), "[pending_action][fallback] %s direct execution finished",
                     pendingActionKindName(action.kind));
+
+        // 动作已经执行完：槽里如果还是它，就清掉并通知。否则下一次 requestPendingAction 会把它当成「上一个动作还在
+        // 进行」白等 2 秒再覆盖，write() 以后恢复运行时还会把这个过期的动作再执行一遍。
+        std::lock_guard<std::mutex> lock(pending_action_mutex_);
+        if (pending_action_.kind == action.kind)
+        {
+            pending_action_ = PendingArmAction{};
+            pending_action_cv_.notify_all();
+        }
     }
 
     void MarvinHardware::sendPendingKwr75Polls()
