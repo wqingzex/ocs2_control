@@ -8,7 +8,8 @@
 
 ```bash
 ./scripts/setup.sh                 # 完整初始化
-./scripts/setup.sh cam             # 单步重试：cam 相机、hand 手、xr 头显配对、dyn 负载辨识、deps 依赖、host 主机 / SDK、marvin 天机臂 SDK 版本、build 编译、check 检查
+./scripts/setup.sh config          # 生成或补全 config/robot.local.yaml（--entry 选入口；完整初始化的第 2 步，模板加了键之后单独跑它补键）
+./scripts/setup.sh cam             # 单步重试：cam 相机、ee 末端、xr 头显配对、dyn 负载辨识、deps 依赖、host 主机 / SDK、marvin 天机臂 SDK 版本、build 编译、check 检查
 ./scripts/setup.sh cam --from      # 从相机步骤继续到最后，其他步骤同样支持 --from
 ./scripts/setup.sh marvin          # 选择天机臂 SDK 版本（338 / 343，要和臂的控制器固件一致），写入配置
 ./scripts/setup.sh build           # 增量编译整个工作区，不做设备配置
