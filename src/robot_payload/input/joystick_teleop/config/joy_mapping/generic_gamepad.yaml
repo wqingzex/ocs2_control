@@ -42,6 +42,6 @@
       low_scale: 0.3
       high_scale: 1.0
 
-    chassis:
+    base:
       linear_scale: 0.35
       angular_scale: 0.5

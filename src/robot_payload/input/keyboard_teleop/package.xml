@@ -3,7 +3,7 @@
 <package format="3">
   <name>keyboard_teleop</name>
   <version>1.2.0</version>
-  <description>Keyboard teleoperation: turns key presses into arm increments, chassis and waist commands</description>
+  <description>Keyboard teleoperation: turns key presses into arm increments, base and waist commands</description>
   <maintainer email="TODO@email.com"/>
   <license>Apache-2.0</license>
 

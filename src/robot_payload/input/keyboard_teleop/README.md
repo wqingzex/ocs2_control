@@ -26,7 +26,7 @@ ros2 run keyboard_teleop keyboard_teleop
 | 空格 | 切换当前臂 |
 | 回车 | 夹爪开合 |
 
-键盘参数：`update_rate`（20 Hz）、`movement_key_stale_ms`（120）、`discrete_key_stale_ms`（320，必须大于内核按键重复延迟约 250 ms，否则切换键会触发两次）、`chassis.linear_scale`（0.25）、`chassis.angular_scale`（0.5）、`mirror_movement`、`show_status_line`。
+键盘参数：`update_rate`（20 Hz）、`movement_key_stale_ms`（120）、`discrete_key_stale_ms`（320，必须大于内核按键重复延迟约 250 ms，否则切换键会触发两次）、`base.linear_scale`（0.25）、`base.angular_scale`（0.5）、`mirror_movement`、`show_status_line`。
 
 ## 话题
 

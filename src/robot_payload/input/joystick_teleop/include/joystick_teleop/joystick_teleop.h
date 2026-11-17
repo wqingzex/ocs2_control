@@ -39,7 +39,7 @@ private:
     robot_control_msgs::msg::Inputs inputs_;
     rclcpp::Publisher<robot_control_msgs::msg::Inputs>::SharedPtr publisher_;
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr fsm_command_publisher_;
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr chassis_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr base_publisher_;
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr subscription_;
 
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr waist_lifting_publisher_;
@@ -126,11 +126,11 @@ private:
     double arm_axes_activation_threshold_{0.5};
     
     // Chassis speed scaling factors
-    double chassis_linear_scale_;
-    double chassis_angular_scale_;
+    double base_linear_scale_;
+    double base_angular_scale_;
     
     // Chassis command message
-    geometry_msgs::msg::Twist chassis_cmd_;
+    geometry_msgs::msg::Twist base_cmd_;
     
     // Last FSM command sent (to detect transition to 0)
     int32_t last_fsm_command_;

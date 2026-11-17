@@ -50,7 +50,7 @@
     
     # 底盘速度配置 (Chassis Speed)
     # 底盘控制的线速度和角速度缩放因子
-    chassis:
+    base:
       linear_scale: 0.35   # 线速度缩放因子 (m/s)
       angular_scale: 0.5   # 角速度缩放因子 (rad/s)
 

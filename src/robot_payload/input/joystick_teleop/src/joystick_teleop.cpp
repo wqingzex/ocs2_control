@@ -37,7 +37,7 @@ bool param_bool(rclcpp::Node * node, const char * name, bool default_value)
 JoystickTeleop::JoystickTeleop() : Node("joystick_teleop_node") {
     publisher_ = create_publisher<robot_control_msgs::msg::Inputs>("/teleop/control_input", 10);
     fsm_command_publisher_ = create_publisher<std_msgs::msg::Int32>("/fsm_command", 10);
-    chassis_publisher_ = create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+    base_publisher_ = create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
     subscription_ = create_subscription<
         sensor_msgs::msg::Joy>("joy", 10, std::bind(&JoystickTeleop::joy_callback, this, _1));
     waist_lifting_publisher_ = create_publisher<std_msgs::msg::Float64>("/body_joint_controller/waist_lifting_command", 10);
@@ -84,13 +84,13 @@ JoystickTeleop::JoystickTeleop() : Node("joystick_teleop_node") {
     inputs_.target = currentTarget_;
     inputs_.hand_command = kNoHandCommand;
     
-    // Initialize chassis command
-    chassis_cmd_.linear.x = 0.0;
-    chassis_cmd_.linear.y = 0.0;
-    chassis_cmd_.linear.z = 0.0;
-    chassis_cmd_.angular.x = 0.0;
-    chassis_cmd_.angular.y = 0.0;
-    chassis_cmd_.angular.z = 0.0;
+    // Initialize base command
+    base_cmd_.linear.x = 0.0;
+    base_cmd_.linear.y = 0.0;
+    base_cmd_.linear.z = 0.0;
+    base_cmd_.angular.x = 0.0;
+    base_cmd_.angular.y = 0.0;
+    base_cmd_.angular.z = 0.0;
     
     RCLCPP_INFO(get_logger(), "🎮 JoystickTeleop created");
     RCLCPP_INFO(get_logger(), "🎮 Joystick control is DISABLED by default. Press right stick to enable.");
@@ -151,8 +151,8 @@ void JoystickTeleop::loadParameters() {
     mirror_movement_ = param_bool(this, "mirror_movement", true);
     low_speed_scale_ = param_double(this, "speed.low_scale", 0.3);
     high_speed_scale_ = param_double(this, "speed.high_scale", 1.0);
-    chassis_linear_scale_ = param_double(this, "chassis.linear_scale", 0.25);
-    chassis_angular_scale_ = param_double(this, "chassis.angular_scale", 0.5);
+    base_linear_scale_ = param_double(this, "base.linear_scale", 0.25);
+    base_angular_scale_ = param_double(this, "base.angular_scale", 0.5);
 }
 
 void JoystickTeleop::printButtonMapping() {
@@ -227,8 +227,8 @@ void JoystickTeleop::joy_callback(sensor_msgs::msg::Joy::SharedPtr msg) {
             // Chassis control mode
             processChassisAxes(msg);
             
-            // Publish chassis velocity command
-            chassis_publisher_->publish(chassis_cmd_);
+            // Publish base velocity command
+            base_publisher_->publish(base_cmd_);
         }
     }
 }
@@ -287,10 +287,10 @@ void JoystickTeleop::processButtons(const sensor_msgs::msg::Joy::SharedPtr msg) 
                 inputs_.yaw = 0.0;
                 publisher_->publish(inputs_);
             } else {
-                chassis_cmd_.linear.x = 0.0;
-                chassis_cmd_.linear.y = 0.0;
-                chassis_cmd_.angular.z = 0.0;
-                chassis_publisher_->publish(chassis_cmd_);
+                base_cmd_.linear.x = 0.0;
+                base_cmd_.linear.y = 0.0;
+                base_cmd_.angular.z = 0.0;
+                base_publisher_->publish(base_cmd_);
             }
         }
     }
@@ -303,10 +303,10 @@ void JoystickTeleop::processButtons(const sensor_msgs::msg::Joy::SharedPtr msg) 
         
         // Reset commands when switching modes
         if (current_mode_ == ARM_MODE) {
-            chassis_cmd_.linear.x = 0.0;
-            chassis_cmd_.linear.y = 0.0;
-            chassis_cmd_.angular.z = 0.0;
-            chassis_publisher_->publish(chassis_cmd_);
+            base_cmd_.linear.x = 0.0;
+            base_cmd_.linear.y = 0.0;
+            base_cmd_.angular.z = 0.0;
+            base_publisher_->publish(base_cmd_);
         } else {
             inputs_.x = 0.0;
             inputs_.y = 0.0;
@@ -576,12 +576,12 @@ void JoystickTeleop::processChassisAxes(const sensor_msgs::msg::Joy::SharedPtr m
 
     // Left stick controls linear velocity
     // Left stick Y: forward/backward (linear.x)
-    // Left stick X: left/right (linear.y, for omnidirectional chassis)
-    // Note: Mirror movement is NOT applied to chassis control
+    // Left stick X: left/right (linear.y, for omnidirectional base)
+    // Note: Mirror movement is NOT applied to base control
     double left_stick_x = applyDeadzone(msg->axes[axes_map_.left_stick_x], axes_map_.deadzone);
     double left_stick_y = applyDeadzone(msg->axes[axes_map_.left_stick_y], axes_map_.deadzone);
 
-    // Right stick X: chassis rotation (angular.z)
+    // Right stick X: base rotation (angular.z)
     double right_stick_x = applyDeadzone(msg->axes[axes_map_.right_stick_x], axes_map_.deadzone);
     const auto dpad = readDpad(msg);
     const double dpad_x = dpad.x;
@@ -605,13 +605,13 @@ void JoystickTeleop::processChassisAxes(const sensor_msgs::msg::Joy::SharedPtr m
     waist_lifting_publisher_->publish(waist_cmd);
     waist_turning_publisher_->publish(waist_turn_cmd);
 
-    // Update chassis velocity command
-    chassis_cmd_.linear.x = left_stick_y * chassis_linear_scale_ * speed_scale;   // Forward/backward
-    chassis_cmd_.linear.y = left_stick_x * chassis_linear_scale_ * speed_scale;   // Left/right (for omnidirectional)
-    chassis_cmd_.linear.z = 0.0;                                                  // No vertical movement
-    chassis_cmd_.angular.x = 0.0;                                                 // No roll
-    chassis_cmd_.angular.y = 0.0;                                                 // No pitch
-    chassis_cmd_.angular.z = right_stick_x * chassis_angular_scale_ * speed_scale; // Rotation
+    // Update base velocity command
+    base_cmd_.linear.x = left_stick_y * base_linear_scale_ * speed_scale;   // Forward/backward
+    base_cmd_.linear.y = left_stick_x * base_linear_scale_ * speed_scale;   // Left/right (for omnidirectional)
+    base_cmd_.linear.z = 0.0;                                                  // No vertical movement
+    base_cmd_.angular.x = 0.0;                                                 // No roll
+    base_cmd_.angular.y = 0.0;                                                 // No pitch
+    base_cmd_.angular.z = right_stick_x * base_angular_scale_ * speed_scale; // Rotation
 }
 
 // sendGripperCommand, left_target_command_callback, and right_target_command_callback

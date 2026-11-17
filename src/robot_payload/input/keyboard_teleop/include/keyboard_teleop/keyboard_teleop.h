@@ -45,7 +45,7 @@ private:
                   std::chrono::milliseconds stale) const;
 
     rclcpp::Publisher<robot_control_msgs::msg::Inputs>::SharedPtr inputs_pub_;
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr chassis_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr base_pub_;
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr waist_lift_pub_;
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr waist_turn_pub_;
 
@@ -63,8 +63,8 @@ private:
     bool tty_saved_{false};
 
     double update_hz_{20.0};
-    double chassis_linear_scale_{0.25};
-    double chassis_angular_scale_{0.5};
+    double base_linear_scale_{0.25};
+    double base_angular_scale_{0.5};
     double arm_activation_threshold_{0.5};
     bool show_status_line_{true};
 
@@ -77,7 +77,7 @@ private:
     bool right_gripper_open_{false};
 
     robot_control_msgs::msg::Inputs inputs_{};
-    geometry_msgs::msg::Twist chassis_cmd_{};
+    geometry_msgs::msg::Twist base_cmd_{};
 
     bool prev_active_n_{false};
     bool prev_active_m_{false};

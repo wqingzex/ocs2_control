@@ -54,7 +54,7 @@ void signalHandler(int signum)
 KeyboardTeleop::KeyboardTeleop() : Node("keyboard_teleop_node")
 {
     inputs_pub_ = create_publisher<robot_control_msgs::msg::Inputs>("/teleop/control_input", 10);
-    chassis_pub_ = create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+    base_pub_ = create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
     waist_lift_pub_ =
         create_publisher<std_msgs::msg::Float64>("/body_joint_controller/waist_lifting_command", 10);
     waist_turn_pub_ =
@@ -63,8 +63,8 @@ KeyboardTeleop::KeyboardTeleop() : Node("keyboard_teleop_node")
     declare_parameter("update_rate", 20.0);
     declare_parameter("movement_key_stale_ms", 120);
     declare_parameter("discrete_key_stale_ms", 320);
-    declare_parameter("chassis.linear_scale", 0.25);
-    declare_parameter("chassis.angular_scale", 0.5);
+    declare_parameter("base.linear_scale", 0.25);
+    declare_parameter("base.angular_scale", 0.5);
     declare_parameter("arm_axes_activation_threshold", 0.5);
     declare_parameter("show_status_line", true);
     declare_parameter("mirror_movement", false);
@@ -74,8 +74,8 @@ KeyboardTeleop::KeyboardTeleop() : Node("keyboard_teleop_node")
         std::chrono::milliseconds(get_parameter("movement_key_stale_ms").as_int());
     discrete_key_stale_ms_ =
         std::chrono::milliseconds(get_parameter("discrete_key_stale_ms").as_int());
-    chassis_linear_scale_ = get_parameter("chassis.linear_scale").as_double();
-    chassis_angular_scale_ = get_parameter("chassis.angular_scale").as_double();
+    base_linear_scale_ = get_parameter("base.linear_scale").as_double();
+    base_angular_scale_ = get_parameter("base.angular_scale").as_double();
     arm_activation_threshold_ = get_parameter("arm_axes_activation_threshold").as_double();
     show_status_line_ = get_parameter("show_status_line").as_bool();
     mirror_movement_ = get_parameter("mirror_movement").as_bool();
@@ -359,8 +359,8 @@ void KeyboardTeleop::timerCallback()
     if (prev_active_n_ && !an) {
         mode_ = (mode_ == ControlMode::Arm) ? ControlMode::Chassis : ControlMode::Arm;
         inputs_.x = inputs_.y = inputs_.z = inputs_.roll = inputs_.pitch = inputs_.yaw = 0.0;
-        chassis_cmd_.linear.x = chassis_cmd_.linear.y = chassis_cmd_.linear.z = 0.0;
-        chassis_cmd_.angular.x = chassis_cmd_.angular.y = chassis_cmd_.angular.z = 0.0;
+        base_cmd_.linear.x = base_cmd_.linear.y = base_cmd_.linear.z = 0.0;
+        base_cmd_.angular.x = base_cmd_.angular.y = base_cmd_.angular.z = 0.0;
     }
     prev_active_n_ = an;
 
@@ -450,9 +450,9 @@ void KeyboardTeleop::timerCallback()
         inputs_.target = target_arm_;
 
         publishWaistZero();
-        chassis_cmd_.linear.x = chassis_cmd_.linear.y = chassis_cmd_.linear.z = 0.0;
-        chassis_cmd_.angular.x = chassis_cmd_.angular.y = chassis_cmd_.angular.z = 0.0;
-        chassis_pub_->publish(chassis_cmd_);
+        base_cmd_.linear.x = base_cmd_.linear.y = base_cmd_.linear.z = 0.0;
+        base_cmd_.angular.x = base_cmd_.angular.y = base_cmd_.angular.z = 0.0;
+        base_pub_->publish(base_cmd_);
 
         inputs_pub_->publish(inputs_);
         if (std::isfinite(inputs_.hand_command)) {
@@ -464,13 +464,13 @@ void KeyboardTeleop::timerCallback()
         inputs_.target = target_arm_;
         inputs_pub_->publish(inputs_);
 
-        chassis_cmd_.linear.x = ls_y_ch * chassis_linear_scale_ * sm;
-        chassis_cmd_.linear.y = ls_x_ch * chassis_linear_scale_ * sm;
-        chassis_cmd_.linear.z = 0.0;
-        chassis_cmd_.angular.x = 0.0;
-        chassis_cmd_.angular.y = 0.0;
-        chassis_cmd_.angular.z = rs_x_ch * chassis_angular_scale_ * sm;
-        chassis_pub_->publish(chassis_cmd_);
+        base_cmd_.linear.x = ls_y_ch * base_linear_scale_ * sm;
+        base_cmd_.linear.y = ls_x_ch * base_linear_scale_ * sm;
+        base_cmd_.linear.z = 0.0;
+        base_cmd_.angular.x = 0.0;
+        base_cmd_.angular.y = 0.0;
+        base_cmd_.angular.z = rs_x_ch * base_angular_scale_ * sm;
+        base_pub_->publish(base_cmd_);
 
         publishWaistZero();
     }
