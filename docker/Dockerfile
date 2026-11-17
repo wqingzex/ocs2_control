@@ -22,11 +22,27 @@ ENV DEBIAN_FRONTEND=noninteractive \
     container=docker \
     QT_X11_NO_MITSHM=1
 
+# apt 源换成国内镜像（Ubuntu 和 ROS 两个源）。默认清华；换别的镜像：--build-arg APT_MIRROR=mirrors.aliyun.com；
+# 不换（用官方源）：--build-arg APT_MIRROR=。ROS 的镜像路径是 ${APT_MIRROR}/ros2/ubuntu，镜像站没有这个路径时用 ROS_APT_MIRROR 单独指定。
+# 只改镜像内的 apt 配置，宿主机不受影响。
+ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+ARG ROS_APT_MIRROR=${APT_MIRROR}
+RUN if [ -n "${APT_MIRROR}" ]; then \
+        for f in /etc/apt/sources.list.d/*.sources /etc/apt/sources.list; do \
+            [ -f "$f" ] || continue; \
+            sed -i -E \
+                -e "s#https?://(archive|security|ports)\.ubuntu\.com/ubuntu/?#http://${APT_MIRROR}/ubuntu/#g" \
+                -e "s#https?://packages\.ros\.org/ros2/ubuntu/?#http://${ROS_APT_MIRROR}/ros2/ubuntu/#g" "$f"; \
+            if grep -q "${ROS_APT_MIRROR}/ros2/ubuntu" "$f"; then sed -i -E 's/^Types:.*/Types: deb/' "$f"; fi; \
+        done; \
+    fi
+
 # setup.sh 用到的工具（git、rosdep、colcon、curl、sudo）、X11 显示库、总线调试工具（ip、candump）。
 # 不删 /var/lib/apt/lists：运行时 setup.sh deps 缺什么会 sudo apt-get install，没有包列表就找不到包。
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential cmake git curl ca-certificates sudo \
-        python3-colcon-common-extensions python3-rosdep python3-pytest python3-yaml \
+        python3-colcon-common-extensions python3-rosdep python3-pytest python3-yaml python3-ruamel.yaml \
+        ros-${ROS_DISTRO}-rmw-zenoh-cpp \
         xdg-utils desktop-file-utils xauth x11-apps \
         libgl1 libgl1-mesa-dri libglx-mesa0 libxkbcommon-x11-0 \
         iproute2 can-utils

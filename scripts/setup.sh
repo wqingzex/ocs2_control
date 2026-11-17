@@ -373,12 +373,12 @@ step_build() {
   colcon_ignore_submodule_dirs
   source_ros
   cd "${WS_DIR}"
-  export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-4}"
+  export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-8}"
   export MAKEFLAGS="${MAKEFLAGS:--j${CMAKE_BUILD_PARALLEL_LEVEL}}"
   local select=(--packages-skip "${OCS2_SKIP_PACKAGES[@]}") marvin_arg
   [[ -n "${MINIMAL}" ]] && select=(--packages-up-to "${MINIMAL_PACKAGES[@]}")  # 和完整编译用同样的安装方式
   marvin_arg="$(marvin_cmake_arg)"
-  colcon build "${select[@]}" --parallel-workers "${COLCON_PARALLEL_WORKERS:-2}" \
+  colcon build "${select[@]}" --parallel-workers "${COLCON_PARALLEL_WORKERS:-8}" \
     --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF "${marvin_arg}"
 }
 
