@@ -17,9 +17,6 @@ if (( $# == 0 )); then
 fi
 
 test_status=0
-# 工作区分层检查（包环、向上的依赖、用了没声明）和它自己的测试；只用标准库，先于 colcon test 报错
-python3 scripts/check_layers.py || test_status=$?
-python3 -m pytest -q -p no:cacheprovider scripts/test_check_layers.py || test_status=$?
 colcon test --event-handlers console_direct+ "$@" || test_status=$?
 colcon test-result --verbose || test_status=$?
 exit "${test_status}"

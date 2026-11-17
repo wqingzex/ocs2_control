@@ -2,8 +2,6 @@
 
 仓库的两个入口脚本，都从仓库根目录运行：`./scripts/setup.sh`、`./scripts/start.sh`。脚本里的 `help` 是权威说明。
 
-另有 `scripts/check_layers.py`（`python3 scripts/check_layers.py`）：检查整个工作区的包依赖有没有环、有没有向上的依赖（`LAYERS` 里从低到高：`robot_utils` < `robot_hardware` / `robot_description` < `robot_control` < `robot_launch` / `robot_payload` < `robot_hmi`）、代码里 `import` / `#include` 的包有没有在 `package.xml` 里声明。已知例外写在脚本的 `KNOWN_UNDECLARED` 里并注明原因；`docker/run-tests.sh` 先跑它，测试是 `scripts/test_check_layers.py`。
-
 ## setup.sh：初始化
 
 依次完成依赖、主机 / SDK、天机臂 SDK 版本、编译、相机配置、手配置、负载辨识、XR 配对、最终检查。已配置（有确认记录）或默认值可用的步骤自动跳过，开头列出每步状态。
