@@ -13,5 +13,5 @@
 
 - 机器人名 `foo` 对应包 `foo_description`，约定的文件：`xacro/robot.xacro`（运动学）、`xacro/ros2_control/robot.xacro`（加硬件）、`config/ros2_control/`、`config/ocs2/`。
 - 同一份 xacro 会生成两份 URDF：控制用（手指、底盘可动）和 MPC 规划用（冻结），见 [`launch_helpers`](../robot_launch/launch_helpers/README.md)。
-- 末端目前支持灵巧手 `linkerhand_l6`、`xhand1`，夹爪 `rg75`（Jodell RG75-300，xacro 的类型键；`robot.local.yaml` 里写 `robot.end_effector: jodell_rg75`、`robot.end_effector_bus: arm_rs485`）。夹爪只支持 Jodell RG75。
+- 末端目前支持灵巧手 `linkerhand_l6`、`xhand1`，夹爪 `rg75`（Jodell RG75-300，xacro 的类型键；`robot.local.yaml` 里写 `robot.end_effector.type: jodell_rg75`、`robot.end_effector.interface.bus: arm_rs485`）。夹爪只支持 Jodell RG75。
 - 看模型：`ros2 launch robot_visualize humanoid.launch.py robot:=fa_w2`，详见 [`robot_visualize`](../robot_launch/robot_visualize/README.md)。

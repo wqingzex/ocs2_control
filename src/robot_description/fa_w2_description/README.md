@@ -30,7 +30,7 @@ ros2 launch robot_bringup head_body.launch.py    robot:=fa_w2                   
 
 夹爪：`end_effector:=jodell_rg75`（左右各一个 Jodell RG75，仿真和 M6 双臂上都验证过）。TCP 偏移：`left_tcp_offset_xyz` / `left_tcp_offset_rpy` / `right_tcp_offset_xyz` / `right_tcp_offset_rpy`（默认 `0 0 0`）。头部关节限位默认是宽限位（±1.3963 rad），旧的窄限位用 `variant:=wheel_V1.0`。
 
-加 `hardware:=isaac` 用 Isaac 仿真，`hardware:=real` 接真机（末端接法由 `left_end_effector_bus` / `right_end_effector_bus` 决定，`robot_app` 按 `robot.end_effector_bus` 传）。左右不同末端用 `left_end_effector` / `right_end_effector`（不要再传 `type`），末端说明见 [m6_ccs](../component/m6_ccs_description/README.md#末端执行器)。
+加 `hardware:=isaac` 用 Isaac 仿真，`hardware:=real` 接真机（末端接法由 `left_end_effector_bus` / `right_end_effector_bus` 决定，`robot_app` 按 `robot.end_effector.interface.bus` 传）。左右不同末端用 `left_end_effector` / `right_end_effector`（不要再传 `type`），末端说明见 [m6_ccs](../component/m6_ccs_description/README.md#末端执行器)。
 
 ## 内容
 

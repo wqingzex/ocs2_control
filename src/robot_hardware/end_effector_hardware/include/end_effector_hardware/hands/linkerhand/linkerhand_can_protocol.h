@@ -43,7 +43,7 @@ namespace end_effector_hardware::linkerhand
     /// What differs between LinkerHand models on the same protocol.
     struct ModelConfig
     {
-        const char* hand_type;  ///< robot.end_effector key, e.g. "linkerhand_l6"
+        const char* hand_type;  ///< robot.end_effector.type key, e.g. "linkerhand_l6"
         const char* model_name; ///< short name used in topics and logs, e.g. "l6"
         std::size_t joint_count;
         std::array<std::size_t, kMaxJointCount> protocol_to_ros; ///< protocol slot i -> ros2_control joint index

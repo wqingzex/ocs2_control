@@ -12,7 +12,7 @@
 	<xacro:unless value="${'$(arg arm_driver)' in arm_drivers}">
 		${xacro.fatal('arm_driver must be one of ' + ', '.join(arm_drivers) + '; got ' + '$(arg arm_driver)')}
 	</xacro:unless>
-	<!-- left_/right_end_effector_bus: where each end effector is wired (robot.end_effector_bus): usb_rs485 | arm_rs485 |
+	<!-- left_/right_end_effector_bus: where each end effector is wired (robot.end_effector.interface.bus): usb_rs485 | arm_rs485 |
 	     usb_can | ethernet. Empty: arm_rs485 on the real robot. Converted once here to the drive keys the macros use. -->
 	<xacro:arg name="left_end_effector_bus" default=""/>
 	<xacro:arg name="right_end_effector_bus" default=""/>

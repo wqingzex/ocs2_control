@@ -8,7 +8,7 @@
 | [`rokae_hardware`](rokae_hardware/README.md) | 珞石 Rokae 臂 | `sdk` | 否（用于 Rokae 机型） |
 | [`juxie_hardware`](juxie_hardware/README.md) | JX 关节模组（腰、头） | `can` | 是：腰、头 |
 | [`end_effector_hardware`](end_effector_hardware/README.md) | 外接的夹爪、灵巧手、力传感器（原 `modbus_hardware` + `can_hardware`），按设备分目录；夹爪和灵巧手的协议层 `gripper_protocol`（寄存器表、单位换算、`GripperBase`）也在这里，`marvin_hardware` 只链接这个纯头文件目标 | `modbus`、`serial`、`can` | 是：外接末端 |
-| [`wuji_hardware`](wuji_hardware/README.md) | 舞肌 Wuji Hand 2 | `sdk`（以太网，`third_party/wuji-sdk-c`） | 否（`robot.hand: wuji_hand2` 时） |
+| [`wuji_hardware`](wuji_hardware/README.md) | 舞肌 Wuji Hand 2 | `sdk`（以太网，`third_party/wuji-sdk-c`） | 否（`robot.end_effector.type: wuji_hand2` 时） |
 | [`topic_based_hardware`](topic_based_hardware/README.md) | 仿真：通过话题收发，对接 Isaac 等 | `topic` | 是：Isaac 仿真 |
 | [`comm/`](comm/README.md) 下的 `robot_comm_core`、`robot_comm_can`、`robot_comm_serial`、`robot_comm_modbus` | 通信层（见下） | — | 被驱动使用 |
 

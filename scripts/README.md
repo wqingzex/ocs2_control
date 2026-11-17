@@ -37,7 +37,7 @@
 ./scripts/start.sh check | build   # 只校验配置 / 编译
 ```
 
-选项，命令前后都可以：`-c 配置文件`，`--set 字段=值`（只对本次运行有效，如 `--set robot.hardware=isaac`），`--entry whole_body|split_body|dual_arm`，`--hand none|linkerhand_l6|xhand1`，`--hand-drive usb|485`，`--rviz`（同时启动 RViz）。
+选项，命令前后都可以：`-c 配置文件`，`--set 字段=值`（只对本次运行有效，如 `--set robot.hardware=isaac`），`--entry whole_body|split_body|dual_arm`，`--end-effector none|linkerhand_l6|xhand1|wuji_hand2|jodell_rg75`，`--end-effector-bus usb_rs485|arm_rs485|usb_can|ethernet`，`--rviz`（同时启动 RViz）。
 
 ## nudge.py：真机验证用的小幅微调
 

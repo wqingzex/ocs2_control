@@ -15,7 +15,7 @@ ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs hardware:=real end_ef
 | 场景 | 做法 |
 |---|---|
 | 单臂 | `arms:=left` 或 `arms:=right`（默认 `dual`） |
-| 末端 | `end_effector:=<名字>`（和 `robot.end_effector` 相同：`jodell_rg75` / `linkerhand_l6` / `xhand1` / `wuji_hand2` / `none`）；左右不同用 `left_end_effector` / `right_end_effector` 覆盖一侧；不传时用 `robot_profile` 里的 `robot.end_effector` |
+| 末端 | `end_effector:=<名字>`（和 `robot.end_effector.type` 相同：`jodell_rg75` / `linkerhand_l6` / `xhand1` / `wuji_hand2` / `none`）；左右不同用 `left_end_effector` / `right_end_effector` 覆盖一侧；不传时用 `robot_profile` 里的 `robot.end_effector.type` |
 | 展台 | `variant:=desktop`（臂间距 ±0.12 m，OCS2 `dual_arm_eef_desktop.info`），与末端正交，见 [docs/m6_ccs_dual_desktop.md](docs/m6_ccs_dual_desktop.md) |
 | 臂外观 | `skin:=fa_w2` 用 fa_w2 的外观网格；碰撞始终用 `meshes/link*.glb` |
 
@@ -44,25 +44,28 @@ ros2 launch robot_bringup dual_arm.launch.py robot:=m6_ccs hardware:=real end_ef
 
 夹爪关节是 `left_gripper_joint` / `right_gripper_joint`，控制器是 `end_effector_controller/GripperController` 实例；`rg75` 的标定负载（`dyn_param`）已内置在 `xacro/eefs.xacro`。每条臂下面还有一个虚拟的 `<side>_tcp_offset` 坐标系（TCP 偏移，默认 0），用启动参数 `left_tcp_offset_xyz/rpy`、`right_tcp_offset_xyz/rpy` 设置，不会移动手或夹爪的模型。
 
-真机每侧独立选驱动：`left_end_effector_bus` / `right_end_effector_bus`。`hardware:=real` 时默认走 `marvin`（臂体 RS485，`marvin_hardware`）；外接 USB 末端传 `left_ee_drive_type:=usb` / `right_ee_drive_type:=usb`（`robot_app` 按 `robot.end_effector_bus` 自动传）。`tianji_can`（臂体 CAN）只保留在 xacro 里，目前没有末端使用。
+真机每侧独立选驱动：`left_end_effector_bus` / `right_end_effector_bus`。`hardware:=real` 时默认走 `marvin`（臂体 RS485，`marvin_hardware`）；外接 USB 末端传 `left_ee_drive_type:=usb` / `right_ee_drive_type:=usb`（`robot_app` 按 `robot.end_effector.interface.bus` 自动传）。`tianji_can`（臂体 CAN）只保留在 xacro 里，目前没有末端使用。
 
 ## 真机配置
 
 `robot.local.yaml`：
 
 ```yaml
-platform: {variant: desktop}                 # 可选
-robot: {end_effector: linkerhand_l6, end_effector_bus: arm_rs485}
-hardware:
-  device_ip: 192.168.10.190
-  arm_ctrl_mode: JOINT_IMPEDANCE
-  max_joint_speed: 50
-  max_joint_acceleration: 30
-  usb_left_port: /dev/ttyUSB0
-  usb_right_port: /dev/ttyUSB2
+robot:
+  variant: desktop                           # 可选
+  arm: {type: marvin, interface: {ip: 192.168.10.190}}
+  end_effector:
+    type: linkerhand_l6
+    interface:
+      bus: usb_rs485
+      left:  {port: /dev/serial/by-id/usb-…}
+      right: {port: /dev/serial/by-id/usb-…}
+control:
+  arm_mode: joint_impedance
+  limits: {max_joint_speed: 50, max_joint_acceleration: 30}
 ```
 
-启动时可用 `hardware_<键>:=…` 覆盖：`device_ip`、`max_joint_speed`、`max_joint_acceleration`、`usb_left_port`、`arm_ctrl_mode`、`left_dyn_param`。
+写在 `robot.local.yaml` 里的这些项会变成 xacro 参数 `device_ip`、`arm_ctrl_mode`、`max_joint_speed`、`max_joint_acceleration`、`usb_left_port` / `usb_right_port`、`left_dyn_param` / `right_dyn_param`（对照见 `config/README.md`）。启动时也可以用 `hardware_<xacro 参数名>:=…` 临时覆盖，没有写进配置文件的调参项（如 `left_ee_rw_rate`）也只能这样传。
 
 ## 共享宏（`xacro/ros2_control/`）
 

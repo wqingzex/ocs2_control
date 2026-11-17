@@ -47,7 +47,7 @@ Control loop stats (10.0 s): 5000 cycles, wake-up lateness mean 52.1 us / max 18
 
 ## CAN 接口权限
 
-驱动要执行 `ip link set <接口> up type can bitrate 1000000 dbitrate 5000000 restart-ms 100 fd on`（接口默认 `can0`，由 `can_interface` 决定）。免密码的做法是运行 `./scripts/setup.sh host`，它会写入对应的 sudoers 规则，接口名取自环境变量 `CAN_IFACE`，没有的话取 `config/robot.local.yaml` 的 `hardware.body_can_interface`，再没有就是 `can0`；手动配置时命令必须与驱动执行的完全一致，不能用通配符。如果接口已经由别处配好，设 `can_manage_interface: false`，驱动就不再执行这条命令。`robot_comm_can` 的测试会检查驱动的命令和 `setup.sh` 的规则是同一段文字。
+驱动要执行 `ip link set <接口> up type can bitrate 1000000 dbitrate 5000000 restart-ms 100 fd on`（接口默认 `can0`，由 `can_interface` 决定）。免密码的做法是运行 `./scripts/setup.sh host`，它会写入对应的 sudoers 规则，接口名取自环境变量 `CAN_IFACE`，没有的话取 `config/robot.local.yaml` 的 `robot.body.interface.can`，再没有就是 `can0`；手动配置时命令必须与驱动执行的完全一致，不能用通配符。如果接口已经由别处配好，设 `can_manage_interface: false`，驱动就不再执行这条命令。`robot_comm_can` 的测试会检查驱动的命令和 `setup.sh` 的规则是同一段文字。
 
 ## 排查
 

@@ -2,7 +2,7 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
     <!-- Map an end effector (jodell_rg75, linkerhand_l6, xhand1, wuji_hand2; empty or none = nothing) to per-side
-         hand/gripper/pad properties. The same names as robot.end_effector in robot.local.yaml. -->
+         hand/gripper/pad properties. The same names as robot.end_effector.type in robot.local.yaml. -->
     <xacro:macro name="set_side_eef_types" params="side type_key">
         <xacro:property name="${side}_hand_type" value="" scope="parent"/>
         <xacro:property name="${side}_gripper_type" value="" scope="parent"/>
