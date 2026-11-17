@@ -11,25 +11,44 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict
 
-from .config import DEFAULTS
+from .config import DEFAULT_ARM_IP, DEFAULTS
 
 # The hand setup and its worker (end_effector.hand) speak of the wiring as usb / 485 / usb_can / ethernet; the config
-# file says robot.end_effector_bus. Converted at the file boundary only, which also keeps the fingerprint of an
+# file says robot.end_effector.interface.bus. Converted at the file boundary only, which also keeps the fingerprint of an
 # unchanged wiring the same as before the rename.
 BUS_TO_DRIVE = {"usb_rs485": "usb", "arm_rs485": "485", "usb_can": "usb_can", "ethernet": "ethernet"}
 DRIVE_TO_BUS = {drive: bus for bus, drive in BUS_TO_DRIVE.items()}
 HAND_DRIVES = tuple(DRIVE_TO_BUS)
 
 
+def _mapping(value: Any) -> Dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def hand_name(robot: Dict[str, Any]) -> str:
-    """robot.end_effector with its default."""
-    return robot.get("end_effector", "linkerhand_l6")
+    """robot.end_effector.type with its default."""
+    return _mapping(robot.get("end_effector")).get("type") or "linkerhand_l6"
+
+
+def hand_bus(robot: Dict[str, Any]) -> str:
+    """robot.end_effector.interface.bus with its default."""
+    return _mapping(_mapping(robot.get("end_effector")).get("interface")).get("bus") or "usb_rs485"
 
 
 def hand_drive(robot: Dict[str, Any]) -> str:
-    """robot.end_effector_bus (with its default) as the setup code names the wiring."""
-    bus = robot.get("end_effector_bus", "usb_rs485")
+    """The bus as the setup code names the wiring."""
+    bus = hand_bus(robot)
     return BUS_TO_DRIVE.get(bus, bus)
+
+
+def hand_side(robot: Dict[str, Any], side: str) -> Dict[str, Any]:
+    """robot.end_effector.interface.<side>: port, can, channel (only what is written)."""
+    return _mapping(_mapping(_mapping(robot.get("end_effector")).get("interface")).get(side))
+
+
+def arm_ip(robot: Dict[str, Any]) -> str:
+    """robot.arm.interface.ip with its default (the Marvin controller, also reached by the arm's RS485 port)."""
+    return _mapping(_mapping(robot.get("arm")).get("interface")).get("ip") or DEFAULT_ARM_IP
 
 
 def camera_mapping(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -45,18 +64,20 @@ def camera_mapping(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 def hand_mapping(raw: Dict[str, Any]) -> Dict[str, Any]:
     """The hand, its wiring and the ports or channels that wiring uses."""
-    robot, hardware = raw.get("robot") or {}, raw.get("hardware") or {}
+    robot = raw.get("robot") or {}
     value = {"hand": hand_name(robot), "drive": hand_drive(robot)}
     if value["hand"] != "none":
+        left, right = hand_side(robot, "left"), hand_side(robot, "right")
         if value["drive"] == "usb":
-            keys = {"usb_left_port": "", "usb_right_port": ""}
+            keys = {"usb_left_port": left.get("port") or "", "usb_right_port": right.get("port") or ""}
         elif value["drive"] == "usb_can":
-            keys = {"left_ee_can_interface": "can1", "right_ee_can_interface": "can2"}
+            keys = {"left_ee_can_interface": left.get("can") or "can1", "right_ee_can_interface": right.get("can") or "can2"}
         elif value["drive"] == "ethernet":
             keys = {}  # Wuji: the driver scans and matches each hand by hand_side
         else:
-            keys = {"device_ip": "192.168.1.190", "left_ee_channel": 1, "right_ee_channel": 1}
-        value.update({key: hardware.get(key, default) for key, default in keys.items()})
+            keys = {"device_ip": arm_ip(robot), "left_ee_channel": left.get("channel") or 1,
+                    "right_ee_channel": right.get("channel") or 1}
+        value.update(keys)
     return value
 
 

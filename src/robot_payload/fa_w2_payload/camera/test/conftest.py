@@ -13,13 +13,13 @@ DEVICES = [Device('Orbbec Gemini 335Lg', 'HEAD', 'USB3.0', '2-2'),
 
 
 CONFIG = '''# preserve this comment
-robot: {end_effector: linkerhand_l6, end_effector_bus: usb_rs485}
+robot: {end_effector: {type: linkerhand_l6, interface: {bus: usb_rs485, left: {port: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AAAA-if00-port0}, right: {port: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BBBB-if00-port0}}}}
 cameras:
   head: {serial: HEAD}
   left_wrist: {serial: LEFT}
   right_wrist: {serial: RIGHT}
 xr: {device_id: PICO-BOUND}
-hardware: {usb_left_port: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AAAA-if00-port0, usb_right_port: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BBBB-if00-port0, max_joint_speed: 17}
+control: {limits: {max_joint_speed: 17}}
 '''
 
 

@@ -17,7 +17,7 @@ def test_own_sections_are_still_strict_without_extension():
 
 
 def test_profile_sections_pass_through_untouched():
-    assert set(validate({**CAMERAS_OFF, "hardware": {"max_joint_speed": 3}})) == {"robot", "cameras"}
+    assert set(validate({**CAMERAS_OFF, "control": {"limits": {"max_joint_speed": 3}}})) == {"robot", "cameras"}
 
 
 def test_extension_adds_defaults_checks_and_renames():

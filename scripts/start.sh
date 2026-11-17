@@ -29,7 +29,8 @@ robot_control_suite 命令行入口（面向专业人员）
 
 选项（命令前后都可以）
   -c 配置文件        --set 字段=值（本次运行有效，可重复，如 --set robot.hardware=isaac）
-  --entry whole_body|split_body|dual_arm   --hand none|linkerhand_l6|xhand1|wuji_hand2   --hand-drive usb|485|usb_can|ethernet
+  --entry whole_body|split_body|dual_arm   --end-effector none|linkerhand_l6|xhand1|wuji_hand2|jodell_rg75
+  --end-effector-bus usb_rs485|arm_rs485|usb_can|ethernet
   --rviz             同时启动 RViz（用于 start / sim / isaac / up）；up control 默认带 RViz，不要 RViz 用 up control --no-rviz
 EOF_USAGE
 }
@@ -310,7 +311,7 @@ recording() {
     ${SET_ARGS[@]+"${SET_ARGS[@]}"} "$@"
 }
 
-# 全局选项可以写在命令前后：-c 配置、--set 字段=值、--entry/--hand/--hand-drive、--rviz。
+# 全局选项可以写在命令前后：-c 配置、--set 字段=值、--entry/--end-effector/--end-effector-bus、--rviz。
 parse_options() {
   REST=()
   local key
@@ -319,9 +320,14 @@ parse_options() {
       -c) [[ -n "${2:-}" ]] || die "-c 需要配置文件路径"; CONFIG_ARG="$2"; shift 2 ;;
       --set) [[ "${2:-}" == *=* ]] || die "--set 需要 字段=值，例如 --set robot.hardware=isaac"
              SET_ARGS+=(--set "$2"); shift 2 ;;
-      --entry|--hand|--hand-drive)
+      --entry|--end-effector|--end-effector-bus)
         [[ -n "${2:-}" ]] || die "$1 需要取值"
-        key="${1#--}"; SET_ARGS+=(--set "robot.${key//-/_}=$2"); shift 2 ;;
+        case "$1" in
+          --entry) key="entry" ;;
+          --end-effector) key="end_effector.type" ;;
+          --end-effector-bus) key="end_effector.interface.bus" ;;
+        esac
+        SET_ARGS+=(--set "robot.${key}=$2"); shift 2 ;;
       --rviz) WITH_ARGS+=(--with rviz); shift ;;
       *) REST+=("$1"); shift ;;
     esac

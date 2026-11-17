@@ -36,7 +36,7 @@ def _netmask(interface: str) -> str:
 
 
 def arm_ip(raw) -> str:
-    """The arm controller's address from the config (hardware.device_ip), or the default."""
+    """The arm controller's address from the config (robot.arm.interface.ip), or the default."""
     return str((raw.get("hardware") or {}).get("device_ip") or DEFAULT_ARM_IP)
 
 

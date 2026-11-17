@@ -47,10 +47,23 @@ def save_rt(path: str, yaml, data) -> None:
 
 
 def _section(data, key: str):
+    """The mapping at key (dotted: robot.arm.interface), created when missing."""
     from ruamel.yaml.comments import CommentedMap
-    if key not in data or data[key] is None:
-        data[key] = CommentedMap()
-    return data[key]
+    node = data
+    for part in key.split("."):
+        if part not in node or node[part] is None:
+            node[part] = CommentedMap()
+        node = node[part]
+    return node
+
+
+def _apply(target, values: Dict[str, Any]) -> None:
+    """Write values into a mapping; a dict value is merged into the mapping under that key, however deep."""
+    for key, value in values.items():
+        if isinstance(value, dict):
+            _apply(_section(target, key), value)
+        else:
+            target[key] = value
 
 
 def set_cameras(path: str, assignments: Dict[str, Dict[str, Any]], *, enabled: Optional[bool] = None) -> None:
@@ -72,11 +85,9 @@ def set_cameras(path: str, assignments: Dict[str, Dict[str, Any]], *, enabled: O
 
 
 def set_fields(path: str, section: str, values: Dict[str, Any]) -> None:
-    """Set scalar fields of one top-level section (e.g. robot.end_effector, robot.end_effector_bus)."""
+    """Set scalar fields of one section, dotted for a nested one (e.g. robot.arm.interface)."""
     yaml, data = load_rt(path)
-    target = _section(data, section)
-    for key, value in values.items():
-        target[key] = value
+    _apply(_section(data, section), values)
     save_rt(path, yaml, data)
 
 
@@ -91,14 +102,10 @@ def set_float_list(path: str, section: str, key: str, values) -> None:
 
 
 def set_usb_ports(profile_path: str, left: Optional[str], right: Optional[str]) -> None:
-    """hardware.usb_left_port / usb_right_port (serial ports of USB hands)."""
-    values = {}
-    if left:
-        values["usb_left_port"] = left
-    if right:
-        values["usb_right_port"] = right
+    """robot.end_effector.interface.left.port / right.port (serial ports of USB hands)."""
+    values = {side: {"port": port} for side, port in (("left", left), ("right", right)) if port}
     if values:
-        set_fields(profile_path, "hardware", values)
+        set_fields(profile_path, "robot.end_effector.interface", values)
 
 
 def camera_serials(path: str) -> Dict[str, str]:
@@ -118,12 +125,7 @@ def save_setup(path: str, section: str, changes: Dict[str, Dict], original: str)
                 raise ValueError("配置文件已被其他程序修改，请取消本次配置并重新进入")
         yaml, data = load_rt(path)
         for name, values in changes.items():
-            target = _section(data, name)
-            for key, value in values.items():
-                if isinstance(value, dict):
-                    _section(target, key).update(value)
-                else:
-                    target[key] = value
+            _apply(_section(data, name), values)
         _section(data, "setup")[section] = receipt(data, section)
         save_rt(path, yaml, data)
 

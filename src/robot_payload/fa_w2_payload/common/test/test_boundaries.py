@@ -7,14 +7,14 @@ import pytest
 PACKAGE_DIR = Path(__file__).resolve().parents[1] / "fa_w2_payload"
 APPLICATION_NAMES = ("robot_app", "joystick_teleop", "keyboard_teleop", "target_generator", "arm_controller", "robot_bringup", "launch_helpers", "robot_visualize", "robot_navigation")
 # module -> the fa_w2_payload modules it may import. Dependencies only point down:
-#   load_identify / config_status -> device_setup -> config_edit -> mappings -> config.
+#   load_identify -> config_status / device_setup -> config_edit -> mappings -> config (config_status also reads mappings).
 # The device packages (camera, end_effector) sit above all of these; fa_w2_payload never imports them.
 ALLOWED = {
     "config": set(),
     "mappings": {"config"},
     "config_edit": {"config", "mappings"},
     "device_setup": {"config_edit"},
-    "config_status": {"config", "config_edit"},
+    "config_status": {"config", "config_edit", "mappings"},
     "load_identify": {"config_edit", "config_status", "device_setup"},
 }
 

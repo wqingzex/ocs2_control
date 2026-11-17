@@ -37,7 +37,7 @@ cameras = camera_specs(load("config/robot.local.yaml"))
 
 其他包的配置段通过 `Extension` 接入：`robot_app` 用它加入 `xr`、`joystick`、`navigation` 段和 `robot.entry` 的取值检查。不带 `Extension` 调用 `load` 时其他包的段被忽略，所以推理程序读同一份文件不会报错。
 
-`hardware.usb_left_port` 等设备参数仍由机器人的 `robot_profile` 机制传给运控和手驱动，这里不另存设备映射。XR 配对在遥操作包里，由 `./scripts/setup.sh xr` 调用。
+`robot.end_effector.interface.left.port` 等设备参数仍由机器人的 `robot_profile` 机制传给运控和手驱动，这里不另存设备映射。XR 配对在遥操作包里，由 `./scripts/setup.sh xr` 调用。
 
 ## 测试
 

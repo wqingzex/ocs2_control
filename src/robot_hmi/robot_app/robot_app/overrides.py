@@ -1,7 +1,7 @@
 """Command line overrides: --set section.field=value changes the config for one run; the file stays as it is.
 
-Device mappings (camera serials, ports, rotation, the XR headset id) and the robot profile sections are
-edited by the setup steps or in the file, never from the command line."""
+Device mappings (camera serials, the hands' serial ports, rotation, the XR headset id) and the control section
+are edited by the setup steps or in the file, never from the command line."""
 from __future__ import annotations
 
 import copy
@@ -12,7 +12,8 @@ import yaml
 
 from fa_w2_payload.config import PROFILE_SECTIONS, ConfigError
 
-DENIED_FIELDS = re.compile(r"^(cameras\.(head|left_wrist|right_wrist)\.(serial|usb_port|rotation)|xr\.device_id)$")
+DENIED_FIELDS = re.compile(r"^(cameras\.(head|left_wrist|right_wrist)\.(serial|usb_port|rotation)|xr\.device_id"
+                           r"|robot\.end_effector\.interface\.(left|right)\.port)$")
 
 
 def parse_assignment(text: str) -> Tuple[List[str], Any]:

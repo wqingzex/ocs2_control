@@ -1,12 +1,28 @@
 # robot_control_suite bringup config: the defaults of the sections below (every field optional). They live in
-# config/robot.local.yaml together with platform / defaults / hardware / control (see config/robot.template.yaml).
+# config/robot.local.yaml together with the control section (see config/robot.template.yaml).
 # Check without starting:  python3 -m robot_app.check <config file> <ws_root>
 
 robot:
   entry: whole_body         # whole_body (fa_w2 whole body, WBC) | split_body (fa_w2 split body) | dual_arm (M6-CCS dual arm)
-  end_effector: linkerhand_l6     # 末端（手或夹爪）：none | linkerhand_l6 | xhand1 | wuji_hand2 | jodell_rg75
-  end_effector_bus: usb_rs485   # 末端接在哪条线上：usb_rs485（485 转 USB 接电脑）| arm_rs485（接机械臂末端 485 口）| usb_can（USB-CAN，只支持 linkerhand_l6）| ethernet（只给 wuji_hand2）；xhand1 只能 usb_rs485，jodell_rg75 只能 arm_rs485
-  hardware: real            # real | mock_components | isaac
+  hardware: real            # run mode: real | mock_components | isaac
+  variant: ""               # whole-robot visual variant, "" = the robot's default
+  # Every part: what it is (type), then how it is connected (interface). Not written = the robot description's default.
+  base:
+    type: linkhou_s2        # linkhou_s2 | linkhou_s2_v2
+    joints_movable: false
+  body:                     # waist and head motors
+    type: juxie
+    interface: {can: can0}  # CAN FD interface; stats_period_s: debug statistics period
+  arm:
+    type: marvin            # arm driver (registered: marvin)
+    interface: {ip: 192.168.1.190}   # Marvin controller; firmware: 338 | 343 (SDK version, written by setup.sh marvin)
+  end_effector:
+    type: linkerhand_l6     # none | linkerhand_l6 | xhand1 | wuji_hand2 | jodell_rg75
+    interface:
+      bus: usb_rs485        # usb_rs485 | arm_rs485 | usb_can (linkerhand_l6 only) | ethernet (wuji_hand2 only)
+      left:  {}             # port: /dev/serial/by-id/... (usb_rs485, written by setup.sh hand) | can: can1 (usb_can) | channel: 1 (arm_rs485)
+      right: {}
+    dyn_param: {left: [], right: []}   # load override per side: 10 numbers, [] = by end effector type
 
 xr:
   enable: true              # start robot_app xr_bridge_node (XRoboToolkit -> /xr/*)

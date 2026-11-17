@@ -1,5 +1,5 @@
 """Tool load identification (./scripts/setup.sh dyn): run the Marvin wizard per arm, then write the result to
-defaults.<side>_dyn_param. Without it the robot description picks the load by end effector type."""
+robot.end_effector.dyn_param.<side>. Without it the robot description picks the load by end effector type."""
 from __future__ import annotations
 
 import json
@@ -80,8 +80,8 @@ def step_dyn(config_path: str, ws_root: str, io, runner: Callable[..., int] = su
             io.info("未写入，保持原值")
             continue
         io.info(f"原值已记录到 {remember(ws_root, side, old)}")
-        config_edit.set_float_list(config_path, "defaults", f"{side}_dyn_param", values)
-        io.info(f"已写入 defaults.{side}_dyn_param")
+        config_edit.set_float_list(config_path, "robot.end_effector.dyn_param", side, values)
+        io.info(f"已写入 robot.end_effector.dyn_param.{side}")
     return ok
 
 
@@ -92,8 +92,8 @@ def reset_dyn(config_path: str, ws_root: str, io) -> bool:
         old = dyn_values(raw, side)
         if old:
             io.info(f"{side} 原值已记录到 {remember(ws_root, side, old)}")
-        config_edit.set_float_list(config_path, "defaults", f"{side}_dyn_param", [])
-    io.info("已清空 defaults.left_dyn_param / right_dyn_param，使用默认负载")
+        config_edit.set_float_list(config_path, "robot.end_effector.dyn_param", side, [])
+    io.info("已清空 robot.end_effector.dyn_param.left / right，使用默认负载")
     return True
 
 

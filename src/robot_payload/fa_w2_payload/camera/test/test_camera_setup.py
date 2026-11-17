@@ -32,7 +32,7 @@ def test_camera_visual_confirmation_saves_rotations_and_preserves_other_sections
     assert raw['cameras']['right_wrist']['serial'] == 'LEFT'
     assert raw['cameras']['right_wrist']['rotation'] == 90
     assert raw['cameras']['left_wrist']['rotation'] == 270
-    assert raw['xr']['device_id'] == 'PICO-BOUND' and raw['hardware']['max_joint_speed'] == 17
+    assert raw['xr']['device_id'] == 'PICO-BOUND' and raw['control']['limits']['max_joint_speed'] == 17
     assert '# preserve this comment' in config.read_text() and config_edit.confirmed(raw, 'cameras')
     config_edit.set_cameras(str(config), {'left_wrist': {'rotation': 180}})
     assert not config_edit.confirmed(yaml.safe_load(config.read_text()), 'cameras')

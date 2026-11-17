@@ -73,10 +73,11 @@ def test_the_rings_as_they_are_now_are_in_the_bundle(tmp_path, monkeypatch):
 
 
 def test_session_info_names_the_code_version_and_the_hardware_selection(tmp_path):
-    cfg = {"robot": {"entry": "w2", "hardware": "real", "end_effector": "linkerhand_l6", "end_effector_bus": "usb_rs485", "other": 1}}
+    cfg = {"robot": {"entry": "w2", "hardware": "real", "arm": {"type": "marvin", "interface": {"ip": "10.0.0.2"}},
+                     "end_effector": {"type": "linkerhand_l6", "interface": {"bus": "usb_rs485"}}, "other": 1}}
     info = events.session_info(str(tmp_path), cfg)  # not a git checkout: the version is unknown, not an error
     assert info["git"] == "unknown" and info["robot"] == {
-        "entry": "w2", "hardware": "real", "end_effector": "linkerhand_l6", "end_effector_bus": "usb_rs485"}
+        "entry": "w2", "hardware": "real", "arm": "marvin", "end_effector": "linkerhand_l6", "end_effector_bus": "usb_rs485"}
 
 
 def test_a_clock_that_is_not_synchronised_is_called_out_and_an_unknown_one_is_not():

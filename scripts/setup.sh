@@ -42,7 +42,7 @@ OCS2_SKIP_PACKAGES=(
   ocs2_quadruped_interface ocs2_quadruped_loopshaping_interface
   ocs2_switched_model_interface ocs2_switched_model_msgs segmented_planes_terrain_model
 )
-# 天机臂（Marvin）SDK 版本：config 的 hardware.marvin_firmware，编译时传给 marvin_hardware 的 -DMARVIN_FIRMWARE。
+# 天机臂（Marvin）SDK 版本：config 的 robot.arm.interface.firmware，编译时传给 marvin_hardware 的 -DMARVIN_FIRMWARE。
 MARVIN_FIRMWARES=(338 343)
 MARVIN_FIRMWARE_DEFAULT=343   # 和 marvin_hardware/CMakeLists.txt 的默认值一致
 # build --minimal 只编译这些包及其依赖。
@@ -167,7 +167,7 @@ host_udev() {
   info "已安装；已插上的相机请重新插拔一次"
 }
 
-# 腰部 CAN 接口名：环境变量 CAN_IFACE > config/robot.local.yaml 的 hardware.body_can_interface > can0。
+# 腰部 CAN 接口名：环境变量 CAN_IFACE > config/robot.local.yaml 的 robot.body.interface.can > can0。
 # 名字会写进 sudoers 规则，必须是合法的接口名（和驱动 jx_hardware 的校验一致）。
 body_can_iface() {
   local iface="${CAN_IFACE:-}"
@@ -175,7 +175,8 @@ body_can_iface() {
     iface="$(python3 - "${CONFIG}" <<'PY' 2>/dev/null || true
 import sys, yaml
 data = yaml.safe_load(open(sys.argv[1])) or {}
-print(str((data.get("hardware") or {}).get("body_can_interface", "") or "").strip())
+body = (data.get("robot") or {}).get("body") or {}
+print(str((body.get("interface") or {}).get("can", "") or "").strip())
 PY
 )"
   fi
@@ -184,7 +185,7 @@ PY
   printf '%s' "${iface}"
 }
 
-# robot.end_effector_bus 为 usb_can 时两只手的 CAN 接口（hardware.left_ee_can_interface / right_ee_can_interface，
+# robot.end_effector.interface.bus 为 usb_can 时两只手的 CAN 接口（interface.left.can / right.can，
 # 默认 can1 / can2），每行一个；其他接线方式不输出。名字同样要合法，且不能和腰部接口相同。
 hand_can_ifaces() {
   [[ -f "${CONFIG}" ]] || return 0
@@ -197,16 +198,18 @@ hand_can_ifaces() {
   done < <(python3 - "${CONFIG}" <<'PY' 2>/dev/null || true
 import sys, yaml
 data = yaml.safe_load(open(sys.argv[1])) or {}
-robot, hw = data.get("robot") or {}, data.get("hardware") or {}
-if robot.get("end_effector", "linkerhand_l6") != "none" and robot.get("end_effector_bus") == "usb_can":
-    names = [str(hw.get("left_ee_can_interface") or "can1").strip(), str(hw.get("right_ee_can_interface") or "can2").strip()]
+robot = data.get("robot") or {}
+eef = robot.get("end_effector") or {}
+side = lambda name: (eef.get("interface") or {}).get(name) or {}
+if (eef.get("type") or "linkerhand_l6") != "none" and (eef.get("interface") or {}).get("bus") == "usb_can":
+    names = [str(side("left").get("can") or "can1").strip(), str(side("right").get("can") or "can2").strip()]
     print("\n".join(dict.fromkeys(names)))  # the two hands may share one interface
 PY
 )
 }
 
 # 只放行驱动实际执行的 `sudo ip link set <can> ...`，参数写死、不用通配符：
-# 腰部 jx_hardware（CAN FD），以及 end_effector_bus: usb_can 时手的 end_effector_hardware（经典 CAN 1 Mbit/s）
+# 腰部 jx_hardware（CAN FD），以及 end_effector.interface.bus: usb_can 时手的 end_effector_hardware（经典 CAN 1 Mbit/s）
 host_sudoers() {
   local iface file="/etc/sudoers.d/fa_w2-can" legacy
   for legacy in /etc/sudoers.d/fa-w2-can /etc/sudoers.d/fiveages_w2-can; do  # 旧文件名写入的同一条规则：删掉，只留新文件
@@ -307,12 +310,13 @@ marvin_firmware_config() {  # 配置里选的版本；没选则为空；不是 3
     value="$(python3 - "${CONFIG}" <<'PY' 2>/dev/null || true
 import sys, yaml
 data = yaml.safe_load(open(sys.argv[1])) or {}
-print(str((data.get("hardware") or {}).get("marvin_firmware", "") or "").strip())
+arm = (data.get("robot") or {}).get("arm") or {}
+print(str((arm.get("interface") or {}).get("firmware", "") or "").strip())
 PY
 )"
   fi
   [[ -z "${value}" ]] || is_marvin_firmware "${value}" \
-    || die "hardware.marvin_firmware 只能是 338 或 343（${CONFIG} 里是 '${value}'）"
+    || die "robot.arm.interface.firmware 只能是 338 或 343（${CONFIG} 里是 '${value}'）"
   printf '%s' "${value}"
 }
 
@@ -355,9 +359,9 @@ step_marvin() {
   PYTHONPATH="${PAYLOAD_PYTHONPATH}:${PYTHONPATH:-}" python3 - "${CONFIG}" "${choice}" <<'PY'
 import sys
 from fa_w2_payload.config_edit import set_fields
-set_fields(sys.argv[1], "hardware", {"marvin_firmware": int(sys.argv[2])})
+set_fields(sys.argv[1], "robot.arm.interface", {"firmware": int(sys.argv[2])})
 PY
-  info "已写入 hardware.marvin_firmware: ${choice}（之后编译 marvin_hardware 都用这个版本）"
+  info "已写入 robot.arm.interface.firmware: ${choice}（之后编译 marvin_hardware 都用这个版本）"
 }
 
 # ---- build ----------------------------------------------------------------------------------------

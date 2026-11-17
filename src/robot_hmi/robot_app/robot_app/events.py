@@ -5,7 +5,12 @@ import socket
 import subprocess
 from typing import Any, Dict
 
-ROBOT_FIELDS = ("entry", "hardware", "end_effector", "end_effector_bus")
+def robot_fields(robot: Dict[str, Any]) -> Dict[str, Any]:
+    """The selection a later reader of the log needs: entry, run mode, arm and end effector with its bus."""
+    eef = robot.get("end_effector") or {}
+    return {"entry": robot.get("entry"), "hardware": robot.get("hardware"),
+            "arm": (robot.get("arm") or {}).get("type"),
+            "end_effector": eef.get("type"), "end_effector_bus": (eef.get("interface") or {}).get("bus")}
 
 
 def git_revision(root: str) -> str:
@@ -22,4 +27,4 @@ def session_info(ws_root: str, cfg: Dict[str, Any]) -> Dict[str, Any]:
     """What a later reader needs to know about this run: code version, host and the hardware selection."""
     robot = cfg.get("robot") or {}
     return {"git": git_revision(ws_root), "host": socket.gethostname(),
-            "robot": {key: robot.get(key) for key in ROBOT_FIELDS}}
+            "robot": robot_fields(robot)}

@@ -19,13 +19,35 @@ END_EFFECTORS = ("none", "linkerhand_l6", "xhand1", "wuji_hand2", "jodell_rg75")
 # ethernet: Wuji Hand 2
 END_EFFECTOR_BUSES = ("usb_rs485", "arm_rs485", "usb_can", "ethernet")
 HARDWARE = ("real", "mock_components", "isaac")
+BASE_TYPES = ("linkhou_s2", "linkhou_s2_v2")  # the mobile base
+BODY_TYPES = ("juxie",)  # waist and head motors (CAN FD)
+# Arm drivers the robot descriptions can build (xacro arg arm_driver); marvin is the only one with a robot model.
+ARM_TYPES = ("marvin",)
+MARVIN_FIRMWARES = (338, 343)  # Marvin SDK versions, must match the firmware of the arm controller
+DEFAULT_ARM_IP = "192.168.1.190"
+ARM_MODES = ("position", "joint_impedance")
+DYN_LENGTH = 10  # load override: m, mx, my, mz, ixx, ixy, ixz, iyy, iyz, izz
+SIDES = ("left", "right")
+# Optional values default to None / "": unset means the robot description's own default applies.
 
 DEFAULTS: Dict[str, Any] = {
     "robot": {
         "entry": "whole_body",  # which controller launch to start; the owner of the entries checks the value
-        "end_effector": "linkerhand_l6",
-        "end_effector_bus": "usb_rs485",
-        "hardware": "real",
+        "hardware": "real",  # run mode: real | mock_components | isaac
+        "variant": "",
+        # Every part: what it is (type), then how it is connected (interface).
+        "base": {"type": "", "joints_movable": None},
+        "body": {"type": "juxie", "interface": {"can": "", "stats_period_s": None}},
+        "arm": {"type": "marvin", "interface": {"ip": "", "firmware": None}},
+        "end_effector": {
+            "type": "linkerhand_l6",
+            "interface": {
+                "bus": "usb_rs485",
+                "left": {"port": "", "can": "", "channel": None},
+                "right": {"port": "", "can": "", "channel": None},
+            },
+            "dyn_param": {"left": [], "right": []},  # load override per side (10 numbers); [] = by end effector type
+        },
     },
     "cameras": {
         "enable": True,
@@ -81,38 +103,17 @@ def _merge(defaults: Dict[str, Any], user: Dict[str, Any], path: str) -> Dict[st
     return merged
 
 
-# Fields older configs may still carry; accepted and ignored.
-# robot.rviz: RViz is now its own on-demand unit (start.sh up rviz / console), not part of control.
-RETIRED = {"robot": ("rviz", "profile")}  # profile: the config file itself is the robot profile now
-# Sections the robot launch files read from the same file (the robot profile): kept as is.
-PROFILE_SECTIONS = ("platform", "defaults", "hardware", "control", "setup")
+# Sections the robot launch files read from the same file (the robot profile): checked by _check_control only.
+PROFILE_SECTIONS = ("control", "setup")
+CONTROL_KEYS = ("arm_mode", "limits", "patch")
+LIMIT_KEYS = ("max_joint_speed", "max_joint_acceleration")
 
 
-# Fields that were renamed without keeping the old name: an old config fails with what to write instead.
-MOVED = {
-    "robot": {
-        "hand": "'robot.hand' is now 'robot.end_effector' (same values, plus jodell_rg75)",
-        "hand_drive": "'robot.hand_drive' is now 'robot.end_effector_bus': usb -> usb_rs485, \"485\" -> arm_rs485, "
-                      "usb_can and ethernet unchanged",
-    },
-}
-
-
-def _check_moved(cfg: Dict[str, Any]) -> None:
-    for section, fields in MOVED.items():
-        if isinstance(cfg.get(section), dict):
-            for key, hint in fields.items():
-                expect(key not in cfg[section], hint)
-
-
-def _drop_retired(cfg: Dict[str, Any], renamed: Dict[str, Dict[str, str]]) -> Dict[str, Any]:
+def _rename_fields(cfg: Dict[str, Any], renamed: Dict[str, Dict[str, str]]) -> Dict[str, Any]:
     cleaned = dict(cfg)
     for section, names in renamed.items():
         if isinstance(cleaned.get(section), dict):
             cleaned[section] = {names.get(k, k): v for k, v in cleaned[section].items()}
-    for section, keys in RETIRED.items():
-        if isinstance(cleaned.get(section), dict):
-            cleaned[section] = {k: v for k, v in cleaned[section].items() if k not in keys}
     return cleaned
 
 
@@ -136,11 +137,12 @@ def _check_type(cfg: Dict[str, Any], defaults: Dict[str, Any], path: str) -> Non
             expect(isinstance(value, str), f"'{name}' must be a string, got {value!r}")
 
 
-def check_end_effector(end_effector: str, bus: str, field_prefix: str = "robot.") -> None:
+def check_end_effector(end_effector: str, bus: str, where_type: str = "robot.end_effector.type",
+                       where_bus: str = "robot.end_effector.interface.bus") -> None:
     """Which end effector can be on which bus (also used by the setup window before it saves)."""
-    where = f"'{field_prefix}end_effector_bus'"
+    where = f"'{where_bus}'"
     expect(end_effector in END_EFFECTORS,
-           f"'{field_prefix}end_effector' must be one of {list(END_EFFECTORS)}, got {end_effector!r}")
+           f"'{where_type}' must be one of {list(END_EFFECTORS)}, got {end_effector!r}")
     expect(bus in END_EFFECTOR_BUSES, f"{where} must be one of {list(END_EFFECTOR_BUSES)}, got {bus!r}")
     if end_effector == "none":
         return
@@ -152,10 +154,55 @@ def check_end_effector(end_effector: str, bus: str, field_prefix: str = "robot."
            f"{where}: jodell_rg75 is only wired for arm_rs485 (the RS485 port at the arm)")
 
 
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def _check_robot(robot: Dict[str, Any]) -> None:
+    import ipaddress
     expect(robot["hardware"] in HARDWARE,
            f"'robot.hardware' must be one of {list(HARDWARE)}, got {robot['hardware']!r}")
-    check_end_effector(robot["end_effector"], robot["end_effector_bus"])
+    base, body, arm, eef = robot["base"], robot["body"], robot["arm"], robot["end_effector"]
+    expect(base["type"] in ("", *BASE_TYPES), f"'robot.base.type' must be one of {list(BASE_TYPES)}, got {base['type']!r}")
+    expect(base["joints_movable"] is None or isinstance(base["joints_movable"], bool),
+           f"'robot.base.joints_movable' must be true/false, got {base['joints_movable']!r}")
+    expect(body["type"] in BODY_TYPES, f"'robot.body.type' must be one of {list(BODY_TYPES)}, got {body['type']!r}")
+    stats = body["interface"]["stats_period_s"]
+    expect(stats is None or (_is_number(stats) and stats >= 0),
+           f"'robot.body.interface.stats_period_s' must be a number >= 0, got {stats!r}")
+    expect(arm["type"] in ARM_TYPES, f"'robot.arm.type' must be one of {list(ARM_TYPES)}, got {arm['type']!r}")
+    ip = arm["interface"]["ip"]
+    if ip:
+        try:
+            ipaddress.IPv4Address(ip)
+        except ValueError as exc:
+            raise ConfigError(f"'robot.arm.interface.ip' must be an IPv4 address, got {ip!r}") from exc
+    firmware = arm["interface"]["firmware"]
+    expect(firmware is None or firmware in MARVIN_FIRMWARES,
+           f"'robot.arm.interface.firmware' must be one of {list(MARVIN_FIRMWARES)}, got {firmware!r}")
+    check_end_effector(eef["type"], eef["interface"]["bus"])
+    for side in SIDES:
+        channel = eef["interface"][side]["channel"]
+        expect(channel is None or channel in (1, 2, 3) and not isinstance(channel, bool),
+               f"'robot.end_effector.interface.{side}.channel' must be 1, 2 or 3, got {channel!r}")
+        load = eef["dyn_param"][side]
+        expect(isinstance(load, list) and (not load or (len(load) == DYN_LENGTH and all(map(_is_number, load)))),
+               f"'robot.end_effector.dyn_param.{side}' must be [] or {DYN_LENGTH} numbers, got {load!r}")
+
+
+def _check_control(control: Any) -> None:
+    expect(control is None or isinstance(control, dict), "'control' must be a mapping")
+    control = control or {}
+    for key in control:
+        expect(key in CONTROL_KEYS, f"unknown field 'control.{key}' (one of {list(CONTROL_KEYS)})")
+    expect(control.get("arm_mode", "position") in ARM_MODES,
+           f"'control.arm_mode' must be one of {list(ARM_MODES)}, got {control.get('arm_mode')!r}")
+    limits = control.get("limits") or {}
+    expect(isinstance(limits, dict), "'control.limits' must be a mapping")
+    for key, value in limits.items():
+        expect(key in LIMIT_KEYS, f"unknown field 'control.limits.{key}' (one of {list(LIMIT_KEYS)})")
+        expect(_is_number(value) and value > 0, f"'control.limits.{key}' must be a number > 0, got {value!r}")
+    expect(control.get("patch") is None or isinstance(control["patch"], dict), "'control.patch' must be a mapping")
 
 
 def _check_cameras(cams: Dict[str, Any]) -> None:
@@ -181,8 +228,7 @@ def validate(cfg: Dict[str, Any], ext: Extension | None = None) -> Dict[str, Any
     cfg = {} if cfg is None else cfg
     expect(isinstance(cfg, dict), "config root must be a mapping")
     ext = ext or Extension()
-    _check_moved(cfg)
-    cfg = _drop_retired(cfg, ext.renamed)
+    cfg = _rename_fields(cfg, ext.renamed)
     for name in PROFILE_SECTIONS:
         expect(cfg.get(name) is None or isinstance(cfg[name], dict), f"'{name}' must be a mapping")
     owned = {**DEFAULTS, **ext.defaults}
@@ -190,6 +236,7 @@ def validate(cfg: Dict[str, Any], ext: Extension | None = None) -> Dict[str, Any
     merged = _merge(owned, {k: v for k, v in cfg.items() if k not in skipped}, "")
     _check_type(merged, owned, "")
     _check_robot(merged["robot"])
+    _check_control(cfg.get("control"))
     _check_cameras(merged["cameras"])
     for check in ext.checks:
         check(merged)

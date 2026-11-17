@@ -1,4 +1,4 @@
-"""robot.local.yaml `hardware:` keys become xacro arguments, and only on real hardware."""
+"""The interfaces written in robot.local.yaml become xacro arguments, and only on real hardware."""
 from launch_helpers.robot import profile
 
 
@@ -9,11 +9,11 @@ def _write(tmp_path, text):
 
 
 PROFILE = """
-platform:
-  chassis: linkhou_s2
-hardware:
-  body_can_interface: can1
-  max_joint_speed: 100
+robot:
+  base: {type: linkhou_s2}
+  body: {interface: {can: can1}}
+control:
+  limits: {max_joint_speed: 100}
 """
 
 
@@ -24,7 +24,13 @@ def test_body_can_interface_reaches_the_xacro_on_real_hardware(tmp_path):
     assert mappings["max_joint_speed"] == "100"
 
 
-def test_hardware_keys_are_ignored_in_simulation(tmp_path):
+def test_the_base_reaches_the_xacro_in_simulation_too(tmp_path):
+    mappings = profile.build_xacro_mappings("mock_components", {}, _write(tmp_path, PROFILE))
+
+    assert mappings["base"] == "linkhou_s2"
+
+
+def test_interfaces_are_ignored_in_simulation(tmp_path):
     mappings = profile.build_xacro_mappings("mock_components", {}, _write(tmp_path, PROFILE))
 
     assert "body_can_interface" not in mappings

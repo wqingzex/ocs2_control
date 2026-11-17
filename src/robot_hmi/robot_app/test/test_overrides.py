@@ -18,7 +18,7 @@ CAMERAS_OFF = {"cameras": {"enable": False}}
     ("xr.enable=false", (["xr", "enable"], False)),
     ("cameras.fps=60", (["cameras", "fps"], 60)),
     ("cameras.head.enable=false", (["cameras", "head", "enable"], False)),
-    ("robot.end_effector_bus=485", (["robot", "end_effector_bus"], 485)),
+    ("robot.end_effector.interface.bus=usb_can", (["robot", "end_effector", "interface", "bus"], "usb_can")),
 ])
 def test_assignment_values_are_read_as_yaml(text, expected):
     assert parse_assignment(text) == expected
@@ -32,7 +32,8 @@ def test_malformed_assignments_are_rejected(text):
 
 @pytest.mark.parametrize("text", [
     "cameras.head.serial=ABC", "cameras.left_wrist.usb_port=2-1", "cameras.right_wrist.rotation=90",
-    "xr.device_id=PICO", "hardware.max_joint_speed=1", "defaults.left_dyn_param=[]", "platform.chassis=x",
+    "xr.device_id=PICO", "control.limits.max_joint_speed=1", "robot.end_effector.interface.left.port=/dev/ttyUSB0",
+    "robot.end_effector.interface.right.port=/dev/ttyUSB2",
 ])
 def test_device_mappings_and_profile_sections_cannot_be_overridden(text):
     with pytest.raises(ConfigError, match="cannot change"):

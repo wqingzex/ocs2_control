@@ -28,14 +28,14 @@ GOLDEN = {
 }
 CASES = {
     "defaults": {},
-    "usb_xhand": {"robot": {"end_effector": "xhand1", "end_effector_bus": "usb_rs485"},
-                  "hardware": {"usb_left_port": "/dev/serial/by-id/usb-A", "usb_right_port": "/dev/serial/by-id/usb-B"}},
-    "usb_can": {"robot": {"end_effector": "linkerhand_l6", "end_effector_bus": "usb_can"},
-                "hardware": {"left_ee_can_interface": "can3"}},
-    "ethernet": {"robot": {"end_effector": "wuji_hand2", "end_effector_bus": "ethernet"}},
-    "arm_rs485": {"robot": {"end_effector": "jodell_rg75", "end_effector_bus": "arm_rs485"},
-                  "hardware": {"device_ip": "10.0.0.7", "left_ee_channel": 2}},
-    "none": {"robot": {"end_effector": "none"}},
+    "usb_xhand": {"robot": {"end_effector": {"type": "xhand1", "interface": {
+        "bus": "usb_rs485", "left": {"port": "/dev/serial/by-id/usb-A"}, "right": {"port": "/dev/serial/by-id/usb-B"}}}}},
+    "usb_can": {"robot": {"end_effector": {"type": "linkerhand_l6", "interface": {
+        "bus": "usb_can", "left": {"can": "can3"}}}}},
+    "ethernet": {"robot": {"end_effector": {"type": "wuji_hand2", "interface": {"bus": "ethernet"}}}},
+    "arm_rs485": {"robot": {"end_effector": {"type": "jodell_rg75", "interface": {
+        "bus": "arm_rs485", "left": {"channel": 2}}}, "arm": {"interface": {"ip": "10.0.0.7"}}}},
+    "none": {"robot": {"end_effector": {"type": "none"}}},
     "cam_changed": {"cameras": {"enable": True, "left": {"serial": "CAM123", "rotation": 90}}},
 }
 
@@ -60,12 +60,12 @@ def test_a_camera_field_that_changes_changes_the_camera_fingerprint_only():
     ("arm_rs485", {"device_ip", "left_ee_channel", "right_ee_channel"}),
 ])
 def test_the_hand_mapping_holds_the_fields_its_wiring_uses(bus, expected_keys):
-    value = mappings.hand_mapping({"robot": {"end_effector": "linkerhand_l6", "end_effector_bus": bus}})
+    value = mappings.hand_mapping({"robot": {"end_effector": {"type": "linkerhand_l6", "interface": {"bus": bus}}}})
     assert set(value) - {"hand", "drive"} == expected_keys
 
 
 def test_no_end_effector_has_no_wiring_fields():
-    assert mappings.hand_mapping({"robot": {"end_effector": "none"}}) == {"hand": "none", "drive": "usb"}
+    assert mappings.hand_mapping({"robot": {"end_effector": {"type": "none"}}}) == {"hand": "none", "drive": "usb"}
 
 
 def test_an_unknown_section_is_an_error_naming_the_known_ones():
@@ -79,7 +79,7 @@ def test_status_and_check_work_without_importing_the_device_packages():
     code = (
         "import sys\n"
         "from fa_w2_payload import config_status\n"
-        "raw = {'robot': {'end_effector': 'xhand1', 'end_effector_bus': 'usb_rs485'}}\n"
+        "raw = {'robot': {'end_effector': {'type': 'xhand1', 'interface': {'bus': 'usb_rs485'}}}}\n"
         "print(config_status.camera_status(raw).state, config_status.hand_status(raw).state)\n"
         "loaded = [m for m in ('camera', 'end_effector') if m in sys.modules]\n"
         "assert not loaded, loaded\n")

@@ -18,6 +18,9 @@ ENTRIES = {
     "whole_body": ("whole_body.launch.py", "fa_w2"),
 }
 
+# entry -> the arm drivers that have a robot model there (the registered drivers are fa_w2_payload.config.ARM_TYPES)
+ENTRY_ARM_TYPES = {"split_body": ("marvin",), "dual_arm": ("marvin",), "whole_body": ("marvin",)}
+
 SECTION_DEFAULTS: Dict[str, Any] = {
     "joystick": {
         "device": "",  # "" = let joystick_teleop pick; or /dev/input/jsN
@@ -55,6 +58,9 @@ def _check_log(log: Dict[str, Any]) -> None:
 def _check_teleop(cfg: Dict[str, Any]) -> None:
     entry = cfg["robot"]["entry"]
     expect(entry in ENTRIES, f"'robot.entry' must be one of {list(ENTRIES)}, got {entry!r}")
+    arm = cfg["robot"]["arm"]["type"]
+    expect(arm in ENTRY_ARM_TYPES[entry],
+           f"'robot.arm.type' {arm!r} has no robot model for 'robot.entry' {entry!r} (supported: {list(ENTRY_ARM_TYPES[entry])})")
     device = cfg["joystick"]["device"]
     expect(bool(JOYSTICK_RE.match(device)), f"'joystick.device' must be empty or /dev/input/jsN, got {device!r}")
     for key in ("robot", "map", "map_config_package", "nav_config_package"):

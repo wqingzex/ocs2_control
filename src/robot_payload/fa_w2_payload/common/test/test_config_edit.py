@@ -25,8 +25,12 @@ TELEOP = """\
 # 本机遥操作配置（注释必须保留）
 robot:
   entry: split_body
-  end_effector: linkerhand_l6   # 末端
-  end_effector_bus: usb_rs485
+  end_effector:
+    type: linkerhand_l6   # 末端
+    interface:
+      bus: usb_rs485
+      left: {port: /dev/ttyUSB0}   # 左手
+      right: {port: /dev/ttyUSB2}
 
 cameras:
   head:        {serial: ""}   # Gemini 335Lg
@@ -37,10 +41,8 @@ cameras:
 
 PROFILE = """\
 # 平台配置（和上面同一个文件）
-hardware:
-  max_joint_speed: 100
-  usb_left_port: /dev/ttyUSB0   # 左手
-  usb_right_port: /dev/ttyUSB2
+control:
+  limits: {max_joint_speed: 100}
 """
 
 

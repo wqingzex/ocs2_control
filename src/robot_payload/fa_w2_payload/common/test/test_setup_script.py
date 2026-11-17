@@ -140,13 +140,25 @@ main xr --from
 
 
 # ---- steps that are configured, or have a usable default, are not asked again --------------------
+def _merge(target, values):
+    for key, value in values.items():
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            _merge(target[key], value)
+        else:
+            target[key] = value
+
+
 def configured_config(**overrides):
     """A config whose camera and hand mappings carry valid confirmation receipts and a paired headset."""
     import yaml
     from fa_w2_payload.config_edit import receipt
     raw = {"cameras": {"head": {"serial": "A"}, "left_wrist": {"serial": "B"}, "right_wrist": {"serial": "C"}},
-           "xr": {"device_id": "PICO-1"}, "hardware": {"marvin_firmware": 338}}
-    raw.update(overrides)
+           "xr": {"device_id": "PICO-1"}, "robot": {"arm": {"interface": {"firmware": 338}}}}
+    for key, value in overrides.items():  # a given section is merged into the robot section, not replacing it
+        if key == "robot":
+            _merge(raw["robot"], value)
+        else:
+            raw[key] = value
     raw["setup"] = {"cameras": receipt(raw, "cameras"), "hand": receipt(raw, "hand")}
     return yaml.safe_dump(raw)
 
@@ -175,13 +187,13 @@ def test_a_single_step_always_runs_even_when_it_is_configured(tmp_path, step, ex
 
 
 def test_a_half_filled_load_is_not_a_usable_default(tmp_path):
-    text = configured_config(defaults={"left_dyn_param": [1.0] * 10})
+    text = configured_config(robot={"end_effector": {"dyn_param": {"left": [1.0] * 10}}})
     result, steps = run_init(tmp_path, container=True, config_text=text)
     assert steps == ["deps", "sdk", "build", "dyn", "summary"]  # the reason (only the left arm is filled) is config_status's, tested there
 
 
 def test_simulation_and_no_hand_need_no_load_identification(tmp_path):
-    for robot, reason in (({"hardware": "mock_components"}, "不是真机"), ({"end_effector": "none"}, "没有末端")):
+    for robot, reason in (({"hardware": "mock_components"}, "不是真机"), ({"end_effector": {"type": "none"}}, "没有末端")):
         text = configured_config(robot=robot)
         result, steps = run_init(tmp_path, container=True, config_text=text)
         assert "dyn" not in steps and reason in result.stdout
@@ -199,7 +211,7 @@ def test_the_old_build_workspace_command_is_gone(tmp_path):
     assert result.returncode != 0 and steps == [] and "未知参数" in result.stderr
 
 
-# ---- the Marvin (Tianji) SDK version: hardware.marvin_firmware, 338 or 343 --------------------------
+# ---- the Marvin (Tianji) SDK version: robot.arm.interface.firmware, 338 or 343 --------------------------
 def built_with(tmp_path, firmware):
     cache = tmp_path / "build" / "marvin_hardware" / "CMakeCache.txt"
     cache.parent.mkdir(parents=True)
@@ -218,17 +230,17 @@ def call(tmp_path, function, config_text="{}\n"):
 
 def test_marvin_is_asked_and_the_choice_is_written_to_the_config(tmp_path):
     result, _ = run_init(tmp_path, container=True, args=("marvin",), stub_marvin=False, stdin="338\n",
-                         config_text="# 本机配置\nhardware:\n  body_can_interface: can0   # 腰、头\n")
+                         config_text="# 本机配置\nrobot:\n  body:\n    interface: {can: can0}   # 腰、头\n")
     assert result.returncode == 0, result.stdout + result.stderr
     text = (tmp_path / "config.yaml").read_text()
-    assert "marvin_firmware: 338" in text and "# 腰、头" in text   # comments are kept
+    assert "firmware: 338" in text and "# 腰、头" in text   # comments are kept
     assert "急停" in result.stdout + result.stderr                  # the prompt says what a wrong choice does
 
 
 def test_marvin_rejects_an_answer_that_is_not_338_or_343(tmp_path):
     result, _ = run_init(tmp_path, container=True, args=("marvin",), stub_marvin=False, stdin="340\n")
     assert result.returncode != 0 and "338 或 343" in result.stderr
-    assert "marvin_firmware" not in (tmp_path / "config.yaml").read_text()
+    assert "firmware" not in (tmp_path / "config.yaml").read_text()
 
 
 @pytest.mark.parametrize("built, expected", [(None, "343"), ("338", "338")])
@@ -237,11 +249,11 @@ def test_marvin_yes_keeps_the_version_already_built_or_takes_343(tmp_path, built
         built_with(tmp_path, built)
     result, _ = run_init(tmp_path, container=True, args=("marvin", "--yes"), stub_marvin=False, fake_ws=True)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert f"marvin_firmware: {expected}" in (tmp_path / "config.yaml").read_text()
+    assert f"firmware: {expected}" in (tmp_path / "config.yaml").read_text()
 
 
 def test_build_passes_the_chosen_version_to_cmake(tmp_path):
-    result = call(tmp_path, "marvin_cmake_arg", "hardware: {marvin_firmware: 338}\n")
+    result = call(tmp_path, "marvin_cmake_arg", "robot: {arm: {interface: {firmware: 338}}}\n")
     assert result.returncode == 0 and result.stdout == "-DMARVIN_FIRMWARE=338" and result.stderr == ""
 
 
@@ -253,5 +265,5 @@ def test_build_without_a_choice_keeps_the_built_version_and_warns(tmp_path):
 
 
 def test_an_invalid_version_in_the_config_is_an_error(tmp_path):
-    result = call(tmp_path, "marvin_cmake_arg", "hardware: {marvin_firmware: 340}\n")
-    assert result.returncode != 0 and "hardware.marvin_firmware" in result.stderr and "338 或 343" in result.stderr
+    result = call(tmp_path, "marvin_cmake_arg", "robot: {arm: {interface: {firmware: 340}}}\n")
+    assert result.returncode != 0 and "robot.arm.interface.firmware" in result.stderr and "338 或 343" in result.stderr

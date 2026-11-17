@@ -78,7 +78,7 @@ def console_workspace(tmp_path, launcher):
     shutil.copy2(repo / "scripts" / "start.sh", root / "scripts" / "start.sh")
     shutil.copy2(launcher, root / "robot_control_suite控制台")
     (root / "config/robot.local.yaml").write_text(
-        "robot: {hardware: mock_components, end_effector: none}\nxr: {enable: false}\ncameras: {enable: false}\n")
+        "robot: {hardware: mock_components, end_effector: {type: none}}\nxr: {enable: false}\ncameras: {enable: false}\n")
     package = shlex.quote(str(Path(__file__).resolve().parents[1]))
     (root / "install/setup.bash").write_text(f'export PYTHONPATH={package}:"${{PYTHONPATH:-}}"\n')
     (root / "src/robot_hmi/robot_app/web/index.html").write_text("<html>robot_control_suite console</html>")

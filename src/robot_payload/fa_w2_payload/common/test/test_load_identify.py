@@ -13,11 +13,19 @@ from fa_w2_payload.config_edit import receipt
 TEN = [0.5, -1.0, 2.0, 3.0, 0.001, 0.0, 0.0, 0.002, 0.0, 0.003]
 CONFIG = """\
 # my robot
-robot: {hardware: real, end_effector: linkerhand_l6}
-defaults:
-  left_dyn_param: [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]   # hand written
-  right_dyn_param: []
+robot:
+  hardware: real
+  end_effector:
+    type: linkerhand_l6
+    dyn_param:
+      left: [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]   # hand written
+      right: []
 """
+
+
+def loads(**sides):
+    """A raw config with the load override of the given sides."""
+    return {"robot": {"end_effector": {"dyn_param": sides}}}
 
 
 class ScriptedIo:
@@ -65,13 +73,13 @@ def wizard(ws_root, results):
 
 @pytest.mark.parametrize("raw, state", [
     ({}, DEFAULT),
-    ({"robot": {"end_effector": "none"}}, DEFAULT),
-    ({"robot": {"end_effector": "xhand1"}}, DEFAULT),
+    ({"robot": {"end_effector": {"type": "none"}}}, DEFAULT),
+    ({"robot": {"end_effector": {"type": "xhand1"}}}, DEFAULT),
     ({"robot": {"hardware": "isaac"}}, DEFAULT),
-    ({"defaults": {"left_dyn_param": TEN, "right_dyn_param": TEN}}, CONFIGURED),
-    ({"defaults": {"left_dyn_param": TEN}}, NEEDED),
-    ({"defaults": {"left_dyn_param": TEN[:9], "right_dyn_param": TEN}}, NEEDED),
-    ({"defaults": {"left_dyn_param": ["a"] * 10, "right_dyn_param": TEN}}, NEEDED),
+    (loads(left=TEN, right=TEN), CONFIGURED),
+    (loads(left=TEN), NEEDED),
+    (loads(left=TEN[:9], right=TEN), NEEDED),
+    (loads(left=["a"] * 10, right=TEN), NEEDED),
 ])
 def test_load_readiness(raw, state):
     assert dyn_status(raw).state == state
@@ -85,9 +93,12 @@ def test_cameras_and_hand_are_ready_only_with_a_matching_receipt():
     raw["cameras"]["head"]["serial"] = "OTHER"  # the mapping changed after it was confirmed
     assert camera_status(raw).needed
     assert camera_status({"cameras": {"enable": False}}).state == DEFAULT
-    assert hand_status({"robot": {"end_effector": "none"}}).state == DEFAULT
-    assert hand_status({"robot": {"end_effector": "linkerhand_l6", "end_effector_bus": "usb_can"}}).state == DEFAULT
-    assert hand_status({"robot": {"end_effector": "wuji_hand2", "end_effector_bus": "ethernet"}}).state == DEFAULT
+    def hand(type, bus="usb_rs485"):
+        return {"robot": {"end_effector": {"type": type, "interface": {"bus": bus}}}}
+
+    assert hand_status(hand("none")).state == DEFAULT
+    assert hand_status(hand("linkerhand_l6", "usb_can")).state == DEFAULT
+    assert hand_status(hand("wuji_hand2", "ethernet")).state == DEFAULT
 
 
 def test_nothing_is_identified_by_default(tmp_path):
@@ -105,8 +116,8 @@ def test_identifying_one_arm_writes_flow_style_values_and_keeps_the_old_ones(tmp
     cmd, arm, cwd = run.calls[0]
     assert cmd[-1] == "tool_dyn_identify_wizard" and arm == "A" and cwd == str(tmp_path)
     text = open(path, encoding="utf-8").read()
-    assert "# my robot" in text and "left_dyn_param: [0.5, -1.0, 2.0, 3.0, 0.001, 0.0, 0.0, 0.002, 0.0, 0.003]" in text
-    assert "right_dyn_param: []" in text
+    assert "# my robot" in text and "left: [0.5, -1.0, 2.0, 3.0, 0.001, 0.0, 0.0, 0.002, 0.0, 0.003]" in text
+    assert "right: []" in text
     previous = [f for f in os.listdir(dyn.output_dir(str(tmp_path))) if f.startswith("previous_left_")]
     assert json.load(open(os.path.join(dyn.output_dir(str(tmp_path)), previous[0])))["params"][:3] == [1.0, 2.0, 3.0]
 
@@ -161,13 +172,13 @@ def test_reset_empties_both_overrides_and_keeps_the_old_values(tmp_path):
     path = write_config(tmp_path)
     assert dyn.reset_dyn(path, str(tmp_path), ScriptedIo())
     text = open(path, encoding="utf-8").read()
-    assert "left_dyn_param: []" in text and "right_dyn_param: []" in text and "# my robot" in text
+    assert "left: []" in text and "right: []" in text and "# my robot" in text
     assert [f for f in os.listdir(dyn.output_dir(str(tmp_path))) if f.startswith("previous_left_")]
     assert dyn_status(config_edit.load_rt(path)[1]).state == DEFAULT
 
 
 def test_set_float_list_keeps_comments_and_creates_missing_sections(tmp_path):
-    path = write_config(tmp_path, "# top\nrobot: {end_effector: none}\n")
-    config_edit.set_float_list(path, "defaults", "left_dyn_param", [1, 2])
+    path = write_config(tmp_path, "# top\nrobot: {hardware: real}\n")
+    config_edit.set_float_list(path, "robot.end_effector.dyn_param", "left", [1, 2])
     text = open(path, encoding="utf-8").read()
-    assert text.startswith("# top") and "left_dyn_param: [1.0, 2.0]" in text
+    assert text.startswith("# top") and "left: [1.0, 2.0]" in text

@@ -29,8 +29,12 @@ TELEOP = """\
 # 本机遥操作配置（注释必须保留）
 robot:
   entry: split_body
-  end_effector: linkerhand_l6   # 末端
-  end_effector_bus: usb_rs485
+  end_effector:
+    type: linkerhand_l6   # 末端
+    interface:
+      bus: usb_rs485
+      left: {port: /dev/ttyUSB0}   # 左手
+      right: {port: /dev/ttyUSB2}
 
 cameras:
   head:        {serial: ""}   # Gemini 335Lg
@@ -41,10 +45,8 @@ cameras:
 
 PROFILE = """\
 # 平台配置（和上面同一个文件）
-hardware:
-  max_joint_speed: 100
-  usb_left_port: /dev/ttyUSB0   # 左手
-  usb_right_port: /dev/ttyUSB2
+control:
+  limits: {max_joint_speed: 100}
 """
 
 
@@ -76,7 +78,8 @@ def test_hand_step_uses_window_and_preserves_cancelled_config(ws_root):
         return False
     assert not hand_setup.step_hand(path, str(ws_root), answers, ports=lambda: ["/dev/ttyUSB1", "/dev/ttyUSB3"], runner=window)
     _, prof = config_edit.load_rt(path)
-    assert prof["hardware"]["usb_left_port"] == "/dev/ttyUSB0" and prof["hardware"]["usb_right_port"] == "/dev/ttyUSB2"
+    interface = prof["robot"]["end_effector"]["interface"]
+    assert interface["left"]["port"] == "/dev/ttyUSB0" and interface["right"]["port"] == "/dev/ttyUSB2"
     assert seen[0]['left_port'] == '/dev/ttyUSB1' and seen[0]['right_port'] == '/dev/ttyUSB3'
     text = (ws_root / "config" / "robot.local.yaml").read_text(encoding="utf-8")
     assert "# 左手" in text and "# 本机遥操作配置" in text  # one file: both parts keep their comments
@@ -89,7 +92,7 @@ def test_hand_unattended_first_confirmation_is_rejected(ws_root):
 
 def test_arm_rs485_is_the_485_wiring_in_the_native_window(ws_root):
     path = str(ws_root / "config/robot.local.yaml")
-    config_edit.set_fields(path, "robot", {"end_effector_bus": "arm_rs485"})
+    config_edit.set_fields(path, "robot.end_effector.interface", {"bus": "arm_rs485"})
     seen = []
     def window(session, io):
         seen.append(session.draft['drive'])

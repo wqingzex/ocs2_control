@@ -15,11 +15,23 @@ from fa_w2_payload import config_edit
 from fa_w2_payload.config import END_EFFECTORS as HANDS, validate
 
 from fa_w2_payload.config_edit import confirmed
-from fa_w2_payload.mappings import DRIVE_TO_BUS, HAND_DRIVES, hand_drive, hand_name
+from fa_w2_payload.mappings import DRIVE_TO_BUS, HAND_DRIVES, arm_ip, hand_drive, hand_name, hand_side
 from fa_w2_payload.device_setup import Io, SetupSession, main_for, run_wizard
 from robot_runtime.processes import require_idle
 
 from .hand import is_serial_number_path, serial_devices
+
+
+def _deep_update(target, values):
+    """Merge nested dicts: a dict value is merged into the dict under that key."""
+    for key, value in values.items():
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            _deep_update(target[key], value)
+        elif isinstance(value, dict):
+            target[key] = {}
+            _deep_update(target[key], value)
+        else:
+            target[key] = value
 
 
 def hand_request(request):
@@ -44,12 +56,13 @@ class HandSetup(SetupSession):
     def __init__(self, config_path, ws_root, ports=serial_devices, worker=hand_request):
         super().__init__(config_path, ws_root)
         self.ports, self.worker = ports(), worker
-        robot, hardware = self.raw.get('robot') or {}, self.raw.get('hardware') or {}
+        robot = self.raw.get('robot') or {}
         self.draft = {'hand': hand_name(robot),
                       'drive': hand_drive(robot),
-                      'device_ip': hardware.get('device_ip', '192.168.1.190')}
+                      'device_ip': arm_ip(robot)}
         for index, side in enumerate(('left', 'right')):
-            preferred = hardware.get('usb_' + side + '_port', '')
+            interface = hand_side(robot, side)
+            preferred = interface.get('port') or ''
             matching = next((p['path'] for p in self.ports if p['path'] == preferred), '')
             if matching:
                 self.draft[side + '_port'] = matching
@@ -58,7 +71,7 @@ class HandSetup(SetupSession):
             else:
                 # not configured by serial number yet (empty, or an old /dev/ttyUSBn): offer the next adapter to choose
                 self.draft[side + '_port'] = self.ports[index]['path'] if index < len(self.ports) else ''
-            self.draft[side + '_channel'] = hardware.get(side + '_ee_channel', 1)
+            self.draft[side + '_channel'] = interface.get('channel') or 1
         self.results = {}
 
     def state(self):
@@ -78,10 +91,10 @@ class HandSetup(SetupSession):
                 raise ValueError('XHand1 仅支持 USB 接线')
             if draft['drive'] == 'ethernet' or draft['hand'] == 'wuji_hand2':
                 raise ValueError('Wuji Hand 2 走以太网，由驱动扫描并按 hand_side 认左右，本工具不做确认：'
-                                 '在 robot.local.yaml 写 robot.end_effector: wuji_hand2、robot.end_effector_bus: ethernet')
+                                 '在 robot.local.yaml 写 robot.end_effector.type: wuji_hand2、robot.end_effector.interface.bus: ethernet')
             if draft['drive'] == 'usb_can':
                 raise ValueError('USB-CAN 的左右手按 CAN 接口区分，本工具不做确认：'
-                                 '在 robot.local.yaml 写 robot.end_effector_bus: usb_can 和 hardware.left_ee_can_interface / right_ee_can_interface')
+                                 '在 robot.local.yaml 写 robot.end_effector.interface.bus: usb_can 和 interface.left.can / right.can')
             if draft['hand'] != 'none':
                 if draft['drive'] == 'usb':
                     if any(not is_serial_number_path(draft[side + '_port']) for side in ('left', 'right')):
@@ -138,15 +151,19 @@ class HandSetup(SetupSession):
                 for side in ('left', 'right'):
                     self.action({'revision': self.revision, 'side': side, 'operation': 'probe',
                                  'allow_controller_connection': self.draft['drive'] == '485'})
-            hardware = ({'usb_' + side + '_port': self.draft[side + '_port'] for side in ('left', 'right')}
-                        if self.draft['drive'] == 'usb' else {'device_ip': self.draft['device_ip'],
-                            **{side + '_ee_channel': self.draft[side + '_channel'] for side in ('left', 'right')}})
-            changes = {'robot': {'end_effector': self.draft['hand'], 'end_effector_bus': DRIVE_TO_BUS[self.draft['drive']]}}
+            interface = {'bus': DRIVE_TO_BUS[self.draft['drive']]}
+            changes = {'robot': {'end_effector': {'type': self.draft['hand'], 'interface': interface}}}
             if self.draft['hand'] != 'none':
-                changes['hardware'] = hardware
+                if self.draft['drive'] == 'usb':
+                    for side in ('left', 'right'):
+                        interface[side] = {'port': self.draft[side + '_port']}
+                else:
+                    changes['robot']['arm'] = {'interface': {'ip': self.draft['device_ip']}}
+                    for side in ('left', 'right'):
+                        interface[side] = {'channel': self.draft[side + '_channel']}
             # Validate the staged robot options before committing any fields.
             candidate = copy.deepcopy(self.raw)
-            candidate.setdefault('robot', {}).update(changes['robot'])
+            _deep_update(candidate.setdefault('robot', {}), changes['robot'])
             candidate.setdefault('cameras', {})['enable'] = False
             validate(candidate)
             config_edit.save_setup(self.config_path, self.kind, changes, self.original)
@@ -287,9 +304,9 @@ def step_hand(config_path: str, ws_root: str, io: Io, ports: Callable[[], List[s
     _, raw = config_edit.load_rt(config_path)
     if io.assume_yes:
         if confirmed(raw, 'hand'):
-            robot, hw = raw.get('robot') or {}, raw.get('hardware') or {}
+            robot = raw.get('robot') or {}
             if hand_name(robot) != 'none' and hand_drive(robot) == 'usb':
-                configured = [hw.get('usb_' + side + '_port', '') for side in ('left', 'right')]
+                configured = [hand_side(robot, side).get('port') or '' for side in ('left', 'right')]
                 if not all(is_serial_number_path(path) for path in configured):
                     io.error('手部串口没有按适配器序列号配置（/dev/serial/by-id/…），请去掉 --yes 重新选择左右手')
                     return False

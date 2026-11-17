@@ -11,13 +11,13 @@ from typing import Any, Dict, NamedTuple, Optional, Sequence
 
 import yaml
 
-from .config import ROLES, ConfigError, load
+from .config import DYN_LENGTH, ROLES, ConfigError, load
 from .config_edit import confirmed, load_rt
+from .mappings import hand_bus, hand_name, hand_side
 
 
 CONFIGURED, DEFAULT, NEEDED = "已配置", "默认值", "需配置"
 DYN_SIDES = ("left", "right")
-DYN_LENGTH = 10  # m, mx, my, mz, ixx, ixy, ixz, iyy, iyz, izz
 
 
 class Status(NamedTuple):
@@ -31,7 +31,7 @@ class Status(NamedTuple):
 
 def dyn_values(raw: Dict[str, Any], side: str) -> Optional[Sequence[float]]:
     """The load override written for one side, or None when it is empty or not 10 numbers."""
-    value = (raw.get("defaults") or {}).get(f"{side}_dyn_param")
+    value = (((raw.get("robot") or {}).get("end_effector") or {}).get("dyn_param") or {}).get(side)
     numbers = isinstance(value, (list, tuple)) and len(value) == DYN_LENGTH and \
         all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value)
     return list(value) if numbers else None
@@ -47,12 +47,12 @@ def camera_status(raw: Dict[str, Any]) -> Status:
 
 def hand_status(raw: Dict[str, Any]) -> Status:
     robot = raw.get("robot") or {}
-    if robot.get("end_effector", "linkerhand_l6") == "none":
-        return Status(DEFAULT, "没有末端（robot.end_effector: none）")
-    if robot.get("end_effector_bus") == "ethernet":
+    if hand_name(robot) == "none":
+        return Status(DEFAULT, "没有末端（robot.end_effector.type: none）")
+    if hand_bus(robot) == "ethernet":
         return Status(DEFAULT, "以太网（Wuji）：左右手由驱动扫描后按 hand_side 匹配，不用 ./scripts/setup.sh hand 确认")
-    if robot.get("end_effector_bus") == "usb_can":
-        return Status(DEFAULT, "USB-CAN：左右手按 hardware.left_ee_can_interface / right_ee_can_interface 区分，"
+    if hand_bus(robot) == "usb_can":
+        return Status(DEFAULT, "USB-CAN：左右手按 robot.end_effector.interface.left.can / right.can 区分，"
                                "不用 ./scripts/setup.sh hand 确认")
     if confirmed(raw, "hand"):
         return Status(CONFIGURED, "左右手实物已确认")
@@ -61,7 +61,7 @@ def hand_status(raw: Dict[str, Any]) -> Status:
 
 def dyn_status(raw: Dict[str, Any]) -> Status:
     robot = raw.get("robot") or {}
-    hand = robot.get("end_effector", "linkerhand_l6")
+    hand = hand_name(robot)
     left, right = (dyn_values(raw, side) for side in DYN_SIDES)
     if robot.get("hardware", "real") != "real":
         return Status(DEFAULT, "不是真机（仿真不需要负载辨识）")
@@ -95,11 +95,11 @@ def check(args):
     print(f'配置: {path}')
     robot = cfg['robot']
     print(f"  机器人: {robot['entry']}，硬件模式: {robot['hardware']}")
-    print(f"  末端: {robot['end_effector']}，接线: {robot['end_effector_bus']}")
-    hardware = raw.get('hardware') or {}
-    if robot['end_effector'] != 'none' and robot['end_effector_bus'] == 'usb_rs485':
+    eef = robot['end_effector']
+    print(f"  末端: {eef['type']}，接线: {eef['interface']['bus']}")
+    if eef['type'] != 'none' and eef['interface']['bus'] == 'usb_rs485':
         for side, label in (('left', '左手'), ('right', '右手')):
-            port = hardware.get('usb_' + side + '_port', '')
+            port = hand_side(raw.get('robot') or {}, side).get('port') or ''
             note = '' if port.startswith('/dev/serial/by-id/') else '  [未按序列号配置：./scripts/setup.sh hand]'
             print(f"    {label}: {port or '（未配置）'}{note}")
     cams = cfg['cameras']
@@ -107,7 +107,7 @@ def check(args):
         camera = cams[role]
         description = f"{camera['serial']}，旋转 {camera['rotation']}°" if cams['enable'] and camera['enable'] else '关闭'
         print(f'  相机 {role}: {description}')
-    for section, title, enabled in (('cameras', '相机画面与位置', cams['enable']), ('hand', '左右手实物', robot['end_effector'] != 'none')):
+    for section, title, enabled in (('cameras', '相机画面与位置', cams['enable']), ('hand', '左右手实物', robot['end_effector']['type'] != 'none')):
         if enabled:
             status = '已确认' if confirmed(raw, section) else '尚未确认或配置已变化'
             command = 'cam' if section == 'cameras' else 'hand'

@@ -346,7 +346,7 @@ def run(request):
     if drive == 'ethernet' or hand == 'wuji_hand2':
         raise ValueError('Wuji Hand 2 不在这里探测：驱动扫描后按 hand_side 认左右')
     if drive == 'usb_can':
-        raise ValueError('USB-CAN 的手不在这里探测：左右手按 CAN 接口区分（hardware.left_ee_can_interface / right_ee_can_interface）')
+        raise ValueError('USB-CAN 的手不在这里探测：左右手按 CAN 接口区分（robot.end_effector.interface.left.can / right.can）')
     if hand not in ('linkerhand_l6', 'xhand1') or drive not in ('usb', '485'):
         raise ValueError('不支持的手型或接线方式')
     if hand == 'xhand1' and drive != 'usb':

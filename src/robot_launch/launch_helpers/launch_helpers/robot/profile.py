@@ -17,7 +17,7 @@ CONTROL_PREFIX = "control_"
 REAL_HARDWARE = frozenset({"real"})
 
 # End effector arguments: resolved by resolve_end_effectors / resolve_end_effector_buses, never copied as plain
-# xacro overrides. Names as robot.end_effector / robot.end_effector_bus in robot.local.yaml.
+# xacro overrides. Names as robot.end_effector.type / robot.end_effector.interface.bus in robot.local.yaml.
 _EEF_XACRO_KEYS = frozenset({
     "end_effector", "left_end_effector", "right_end_effector",
     "end_effector_bus", "left_end_effector_bus", "right_end_effector_bus",
@@ -59,10 +59,6 @@ def extract_prefixed_args(
     return result
 
 
-# config key (platform.*) -> xacro argument
-_PLATFORM_XACRO_KEYS = {"chassis": "base", "variant": "variant", "chassis_joints_movable": "base_joints_movable"}
-
-
 def create_platform_launch_arguments():
     """Launch args for humanoid / mobile-base xacro (not used by bare manipulators)."""
     from launch.actions import DeclareLaunchArgument
@@ -81,63 +77,82 @@ def create_platform_launch_arguments():
     ]
 
 
+def _mapping(value: Any) -> Dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _is_set(value: Any) -> bool:
+    return value is not None and str(value).strip() != ""
+
+
+def _xacro_text(value: Any) -> str:
+    """A config value as the text of a xacro argument (true/false in lower case)."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value).strip()
+
+
 def normalize_robot_profile(data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Normalize robot profile to {xacro, hardware, control} for launch code.
+    Normalize robot.local.yaml to {xacro, eef, hardware, control} for launch code. A value that is not written stays
+    out, so the robot description's own default applies.
 
-    New schema (recommended):
-      platform:  chassis (xacro: base) / variant / arm_ctrl_mode — always apply (also when end effectors come from the config)
-      robot.end_effector / robot.end_effector_bus: loaded into profile["eef"] (launch arguments override them)
-      control.patch: inline ros2_control overrides (deep-merged after compose)
+    robot.base.type / joints_movable, robot.variant      -> xacro   base / base_joints_movable / variant (always apply)
+    robot.end_effector.type / interface.bus              -> eef     (launch arguments override them)
+    robot.arm.type / interface.ip                        -> hardware arm_driver / device_ip
+    robot.body.interface.can / stats_period_s            -> hardware body_can_interface / body_can_stats_period_s
+    robot.end_effector.interface.<side>.port / can / channel
+                                                         -> hardware usb_<side>_port / <side>_ee_can_interface / <side>_ee_channel
+    robot.end_effector.dyn_param.<side>                  -> hardware <side>_dyn_param (comma separated)
+    control.arm_mode / limits.*                          -> hardware arm_ctrl_mode / max_joint_speed / max_joint_acceleration
+    control.patch: inline ros2_control overrides (deep-merged after compose)
+    Only the real robot uses the hardware part (build_xacro_mappings).
     """
     if not isinstance(data, dict) or not data:
         return {}
 
-    platform = data.get("platform")
-    defaults = data.get("defaults")
-    has_control = isinstance(data.get("control"), dict)
-    if (
-        not isinstance(platform, dict)
-        and not isinstance(defaults, dict)
-        and not has_control
-        and not isinstance(data.get("robot"), dict)
-    ):
-        return data
-
-    legacy_x = data.get("xacro") if isinstance(data.get("xacro"), dict) else {}
-    legacy_hw = data.get("hardware") if isinstance(data.get("hardware"), dict) else {}
-    legacy_c = data.get("control") if isinstance(data.get("control"), dict) else {}
+    robot, control_section = _mapping(data.get("robot")), _mapping(data.get("control"))
+    base, body, arm, eef = (_mapping(robot.get(name)) for name in ("base", "body", "arm", "end_effector"))
+    eef_interface = _mapping(eef.get("interface"))
 
     xacro: Dict[str, Any] = {}
-    hardware = dict(legacy_hw)
-    control: Dict[str, Any] = {}
+    for name, value in (("base", base.get("type")), ("base_joints_movable", base.get("joints_movable")),
+                        ("variant", robot.get("variant"))):
+        if _is_set(value):
+            xacro[name] = _xacro_text(value)
 
-    plat = platform if isinstance(platform, dict) else {}
-    for key, xacro_name in _PLATFORM_XACRO_KEYS.items():
-        if key in plat:
-            xacro[xacro_name] = plat[key]
-        elif key in legacy_x:
-            xacro[xacro_name] = legacy_x[key]
+    hardware: Dict[str, Any] = {}
+    fields = [("arm_driver", arm.get("type")),
+              ("device_ip", _mapping(arm.get("interface")).get("ip")),
+              ("body_can_interface", _mapping(body.get("interface")).get("can")),
+              ("body_can_stats_period_s", _mapping(body.get("interface")).get("stats_period_s")),
+              ("arm_ctrl_mode", control_section.get("arm_mode")),
+              ("max_joint_speed", _mapping(control_section.get("limits")).get("max_joint_speed")),
+              ("max_joint_acceleration", _mapping(control_section.get("limits")).get("max_joint_acceleration"))]
+    for side in ("left", "right"):
+        side_interface = _mapping(eef_interface.get(side))
+        fields += [(f"usb_{side}_port", side_interface.get("port")),
+                   (f"{side}_ee_can_interface", side_interface.get("can")),
+                   (f"{side}_ee_channel", side_interface.get("channel"))]
+        load = _mapping(eef.get("dyn_param")).get(side)
+        if isinstance(load, (list, tuple)) and load:
+            fields.append((f"{side}_dyn_param", ",".join(_xacro_text(v) for v in load)))
+    for name, value in fields:
+        if _is_set(value):
+            hardware[name] = _xacro_text(value)
 
-    arm_mode = plat.get("arm_ctrl_mode") or legacy_hw.get("arm_ctrl_mode")
-    if arm_mode is not None and str(arm_mode).strip():
-        hardware["arm_ctrl_mode"] = str(arm_mode).strip()
-
-    if isinstance(defaults, dict) and "end_effectors" in defaults:
-        raise ValueError("defaults.end_effectors was removed: write robot.end_effector / robot.end_effector_bus "
-                         "in the same file instead")
-    robot = data.get("robot") if isinstance(data.get("robot"), dict) else {}
-    eef: Dict[str, str] = {}
-    for key, name in (("end_effector", "end_effector"), ("end_effector_bus", "bus")):
-        value = _strip_eef_key(str(robot.get(key, "") or ""))
+    eef_out: Dict[str, str] = {}
+    for key, name in ((eef.get("type"), "end_effector"), (eef_interface.get("bus"), "bus")):
+        value = _strip_eef_key(str(key or ""))
         if value:
-            eef[name] = value
+            eef_out[name] = value
 
-    patch = legacy_c.get("patch")
+    control: Dict[str, Any] = {}
+    patch = control_section.get("patch")
     if isinstance(patch, dict) and patch:
         control["patch"] = patch
 
-    return {"xacro": xacro, "eef": eef, "hardware": hardware, "control": control}
+    return {"xacro": xacro, "eef": eef_out, "hardware": hardware, "control": control}
 
 
 def load_robot_profile(profile_path: str) -> Dict[str, Any]:
@@ -185,7 +200,7 @@ def resolve_end_effectors(
     launch_configurations: Dict[str, str],
     profile: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, str]:
-    """Left / right end effector (robot.end_effector names; '' = none) for xacro and ros2_control compose."""
+    """Left / right end effector (robot.end_effector.type names; '' = none) for xacro and ros2_control compose."""
     sides = tuple(_side_value(launch_configurations, profile, side, "end_effector", "end_effector")
                   for side in ("left", "right"))
     return tuple("" if value == "none" else value for value in sides)  # type: ignore[return-value]
@@ -226,7 +241,7 @@ def resolve_robot_variant(
     launch_configurations: Dict[str, str],
     profile: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """Platform variant from launch ``variant`` or profile ``platform.variant``."""
+    """Platform variant from launch ``variant`` or profile ``robot.variant``."""
     variant = _strip_eef_key(_cli_launch_value(launch_configurations, "variant"))
     if variant:
         return variant
@@ -300,11 +315,11 @@ def create_eef_side_launch_arguments():
     buses = "usb_rs485 | arm_rs485 | usb_can | ethernet"
     return [
         DeclareLaunchArgument("end_effector", default_value="",
-                              description=f"End effector on both arms ({names}); default robot.end_effector"),
+                              description=f"End effector on both arms ({names}); default robot.end_effector.type"),
         DeclareLaunchArgument("left_end_effector", default_value="", description="Left side only; see end_effector"),
         DeclareLaunchArgument("right_end_effector", default_value="", description="Right side only; see end_effector"),
         DeclareLaunchArgument("end_effector_bus", default_value="",
-                              description=f"Where the end effectors are wired ({buses}); default robot.end_effector_bus"),
+                              description=f"Where the end effectors are wired ({buses}); default robot.end_effector.interface.bus"),
         DeclareLaunchArgument("left_end_effector_bus", default_value="", description="Left side only"),
         DeclareLaunchArgument("right_end_effector_bus", default_value="", description="Right side only"),
     ]

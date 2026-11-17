@@ -23,7 +23,7 @@ def test_hand_requires_feedback_and_manual_confirmation(hand, config):
     assert [call['operation'] for call in hand.calls] == ['test'] * 2 + ['probe'] * 2  # the recheck at save never moves
     raw = yaml.safe_load(config.read_text())
     assert config_edit.confirmed(raw, 'hand')
-    assert raw['hardware']['max_joint_speed'] == 17 and raw['xr']['device_id'] == 'PICO-BOUND'
+    assert raw['control']['limits']['max_joint_speed'] == 17 and raw['xr']['device_id'] == 'PICO-BOUND'
 
 
 def test_hand_swap_invalidates_feedback_and_confirmation(hand, config):
@@ -38,7 +38,7 @@ def test_hand_swap_invalidates_feedback_and_confirmation(hand, config):
     prepare_hand(hand)
     hand.save({'revision': hand.revision, 'confirmed': ['left', 'right']})
     raw = yaml.safe_load(config.read_text())
-    assert raw['hardware']['usb_left_port'] == RIGHT_BY_ID
+    assert raw['robot']['end_effector']['interface']['left']['port'] == RIGHT_BY_ID
     config_edit.set_usb_ports(str(config), '/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_CCCC-if00-port0', None)
     assert not config_edit.confirmed(yaml.safe_load(config.read_text()), 'hand')
 
@@ -135,7 +135,7 @@ def test_hand_error_invalidates_old_feedback(hand):
 def test_hand_can_explicitly_disable_without_opening_devices(hand, config):
     hand.update({'draft': {**hand.draft, 'hand': 'none'}})
     hand.save({'revision': hand.revision, 'confirmed': []})
-    assert not hand.calls and yaml.safe_load(config.read_text())['robot']['end_effector'] == 'none'
+    assert not hand.calls and yaml.safe_load(config.read_text())['robot']['end_effector']['type'] == 'none'
 
 
 def test_xhand_rejects_arm485_and_duplicate_port(hand):
