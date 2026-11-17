@@ -19,7 +19,7 @@ cd robot_control_suite
 
 ## 配置
 
-本机配置是 `config/robot.local.yaml`（模板 `config/robot.template.yaml`，说明见 [`config/README.md`](config/README.md)）。最常改的是 `robot` 段：
+本机配置是 `config/robot.local.yaml`（`./scripts/setup.sh config` 按入口从模板生成，说明见 [`config/README.md`](config/README.md)）。最常改的是 `robot` 段：
 
 | 字段 | 取值 |
 |---|---|
@@ -86,7 +86,7 @@ ros2 launch robot_bringup split_body.launch.py robot:=fa_w2 launch_mode:=rviz_on
 ```text
 robot_control_suite/
 ├─ scripts/       setup.sh（初始化）、start.sh（启动）                       → scripts/README.md
-├─ config/        robot.local.yaml 本机配置、robot.template.yaml 模板        → config/README.md
+├─ config/        robot.local.yaml 本机配置（不进 git）、ros_env.sh           → config/README.md
 ├─ docs/          使用手册、控制原理、故障码                                  → docs/README.md
 ├─ robot_control_suite控制台       编译 robot_app 时生成的控制台启动器，双击打开网页控制台（不进 git）
 ├─ logs/ run/     运行时生成：各模块日志、模块状态（不进 git）

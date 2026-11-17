@@ -39,7 +39,7 @@ Makefile
 .DS_Store
 Thumbs.db
 
-# Per-robot hardware profile (copy from config/robot.template.yaml)
+# Per-robot configuration (made by ./scripts/setup.sh config from the template in robot_config)
 config/robot.local.yaml
 
 # 临时 / 备份文件
