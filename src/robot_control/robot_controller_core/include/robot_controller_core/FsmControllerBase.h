@@ -7,6 +7,8 @@
 //
 #pragma once
 
+#include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -101,9 +103,15 @@ namespace robot_controller_core
         // Flight recorder (shared memory ring named after the controller): measured positions and commands of every
         // cycle, and the state changes. Made on the first activation; nullptr when no ring could be made.
         void recordCycleState(FSMStateName state);
+        /// WARN once per /fsm_command message that asked for a state change the current state does not accept.
+        void reportIgnoredCommand();
         void recordCycleCommand(FSMStateName state);
         std::shared_ptr<robot_log::FlightRecorder> flight_;
         std::uint64_t last_cycle_begin_ns_{0};
+        /// Counts /fsm_command messages (written by the subscription thread); update() compares it with the last one
+        /// it looked at, so a command that changed nothing is reported once per message (CTL-013).
+        std::atomic<std::uint64_t> fsm_command_seq_{0};
+        std::uint64_t fsm_command_seq_seen_{0};
         std::uint64_t position_read_failures_total_{0};  ///< measured-position reads that failed since activation (CTL-012)
         std::uint64_t late_period_ns_{0};
         double health_window_s_{10.0};

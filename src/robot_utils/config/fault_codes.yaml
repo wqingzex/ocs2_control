@@ -166,6 +166,14 @@
   escalation: 持续失败（上一次有效值越来越旧）应升级为 S2（切 HOLD 并停发新目标）；阈值要用真机数据定，现在只记录
   source: {file: src/robot_control/robot_controller_core/src/FsmControllerBase.cpp, match: "CTL-012"}
 
+- code: CTL-013
+  class: M
+  title: 状态切换命令被当前状态忽略（例如 MOVEJ / OCS2 下发 HOME）
+  behavior: 记 WARN（每条命令一次），命令不生效，机械臂不动。HOME 和 OCS2/MOVEJ 只能从 HOLD 进入，其他状态只接受 2（回 HOLD）
+  check: 日志里的命令值和当前状态；RViz 里点 HOME 没反应时先看这条；先发 2 回 HOLD，再发 1
+  escalation: 现在只记录，行为不变。是否让面板或控制器自动经 HOLD 中转，需要另行决定
+  source: {file: src/robot_control/robot_controller_core/src/FsmControllerBase.cpp, match: "[CTL-013]"}
+
 - code: HW-001
   class: S1
   title: Marvin 硬件进入错误状态，急停

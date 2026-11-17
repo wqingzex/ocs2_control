@@ -79,6 +79,11 @@ namespace robot_controller_core
                 RCLCPP_INFO(get_node()->get_logger(), "Switched from %s to %s (fsm_command=%d)",
                             current_state_->state_name_string.c_str(), next_state_->state_name_string.c_str(),
                             static_cast<int>(ctrl_interfaces_.fsm_command_));
+                fsm_command_seq_seen_ = fsm_command_seq_.load();
+            }
+            else
+            {
+                reportIgnoredCommand();
             }
         }
         else if (mode_ == FSMMode::CHANGE)
@@ -117,6 +122,36 @@ namespace robot_controller_core
         ctrl_interfaces_.recordCommandMotion(period.seconds());
         if (current_state_) { recordCycleCommand(current_state_->state_name); }
         return controller_interface::return_type::OK;
+    }
+
+    void FsmControllerBase::reportIgnoredCommand()
+    {
+        const auto seq = fsm_command_seq_.load();
+        if (seq == fsm_command_seq_seen_)
+        {
+            return;
+        }
+        fsm_command_seq_seen_ = seq;
+
+        // Only the commands that ask for a state; 0 (reset) and 100+ (HOME configuration) are not transitions.
+        const int command = static_cast<int>(ctrl_interfaces_.fsm_command_);
+        if (command < 1 || command > 4)
+        {
+            return;
+        }
+        const auto state = current_state_->state_name;
+        const bool already_there = (command == 1 && state == FSMStateName::HOME) ||
+                                   (command == 2 && state == FSMStateName::HOLD) ||
+                                   (command == 3 && (state == FSMStateName::OCS2 || state == FSMStateName::MOVEJ)) ||
+                                   (command == 4 && state == FSMStateName::MOVEJ);
+        if (already_there)
+        {
+            return;
+        }
+        RCLCPP_WARN(get_node()->get_logger(),
+                    "[CTL-013] fsm_command=%d ignored in state %s: this state does not accept it (HOME and OCS2/MOVEJ "
+                    "are only reachable from HOLD; send 2 first)",
+                    command, current_state_->state_name_string.c_str());
     }
 
     void FsmControllerBase::recordCycleState(const FSMStateName state)
@@ -195,6 +230,7 @@ namespace robot_controller_core
             "fsm_command", 10, [this](const std_msgs::msg::Int32::SharedPtr msg)
             {
                 ctrl_interfaces_.fsm_command_ = msg->data;
+                fsm_command_seq_.fetch_add(1);
             });
     }
 
