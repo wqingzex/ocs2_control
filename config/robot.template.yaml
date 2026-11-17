@@ -3,7 +3,7 @@
 #
 # 标记：[必改] 新机器上要确认或修改 | [可选] 默认值够用，要改才取消注释 | [自动写入] 由 setup.sh / 网页控制台写回，不用手填
 # 只写与默认值不同的项即可；字段的默认值和取值见 src/robot_hmi/robot_app/config/teleop.yaml。
-# 首次使用：./scripts/setup.sh cam 确认相机画面与左右位置；./scripts/setup.sh hand 确认左右手。
+# 首次使用：./scripts/setup.sh cam 确认相机画面与左右位置；./scripts/setup.sh ee 确认左右手。
 #
 # 结构：robot 里每个部件先写"是什么"（type），再写"怎么连"（interface）；control 是控制参数；
 #       xr / cameras / record 是遥操作与采集。
@@ -48,7 +48,7 @@ robot:
                                  #   usb_can   : USB-CAN（只支持 linkerhand_l6）
                                  #   ethernet  : 网线（只给 wuji_hand2）
       # 左右手各自写所选总线用到的项：
-      #   usb_rs485 -> port    串口，必须是 /dev/serial/by-id/… （按适配器序列号识别；./scripts/setup.sh hand 确认后写入）
+      #   usb_rs485 -> port    串口，必须是 /dev/serial/by-id/… （按适配器序列号识别；./scripts/setup.sh ee 确认后写入）
       #   usb_can   -> can     CAN 接口（经典 CAN 1 Mbit/s，默认 can1 / can2）；不能用腰、头的 body.interface.can。
       #                        改了之后重新运行 ./scripts/setup.sh host，让免密 sudo 规则用同样的名字。
       #   arm_rs485 -> channel 485 通道 1 | 2 | 3（默认 1）

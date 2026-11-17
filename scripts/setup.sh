@@ -16,19 +16,19 @@ RESET=""   # --reset：dyn 恢复默认负载
 FULL_INIT=""
 
 # 步骤的顺序和标题；序号 i/N 由这张表算出来。SOFT_STEPS 失败时只记录，不中断后面的步骤。
-STEP_ORDER=(deps host marvin build cameras hand dyn xr summary)
+STEP_ORDER=(deps host marvin build cameras ee dyn xr summary)
 declare -A STEP_TITLE=(
   [deps]="依赖：子模块 + rosdep"
   [host]="主机配置：相机 udev、腰部 CAN 免密 sudo、XRoboToolkit PC Service"
   [marvin]="天机臂 SDK 版本（338 / 343，要和臂的控制器固件一致）"
   [build]="编译整个 ROS 2 工作区（运控、驱动、机器人模型、相机、XR、控制台）"
   [cameras]="相机"
-  [hand]="手"
+  [ee]="末端（手、夹爪）"
   [dyn]="负载辨识（有默认值就不用配置）"
   [xr]="XR（头显）"
   [summary]="配置检查"
 )
-SOFT_STEPS=(hand dyn xr summary)
+SOFT_STEPS=(ee dyn xr summary)
 
 # ocs2_ros2（子模块，src/third_party/ocs2_ros2，固定在 ae75126）带着一批用不到的示例包：编译和 rosdep 都跳过。
 OCS2_SKIP_PACKAGES=(
@@ -76,7 +76,7 @@ usage() {
   相机和手会弹出本地配置窗口，确认后保存到 config/robot.local.yaml。
   容器内也保留完整向导；仅不执行物理机的 udev 和 CAN 操作。
 单步重试：./scripts/setup.sh <步骤>，只执行指定步骤：
-  cam 相机；hand 手；xr 头显配对；dyn 负载辨识（逐臂询问，默认不辨识；--reset 恢复默认负载）。
+  cam 相机；ee 末端（手、夹爪）；xr 头显配对；dyn 负载辨识（逐臂询问，默认不辨识；--reset 恢复默认负载）。
   build 编译整个 ROS 2 工作区：运控、驱动、机器人模型、相机、XR、控制台。
         使用增量编译，复用已有结果；不执行设备配置或配对，不启动运控。
   marvin 选择天机臂 SDK 版本（338 或 343，要和臂的控制器固件一致），写入配置，之后的编译都用它。
@@ -187,7 +187,7 @@ PY
 
 # robot.end_effector.interface.bus 为 usb_can 时两只手的 CAN 接口（interface.left.can / right.can，
 # 默认 can1 / can2），每行一个；其他接线方式不输出。名字同样要合法，且不能和腰部接口相同。
-hand_can_ifaces() {
+ee_can_ifaces() {
   [[ -f "${CONFIG}" ]] || return 0
   local body="$1" iface
   while IFS= read -r iface; do
@@ -221,17 +221,17 @@ host_sudoers() {
   iface="$(body_can_iface)"
   local up_args="up type can bitrate 1000000 dbitrate 5000000 restart-ms 100 fd on"
   local cmds=() ip rule tmp
-  local hand_up_args="up type can bitrate 1000000 restart-ms 100" hand_ifaces hand
-  hand_ifaces="$(hand_can_ifaces "${iface}")" || exit 1
+  local ee_up_args="up type can bitrate 1000000 restart-ms 100" ee_ifaces ee_iface
+  ee_ifaces="$(ee_can_ifaces "${iface}")" || exit 1
   for ip in /usr/sbin/ip /sbin/ip; do  # Ubuntu 上 /sbin 是 /usr/sbin 的软链接，两个路径都放行
     cmds+=("${ip} link set ${iface} down" "${ip} link set ${iface} ${up_args}")
-    for hand in ${hand_ifaces}; do
-      cmds+=("${ip} link set ${hand} down" "${ip} link set ${hand} ${hand_up_args}")
+    for ee_iface in ${ee_ifaces}; do
+      cmds+=("${ip} link set ${ee_iface} down" "${ip} link set ${ee_iface} ${ee_up_args}")
     done
   done
   rule="$(id -un) ALL=(root) NOPASSWD: $(IFS=,; echo "${cmds[*]}" | sed 's/,/, /g')"
   if sudo test -f "${file}" && [[ "$(sudo cat "${file}")" == "${rule}" ]]; then  # 旧的通配符规则会被替换
-    info "CAN 免密 sudo 规则已是最新（腰部 ${iface}${hand_ifaces:+，手 $(echo ${hand_ifaces})}）"
+    info "CAN 免密 sudo 规则已是最新（腰部 ${iface}${ee_ifaces:+，手 $(echo ${ee_ifaces})}）"
     return
   fi
   info "写入 ${file}"
@@ -385,7 +385,7 @@ run_python_step() {
   local python_status=0 module python_path="${PAYLOAD_PYTHONPATH}"
   case "$1" in
     cameras) module=camera.camera_setup ;;
-    hand) module=end_effector.hand_setup ;;
+    ee) module=end_effector.ee_setup ;;
     dyn) module=fa_w2_payload.load_identify ;;
     xr)
       module=xr_teleop.pairing
@@ -398,7 +398,7 @@ run_python_step() {
   return "${python_status}"
 }
 step_cameras() { run_python_step cameras; }
-step_hand() { run_python_step hand; }
+step_ee() { run_python_step ee; }
 step_dyn() { run_python_step dyn; }
 step_xr() { run_python_step xr; }
 
@@ -413,7 +413,7 @@ step_ready() {  # 返回 0 表示不用配置；原因写入 READY_REASON
       firmware="$(marvin_firmware_config)" || return 1   # 值不对：不跳过，由 step_marvin 报错
       [[ -n "${firmware}" ]] || return 1
       READY_REASON="已选择 ${firmware}" ;;
-    cameras|hand|dyn)
+    cameras|ee|dyn)
       READY_REASON="$(PYTHONPATH="${python_path}" python3 -m fa_w2_payload.config_status status --config "${CONFIG}" "$1" 2>/dev/null)" || status=$? ;;
     xr)
       READY_REASON="$(PYTHONPATH="${WS_DIR}/src/robot_payload/input/xr_teleop:${python_path}" python3 -m xr_teleop.pairing \

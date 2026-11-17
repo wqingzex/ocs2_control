@@ -5,7 +5,7 @@ import io
 import pytest
 import yaml
 
-from end_effector import hand_setup
+from end_effector import ee_setup
 from fa_w2_payload.device_setup import Io
 from fa_w2_payload import config_edit
 
@@ -22,7 +22,7 @@ def test_hand_requires_feedback_and_manual_confirmation(hand, config):
     hand.save({'revision': hand.revision, 'confirmed': ['left', 'right']})
     assert [call['operation'] for call in hand.calls] == ['test'] * 2 + ['probe'] * 2  # the recheck at save never moves
     raw = yaml.safe_load(config.read_text())
-    assert config_edit.confirmed(raw, 'hand')
+    assert config_edit.confirmed(raw, 'ee')
     assert raw['control']['limits']['max_joint_speed'] == 17 and raw['xr']['device_id'] == 'PICO-BOUND'
 
 
@@ -40,13 +40,13 @@ def test_hand_swap_invalidates_feedback_and_confirmation(hand, config):
     raw = yaml.safe_load(config.read_text())
     assert raw['robot']['end_effector']['interface']['left']['port'] == RIGHT_BY_ID
     config_edit.set_usb_ports(str(config), '/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_CCCC-if00-port0', None)
-    assert not config_edit.confirmed(yaml.safe_load(config.read_text()), 'hand')
+    assert not config_edit.confirmed(yaml.safe_load(config.read_text()), 'ee')
 
 
 def test_serial_devices_lists_only_by_id_serial_number_links(tmp_path, monkeypatch):
     """A hand is identified by the adapter's serial number (/dev/serial/by-id). ttyUSBn is numbered in enumeration
     order and changes when a port is replugged; by-path depends on the physical socket: neither is offered."""
-    from end_effector import hand as hand_probe
+    from end_effector import ee_probe as hand_probe
     by_id = tmp_path / 'by-id'
     by_id.mkdir()
     (tmp_path / 'ttyUSB2').write_text('')
@@ -77,7 +77,7 @@ def test_hand_draft_for_an_old_numbered_config_is_a_choice_not_a_save(tmp_path):
     path = tmp_path / 'cfg' / 'robot.yaml'
     path.parent.mkdir()
     path.write_text(CONFIG.replace(LEFT_BY_ID, '/dev/ttyUSB0'), encoding='utf-8')
-    session = hand_setup.HandSetup(str(path), str(tmp_path), lambda: PORTS, lambda request: {})
+    session = ee_setup.EeSetup(str(path), str(tmp_path), lambda: PORTS, lambda request: {})
     try:
         assert session.draft['left_port'] == LEFT_BY_ID and session.draft['right_port'] == RIGHT_BY_ID
         assert path.read_text(encoding='utf-8') == CONFIG.replace(LEFT_BY_ID, '/dev/ttyUSB0')
@@ -90,7 +90,7 @@ def test_hand_draft_keeps_empty_when_the_configured_adapter_is_unplugged(tmp_pat
     path = tmp_path / 'cfg' / 'robot.yaml'
     path.parent.mkdir()
     path.write_text(CONFIG, encoding='utf-8')
-    session = hand_setup.HandSetup(str(path), str(tmp_path), lambda: PORTS[1:], lambda request: {})
+    session = ee_setup.EeSetup(str(path), str(tmp_path), lambda: PORTS[1:], lambda request: {})
     try:
         assert session.draft['left_port'] == ''
         assert session.draft['right_port'] == RIGHT_BY_ID
@@ -118,7 +118,7 @@ def test_hand_485_requires_controller_connection_confirmation(hand):
 def test_hand_does_not_open_hardware_when_control_is_running(hand, monkeypatch):
     def busy(*args):
         raise ValueError('模块仍在运行，请先自行停止')
-    monkeypatch.setattr(hand_setup, 'require_idle', busy)
+    monkeypatch.setattr(ee_setup, 'require_idle', busy)
     with pytest.raises(ValueError, match='自行停止'):
         hand.action({'revision': 0, 'side': 'left', 'operation': 'probe'})
     assert hand.calls == []
@@ -167,7 +167,7 @@ def test_cancelled_session_cannot_commit(hand, config):
 
 def test_unattended_setup_cannot_claim_first_hand_confirmation(config):
     output = io.StringIO()
-    assert not hand_setup.step_hand(str(config), str(config.parent.parent), Io(assume_yes=True, out=output))
+    assert not ee_setup.step_ee(str(config), str(config.parent.parent), Io(assume_yes=True, out=output))
     assert config.read_text() == CONFIG and '未保存配置' in output.getvalue()
 
 
@@ -188,7 +188,7 @@ def test_native_hand_window_changes_are_drafts_until_both_sides_confirm(hand, co
     assert config.read_text() == CONFIG
     window.save()
     wait_qt(qt_app, window)
-    assert hand.saved and config_edit.confirmed(yaml.safe_load(config.read_text()), 'hand')
+    assert hand.saved and config_edit.confirmed(yaml.safe_load(config.read_text()), 'ee')
     assert [call['operation'] for call in hand.calls] == ['test'] * 2 + ['probe'] * 2
 
 

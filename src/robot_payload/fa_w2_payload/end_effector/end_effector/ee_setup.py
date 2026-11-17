@@ -1,6 +1,6 @@
-"""Hand setup (./scripts/setup.sh hand): the draft session, the bounded device probe and the window panel.
+"""End effector setup (./scripts/setup.sh ee): the draft session, the bounded device probe and the window panel.
 
-    python3 -m end_effector.hand_setup --config C --ws-root W [--yes]"""
+    python3 -m end_effector.ee_setup --config C --ws-root W [--yes]"""
 from __future__ import annotations
 
 import copy
@@ -15,11 +15,11 @@ from fa_w2_payload import config_edit
 from fa_w2_payload.config import END_EFFECTORS as HANDS, validate
 
 from fa_w2_payload.config_edit import confirmed
-from fa_w2_payload.mappings import DRIVE_TO_BUS, HAND_DRIVES, arm_ip, hand_drive, hand_name, hand_side
+from fa_w2_payload.mappings import DRIVE_TO_BUS, HAND_DRIVES, arm_ip, ee_drive, ee_type, ee_side
 from fa_w2_payload.device_setup import Io, SetupSession, main_for, run_wizard
 from robot_runtime.processes import require_idle
 
-from .hand import is_serial_number_path, serial_devices
+from .ee_probe import is_serial_number_path, serial_devices
 
 
 def _deep_update(target, values):
@@ -34,10 +34,10 @@ def _deep_update(target, values):
             target[key] = value
 
 
-def hand_request(request):
+def ee_request(request):
     """Bound native SDK work and reclaim it even if the setup window exits."""
     try:
-        result = subprocess.run([sys.executable, '-m', 'end_effector.hand'],
+        result = subprocess.run([sys.executable, '-m', 'end_effector.ee_probe'],
             input=json.dumps(request), text=True, capture_output=True, timeout=8, check=False)
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError('手部操作超时，已终止本次设备连接；请检查设备状态后重试') from exc
@@ -50,18 +50,18 @@ def hand_request(request):
     return data
 
 
-class HandSetup(SetupSession):
-    kind = 'hand'
+class EeSetup(SetupSession):
+    kind = 'ee'
 
-    def __init__(self, config_path, ws_root, ports=serial_devices, worker=hand_request):
+    def __init__(self, config_path, ws_root, ports=serial_devices, worker=ee_request):
         super().__init__(config_path, ws_root)
         self.ports, self.worker = ports(), worker
         robot = self.raw.get('robot') or {}
-        self.draft = {'hand': hand_name(robot),
-                      'drive': hand_drive(robot),
+        self.draft = {'hand': ee_type(robot),
+                      'drive': ee_drive(robot),
                       'device_ip': arm_ip(robot)}
         for index, side in enumerate(('left', 'right')):
-            interface = hand_side(robot, side)
+            interface = ee_side(robot, side)
             preferred = interface.get('port') or ''
             matching = next((p['path'] for p in self.ports if p['path'] == preferred), '')
             if matching:
@@ -172,10 +172,10 @@ class HandSetup(SetupSession):
             return self.state()
 
     def create_panel(self, window):
-        return HandPanel(window)
+        return EePanel(window)
 
 
-class HandPanel:
+class EePanel:
     """The cards of the hand window: the options row and one card per hand."""
     title, size, swap_label, apply_label = 'W2 左右手配置', (860, 730), '交换左右手串口', '应用配置'
     hint = '分别点击“开合测试”：手会慢速半握再张开，据此核对是机器人的左手还是右手。'
@@ -299,14 +299,14 @@ def serial_ports() -> List[str]:
     return [entry['path'] for entry in serial_devices()]
 
 
-def step_hand(config_path: str, ws_root: str, io: Io, ports: Callable[[], List[str]] = serial_ports,
+def step_ee(config_path: str, ws_root: str, io: Io, ports: Callable[[], List[str]] = serial_ports,
               runner=None) -> bool:
     _, raw = config_edit.load_rt(config_path)
     if io.assume_yes:
-        if confirmed(raw, 'hand'):
+        if confirmed(raw, 'ee'):
             robot = raw.get('robot') or {}
-            if hand_name(robot) != 'none' and hand_drive(robot) == 'usb':
-                configured = [hand_side(robot, side).get('port') or '' for side in ('left', 'right')]
+            if ee_type(robot) != 'none' and ee_drive(robot) == 'usb':
+                configured = [ee_side(robot, side).get('port') or '' for side in ('left', 'right')]
                 if not all(is_serial_number_path(path) for path in configured):
                     io.error('手部串口没有按适配器序列号配置（/dev/serial/by-id/…），请去掉 --yes 重新选择左右手')
                     return False
@@ -318,7 +318,7 @@ def step_hand(config_path: str, ws_root: str, io: Io, ports: Callable[[], List[s
         io.error('首次手部配置或设备映射变化需要交互确认左右手；未保存配置，请去掉 --yes 重试')
         return False
     entries = lambda: [{'path': path, 'device': os.path.realpath(path)} for path in ports()]
-    session = HandSetup(config_path, ws_root or str(Path(config_path).resolve().parent.parent), ports=entries)
+    session = EeSetup(config_path, ws_root or str(Path(config_path).resolve().parent.parent), ports=entries)
     try:
         ok = (runner or run_wizard)(session, io)
         if ok:
@@ -331,7 +331,7 @@ def step_hand(config_path: str, ws_root: str, io: Io, ports: Callable[[], List[s
 
 
 def main(argv=None):
-    return main_for(lambda *args: step_hand(*args), argv)
+    return main_for(lambda *args: step_ee(*args), argv)
 
 
 if __name__ == '__main__':

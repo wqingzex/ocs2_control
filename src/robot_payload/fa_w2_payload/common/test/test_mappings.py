@@ -44,13 +44,13 @@ CASES = {
 def test_fingerprints_are_the_same_as_before_the_fields_moved(case):
     cameras, hand = GOLDEN[case]
     assert config_edit.fingerprint(CASES[case], "cameras") == cameras
-    assert config_edit.fingerprint(CASES[case], "hand") == hand
+    assert config_edit.fingerprint(CASES[case], "ee") == hand
 
 
 def test_a_camera_field_that_changes_changes_the_camera_fingerprint_only():
     base, changed = CASES["defaults"], CASES["cam_changed"]
     assert config_edit.fingerprint(base, "cameras") != config_edit.fingerprint(changed, "cameras")
-    assert config_edit.fingerprint(base, "hand") == config_edit.fingerprint(changed, "hand")
+    assert config_edit.fingerprint(base, "ee") == config_edit.fingerprint(changed, "ee")
 
 
 @pytest.mark.parametrize("bus, expected_keys", [
@@ -60,18 +60,18 @@ def test_a_camera_field_that_changes_changes_the_camera_fingerprint_only():
     ("arm_rs485", {"device_ip", "left_ee_channel", "right_ee_channel"}),
 ])
 def test_the_hand_mapping_holds_the_fields_its_wiring_uses(bus, expected_keys):
-    value = mappings.hand_mapping({"robot": {"end_effector": {"type": "linkerhand_l6", "interface": {"bus": bus}}}})
+    value = mappings.ee_mapping({"robot": {"end_effector": {"type": "linkerhand_l6", "interface": {"bus": bus}}}})
     assert set(value) - {"hand", "drive"} == expected_keys
 
 
 def test_no_end_effector_has_no_wiring_fields():
-    assert mappings.hand_mapping({"robot": {"end_effector": {"type": "none"}}}) == {"hand": "none", "drive": "usb"}
+    assert mappings.ee_mapping({"robot": {"end_effector": {"type": "none"}}}) == {"hand": "none", "drive": "usb"}
 
 
 def test_an_unknown_section_is_an_error_naming_the_known_ones():
     with pytest.raises(KeyError) as raised:
         config_edit.fingerprint({}, "dyn")
-    assert "cameras" in str(raised.value) and "hand" in str(raised.value)
+    assert "cameras" in str(raised.value) and "ee" in str(raised.value)
 
 
 def test_status_and_check_work_without_importing_the_device_packages():
@@ -80,7 +80,7 @@ def test_status_and_check_work_without_importing_the_device_packages():
         "import sys\n"
         "from fa_w2_payload import config_status\n"
         "raw = {'robot': {'end_effector': {'type': 'xhand1', 'interface': {'bus': 'usb_rs485'}}}}\n"
-        "print(config_status.camera_status(raw).state, config_status.hand_status(raw).state)\n"
+        "print(config_status.camera_status(raw).state, config_status.ee_status(raw).state)\n"
         "loaded = [m for m in ('camera', 'end_effector') if m in sys.modules]\n"
         "assert not loaded, loaded\n")
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)

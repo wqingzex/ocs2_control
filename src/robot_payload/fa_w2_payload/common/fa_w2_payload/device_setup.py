@@ -43,7 +43,7 @@ class Io:
 class SetupSession:
     """A draft of one device's configuration; only save() touches robot.local.yaml.
 
-    A subclass sets kind ('cameras' | 'hand') and apply_on_open, and implements state(), update(), save() and
+    A subclass sets kind ('cameras' | 'ee') and apply_on_open, and implements state(), update(), save() and
     create_panel(window)."""
     kind = ''
     apply_on_open = False  # the window applies the draft as soon as it opens (cameras start their previews)

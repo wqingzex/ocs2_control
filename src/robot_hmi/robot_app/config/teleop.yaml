@@ -20,7 +20,7 @@ robot:
     type: linkerhand_l6     # none | linkerhand_l6 | xhand1 | wuji_hand2 | jodell_rg75
     interface:
       bus: usb_rs485        # usb_rs485 | arm_rs485 | usb_can (linkerhand_l6 only) | ethernet (wuji_hand2 only)
-      left:  {}             # port: /dev/serial/by-id/... (usb_rs485, written by setup.sh hand) | can: can1 (usb_can) | channel: 1 (arm_rs485)
+      left:  {}             # port: /dev/serial/by-id/... (usb_rs485, written by setup.sh ee) | can: can1 (usb_can) | channel: 1 (arm_rs485)
       right: {}
     dyn_param: {left: [], right: []}   # load override per side: 10 numbers, [] = by end effector type
 

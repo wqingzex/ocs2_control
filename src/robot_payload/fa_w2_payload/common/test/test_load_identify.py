@@ -7,7 +7,7 @@ import pytest
 
 from fa_w2_payload import config_edit
 from fa_w2_payload import load_identify as dyn
-from fa_w2_payload.config_status import CONFIGURED, DEFAULT, NEEDED, camera_status, dyn_status, hand_status
+from fa_w2_payload.config_status import CONFIGURED, DEFAULT, NEEDED, camera_status, dyn_status, ee_status
 from fa_w2_payload.config_edit import receipt
 
 TEN = [0.5, -1.0, 2.0, 3.0, 0.001, 0.0, 0.0, 0.002, 0.0, 0.003]
@@ -87,18 +87,18 @@ def test_load_readiness(raw, state):
 
 def test_cameras_and_hand_are_ready_only_with_a_matching_receipt():
     raw = {"cameras": {"head": {"serial": "A"}}}
-    assert camera_status(raw).needed and hand_status(raw).needed
-    raw["setup"] = {"cameras": receipt(raw, "cameras"), "hand": receipt(raw, "hand")}
-    assert camera_status(raw).state == CONFIGURED and hand_status(raw).state == CONFIGURED
+    assert camera_status(raw).needed and ee_status(raw).needed
+    raw["setup"] = {"cameras": receipt(raw, "cameras"), "ee": receipt(raw, "ee")}
+    assert camera_status(raw).state == CONFIGURED and ee_status(raw).state == CONFIGURED
     raw["cameras"]["head"]["serial"] = "OTHER"  # the mapping changed after it was confirmed
     assert camera_status(raw).needed
     assert camera_status({"cameras": {"enable": False}}).state == DEFAULT
     def hand(type, bus="usb_rs485"):
         return {"robot": {"end_effector": {"type": type, "interface": {"bus": bus}}}}
 
-    assert hand_status(hand("none")).state == DEFAULT
-    assert hand_status(hand("linkerhand_l6", "usb_can")).state == DEFAULT
-    assert hand_status(hand("wuji_hand2", "ethernet")).state == DEFAULT
+    assert ee_status(hand("none")).state == DEFAULT
+    assert ee_status(hand("linkerhand_l6", "usb_can")).state == DEFAULT
+    assert ee_status(hand("wuji_hand2", "ethernet")).state == DEFAULT
 
 
 def test_nothing_is_identified_by_default(tmp_path):

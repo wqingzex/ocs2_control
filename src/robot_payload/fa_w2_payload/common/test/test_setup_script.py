@@ -22,7 +22,7 @@ record_step() { printf '%s\\n' "$1" >> "$W2_TEST_STEPS"; }
     for function, step in (
         ("step_deps", "deps"), ("host_udev", "udev"), ("host_sudoers", "can"),
         ("host_pc_service", "sdk"), ("step_marvin", "marvin"), ("step_build", "build"), ("step_cameras", "cameras"),
-        ("step_hand", "hand"), ("step_dyn", "dyn"), ("step_xr", "xr"), ("step_summary", "summary"),
+        ("step_ee", "ee"), ("step_dyn", "dyn"), ("step_xr", "xr"), ("step_summary", "summary"),
     ):
         if function == "step_marvin" and not stub_marvin:
             continue
@@ -40,15 +40,15 @@ def test_default_init_keeps_camera_hand_and_xr_steps(tmp_path, container):
     result, steps = run_init(tmp_path, container=container)
     assert result.returncode == 0, result.stdout + result.stderr
     host_setup = [] if container else ["udev", "can"]
-    assert steps == ["deps", *host_setup, "sdk", "marvin", "build", "cameras", "hand", "xr", "summary"]
+    assert steps == ["deps", *host_setup, "sdk", "marvin", "build", "cameras", "ee", "xr", "summary"]
     assert "9/9" in result.stdout and "dyn: 默认值" in result.stdout
 
 
-@pytest.mark.parametrize("failed_step", ["hand", "xr", "summary"])
+@pytest.mark.parametrize("failed_step", ["ee", "xr", "summary"])
 def test_unfinished_configuration_does_not_report_init_success(tmp_path, failed_step):
     result, steps = run_init(tmp_path, container=True, failed_step=failed_step)
     assert result.returncode == 1
-    assert steps == ["deps", "sdk", "marvin", "build", "cameras", "hand", "xr", "summary"]
+    assert steps == ["deps", "sdk", "marvin", "build", "cameras", "ee", "xr", "summary"]
     assert "初始化尚未完成" in result.stderr
     assert "下一步：./scripts/start.sh" not in result.stdout
 
@@ -64,7 +64,7 @@ def test_camera_failure_exits_before_hand_xr_or_summary(tmp_path, container):
 
 
 @pytest.mark.parametrize("command,expected", [
-    ("cam", "cameras"), ("hand", "hand"), ("xr", "xr"),
+    ("cam", "cameras"), ("ee", "ee"), ("xr", "xr"),
     ("build", "build"), ("marvin", "marvin"),
     ("deps", "deps"), ("host", "sdk"), ("check", "summary"),
     ("cameras", "cameras"), ("summary", "summary"),
@@ -88,13 +88,13 @@ def test_camera_retry_does_not_repeat_dependency_install_or_build(tmp_path):
 @pytest.mark.parametrize("container", [False, True])
 @pytest.mark.parametrize("command,index", [
     ("deps", 0), ("host", 1), ("marvin", 2), ("build", 3), ("cam", 4),
-    ("hand", 5), ("xr", 7), ("check", 8),
+    ("ee", 5), ("xr", 7), ("check", 8),
 ])
 def test_from_runs_only_the_selected_step_and_remaining_stages(tmp_path, container, command, index):
     result, steps = run_init(tmp_path, container=container, args=(command, "--from"))
     assert result.returncode == 0, result.stdout + result.stderr
     host = ["sdk"] if container else ["udev", "can", "sdk"]
-    stages = [["deps"], host, ["marvin"], ["build"], ["cameras"], ["hand"], [], ["xr"], ["summary"]]  # dyn: default usable
+    stages = [["deps"], host, ["marvin"], ["build"], ["cameras"], ["ee"], [], ["xr"], ["summary"]]  # dyn: default usable
     assert steps == [step for stage in stages[index:] for step in stage]
     assert f"{index + 1}/9" in result.stdout
     assert "9/9" in result.stdout
@@ -118,7 +118,7 @@ def test_from_does_not_continue_after_camera_failure(tmp_path):
 def test_from_works_with_existing_flags(tmp_path):
     result, steps = run_init(tmp_path, container=True, args=("build", "--from", "--yes", "--minimal"))
     assert result.returncode == 0
-    assert steps == ["build", "cameras", "hand", "xr", "summary"]
+    assert steps == ["build", "cameras", "ee", "xr", "summary"]
 
 
 def test_cancelled_xr_step_stops_init_without_running_final_check(tmp_path):
@@ -159,7 +159,7 @@ def configured_config(**overrides):
             _merge(raw["robot"], value)
         else:
             raw[key] = value
-    raw["setup"] = {"cameras": receipt(raw, "cameras"), "hand": receipt(raw, "hand")}
+    raw["setup"] = {"cameras": receipt(raw, "cameras"), "ee": receipt(raw, "ee")}
     return yaml.safe_dump(raw)
 
 
@@ -175,11 +175,11 @@ def test_configured_steps_are_skipped_in_the_full_flow(tmp_path):
 def test_force_configures_everything_again(tmp_path):
     result, steps = run_init(tmp_path, container=True, config_text=configured_config(), args=("--force",))
     assert result.returncode == 0, result.stdout + result.stderr
-    assert steps == ["deps", "sdk", "marvin", "build", "cameras", "hand", "dyn", "xr", "summary"]
+    assert steps == ["deps", "sdk", "marvin", "build", "cameras", "ee", "dyn", "xr", "summary"]
     assert "已跳过" not in result.stdout
 
 
-@pytest.mark.parametrize("step, expected", [("cam", "cameras"), ("hand", "hand"), ("dyn", "dyn"), ("xr", "xr")])
+@pytest.mark.parametrize("step, expected", [("cam", "cameras"), ("ee", "ee"), ("dyn", "dyn"), ("xr", "xr")])
 def test_a_single_step_always_runs_even_when_it_is_configured(tmp_path, step, expected):
     result, steps = run_init(tmp_path, container=True, config_text=configured_config(), args=(step,))
     assert result.returncode == 0, result.stdout + result.stderr

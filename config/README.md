@@ -27,4 +27,4 @@
 
 字段说明和默认值见 [`teleop.yaml`](../src/robot_hmi/robot_app/config/teleop.yaml)，启动前用 `./scripts/start.sh check` 校验；`robot` 和 `control` 里的值由 ROS 启动文件转成 xacro 参数（名字没变），各机型的参数见 [`fa_w2_description`](../src/robot_description/fa_w2_description/README.md) 和 [`m6_ccs_description`](../src/robot_description/component/m6_ccs_description/README.md)。旧布局的 `platform`、`hardware`、`defaults` 三段和 `robot.end_effector_bus` 等旧字段已删除，写了会报"未知字段"。
 
-首次使用用 `./scripts/setup.sh cam` 和 `./scripts/setup.sh hand` 弹窗确认相机和左右手，确认结果自动写回这个文件；天机臂 SDK 版本（`robot.arm.interface.firmware`：338 或 343）由 `./scripts/setup.sh marvin` 选择并写回，编译时使用。临时改某项只对本次有效：`./scripts/start.sh --set robot.hardware=isaac`（手的串口等设备映射不能这样改）。
+首次使用用 `./scripts/setup.sh cam` 和 `./scripts/setup.sh ee` 弹窗确认相机和左右手，确认结果自动写回这个文件；天机臂 SDK 版本（`robot.arm.interface.firmware`：338 或 343）由 `./scripts/setup.sh marvin` 选择并写回，编译时使用。临时改某项只对本次有效：`./scripts/start.sh --set robot.hardware=isaac`（手的串口等设备映射不能这样改）。

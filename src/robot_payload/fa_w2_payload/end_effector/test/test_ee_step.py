@@ -3,7 +3,7 @@ import io
 
 import pytest
 
-from end_effector import hand_setup
+from end_effector import ee_setup
 from fa_w2_payload import config_edit
 from fa_w2_payload.device_setup import Io
 
@@ -76,7 +76,7 @@ def test_hand_step_uses_window_and_preserves_cancelled_config(ws_root):
     def window(session, io):
         seen.append(session.draft)
         return False
-    assert not hand_setup.step_hand(path, str(ws_root), answers, ports=lambda: ["/dev/ttyUSB1", "/dev/ttyUSB3"], runner=window)
+    assert not ee_setup.step_ee(path, str(ws_root), answers, ports=lambda: ["/dev/ttyUSB1", "/dev/ttyUSB3"], runner=window)
     _, prof = config_edit.load_rt(path)
     interface = prof["robot"]["end_effector"]["interface"]
     assert interface["left"]["port"] == "/dev/ttyUSB0" and interface["right"]["port"] == "/dev/ttyUSB2"
@@ -87,7 +87,7 @@ def test_hand_step_uses_window_and_preserves_cancelled_config(ws_root):
 
 def test_hand_unattended_first_confirmation_is_rejected(ws_root):
     path = str(ws_root / "config" / "robot.local.yaml")
-    assert not hand_setup.step_hand(path, str(ws_root), hand_setup.Io(assume_yes=True, out=io.StringIO()), ports=lambda: [])
+    assert not ee_setup.step_ee(path, str(ws_root), ee_setup.Io(assume_yes=True, out=io.StringIO()), ports=lambda: [])
 
 
 def test_arm_rs485_is_the_485_wiring_in_the_native_window(ws_root):
@@ -97,7 +97,7 @@ def test_arm_rs485_is_the_485_wiring_in_the_native_window(ws_root):
     def window(session, io):
         seen.append(session.draft['drive'])
         return False
-    assert not hand_setup.step_hand(path, str(ws_root), ScriptedIo([]), ports=lambda: [], runner=window)
+    assert not ee_setup.step_ee(path, str(ws_root), ScriptedIo([]), ports=lambda: [], runner=window)
     assert seen == ['485']
 
 
@@ -106,6 +106,6 @@ def test_hand_window_can_be_cancelled_without_inventing_missing_ports(ws_root):
     def window(session, io):
         seen.append(session.draft['left_port'])
         return False
-    assert not hand_setup.step_hand(str(ws_root / "config" / "robot.local.yaml"), str(ws_root), ScriptedIo([]),
+    assert not ee_setup.step_ee(str(ws_root / "config" / "robot.local.yaml"), str(ws_root), ScriptedIo([]),
                                     ports=lambda: [], runner=window)
     assert seen == ['']

@@ -55,18 +55,18 @@ def main(argv=None) -> int:
     from fa_w2_payload.config_edit import confirmed
     with open(path, encoding='utf-8') as handle:
         raw = yaml.safe_load(handle) or {}
-    from fa_w2_payload.config_status import DEFAULT, hand_status
+    from fa_w2_payload.config_status import DEFAULT, ee_status
     if cams:
         status = '已确认' if confirmed(raw, 'cameras') else '尚未确认或配置已变化'
         print(f"  相机画面与位置: {status}（./scripts/setup.sh cam）")
     if cfg['robot']['end_effector']['type'] != 'none':
-        # hand_status knows the wirings that need no confirmation (usb_can, ethernet): print its reason for those.
-        hand = hand_status(raw)
+        # ee_status knows the wirings that need no confirmation (usb_can, ethernet): print its reason for those.
+        hand = ee_status(raw)
         if hand.state == DEFAULT:
             print(f"  左右手实物: {hand.reason}")
         else:
             status = '已确认' if not hand.needed else '尚未确认或配置已变化'
-            print(f"  左右手实物: {status}（./scripts/setup.sh hand）")
+            print(f"  左右手实物: {status}（./scripts/setup.sh ee）")
     return 0
 
 

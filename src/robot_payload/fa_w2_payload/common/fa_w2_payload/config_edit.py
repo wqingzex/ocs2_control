@@ -138,7 +138,7 @@ def save_setup(path: str, section: str, changes: Dict[str, Dict], original: str)
 
 
 def fingerprint(raw, section):
-    """Hash of the mapping fields of a section (cameras, hand)."""
+    """Hash of the mapping fields of a section (cameras, ee)."""
     if section not in FIELDS:
         raise KeyError(f"no mapping fields for '{section}'; known: {sorted(FIELDS)}")
     value = FIELDS[section](raw)

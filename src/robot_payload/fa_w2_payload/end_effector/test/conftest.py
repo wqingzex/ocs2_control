@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from end_effector import hand_setup
+from end_effector import ee_setup
 
 LEFT_BY_ID = '/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AAAA-if00-port0'
 
@@ -43,7 +43,7 @@ def hand(config):
         calls.append(request)
         return {'ok': True, 'tested': request['operation'] == 'test', 'positions': [0] * 6, 'message': '收到设备反馈'}
 
-    session = hand_setup.HandSetup(str(config), str(config.parent.parent), lambda: PORTS, worker)
+    session = ee_setup.EeSetup(str(config), str(config.parent.parent), lambda: PORTS, worker)
     session.calls = calls
     yield session
     session.close()
