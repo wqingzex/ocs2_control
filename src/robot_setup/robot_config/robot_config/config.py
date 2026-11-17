@@ -101,7 +101,7 @@ BODY_TYPES = ("juxie",)  # waist and head motors (CAN FD)
 ARM_TYPES = ("marvin",)
 MARVIN_FIRMWARES = (338, 343)  # Marvin SDK versions, must match the firmware of the arm controller
 DEFAULT_ARM_IP = "192.168.1.190"
-ARM_MODES = ("position", "joint_impedance")
+ARM_MODES = ("position", "joint_impedance", "PD")  # PD: joint impedance with velocity feed-forward (marvin_hardware ctrl_mode)
 DYN_LENGTH = 10  # load override: m, mx, my, mz, ixx, ixy, ixz, iyy, iyz, izz
 SIDES = ("left", "right")
 
@@ -196,6 +196,9 @@ def _check_robot(robot: Dict[str, Any]) -> None:
         channel = eef["interface"][side]["channel"]
         expect(channel is None or channel in (1, 2, 3) and not isinstance(channel, bool),
                f"'robot.end_effector.interface.{side}.channel' must be 1, 2 or 3, got {channel!r}")
+        rate = eef["interface"][side]["rw_rate"]
+        expect(rate is None or (_is_number(rate) and not isinstance(rate, bool) and rate > 0),
+               f"'robot.end_effector.interface.{side}.rw_rate' must be a number > 0 (Hz) or null, got {rate!r}")
         load = eef["dyn_param"][side]
         expect(isinstance(load, list) and (not load or (len(load) == DYN_LENGTH and all(map(_is_number, load)))),
                f"'robot.end_effector.dyn_param.{side}' must be [] or {DYN_LENGTH} numbers, got {load!r}")

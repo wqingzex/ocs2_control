@@ -54,8 +54,10 @@ robot:
       #   can     usb_can 用：CAN 接口（经典 CAN 1 Mbit/s）；不能用腰、头的 body.interface.can；
       #           改了之后重新运行 ./scripts/setup.sh host，让免密 sudo 规则用同样的名字
       #   channel arm_rs485 用：485 通道 1 | 2 | 3，null = 1
-      left:  {port: "", can: can1, channel: null}
-      right: {port: "", can: can2, channel: null}
+      #   rw_rate 这只手的 ros2_control 读写频率 [Hz]，null = 用控制器管理器的频率；xhand1（usb_rs485）、
+      #           linkerhand_l6（usb_can）、wuji_hand2 有效，linkerhand_l6 走 usb_rs485 时不生效
+      left:  {port: "", can: can1, channel: null, rw_rate: null}
+      right: {port: "", can: can2, channel: null, rw_rate: null}
     # 每侧工具负载 [m, mx, my, mz, ixx, ixy, ixz, iyy, iyz, izz]；[] = 按末端类型取内置辨识值；
     # 跑完 ./scripts/setup.sh dyn（负载辨识）会自动写入这里
     dyn_param: {left: [], right: []}
@@ -65,7 +67,7 @@ robot:
 # 2. 控制 control
 # ======================================================================================================
 control:
-  arm_mode: position             # 臂控制模式：position | joint_impedance
+  arm_mode: position             # 臂控制模式：position | joint_impedance | PD（关节阻抗加速度前馈，极低延时，遥操用）
   limits:
     max_joint_speed: 100
     max_joint_acceleration: 100

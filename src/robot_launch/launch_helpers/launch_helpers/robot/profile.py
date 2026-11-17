@@ -101,8 +101,9 @@ def normalize_robot_profile(data: Dict[str, Any]) -> Dict[str, Any]:
     robot.end_effector.type / interface.bus              -> eef     (launch arguments override them)
     robot.arm.type / interface.ip                        -> hardware arm_driver / device_ip
     robot.body.interface.can / stats_period_s            -> hardware body_can_interface / body_can_stats_period_s
-    robot.end_effector.interface.<side>.port / can / channel
-                                                         -> hardware usb_<side>_port / <side>_ee_can_interface / <side>_ee_channel
+    robot.end_effector.interface.<side>.port / can / channel / rw_rate
+                                                         -> hardware usb_<side>_port / <side>_ee_can_interface / <side>_ee_channel /
+                                                            <side>_ee_rw_rate
     robot.end_effector.dyn_param.<side>                  -> hardware <side>_dyn_param (comma separated)
     control.arm_mode / limits.*                          -> hardware arm_ctrl_mode / max_joint_speed / max_joint_acceleration
     control.patch: inline ros2_control overrides (deep-merged after compose)
@@ -133,7 +134,8 @@ def normalize_robot_profile(data: Dict[str, Any]) -> Dict[str, Any]:
         side_interface = _mapping(eef_interface.get(side))
         fields += [(f"usb_{side}_port", side_interface.get("port")),
                    (f"{side}_ee_can_interface", side_interface.get("can")),
-                   (f"{side}_ee_channel", side_interface.get("channel"))]
+                   (f"{side}_ee_channel", side_interface.get("channel")),
+                   (f"{side}_ee_rw_rate", side_interface.get("rw_rate"))]
         load = _mapping(eef.get("dyn_param")).get(side)
         if isinstance(load, (list, tuple)) and load:
             fields.append((f"{side}_dyn_param", ",".join(_xacro_text(v) for v in load)))

@@ -44,6 +44,20 @@ def test_what_is_not_written_stays_out_so_the_description_default_applies():
     assert p["xacro"] == {} and p["hardware"] == {} and p["control"] == {}
 
 
+def test_the_read_write_rate_of_each_hand_reaches_its_xacro_argument():
+    p = normalize_robot_profile({"robot": {"end_effector": {"type": "xhand1",
+                                                            "interface": {"left": {"rw_rate": 50}, "right": {"rw_rate": 20}}}}})
+
+    assert p["hardware"] == {"left_ee_rw_rate": "50", "right_ee_rw_rate": "20"}
+
+
+def test_a_hand_rate_that_is_not_written_leaves_the_controller_manager_rate_in_charge():
+    p = normalize_robot_profile({"robot": {"end_effector": {"type": "xhand1",
+                                                            "interface": {"left": {"rw_rate": None}, "right": {}}}}})
+
+    assert "left_ee_rw_rate" not in p["hardware"] and "right_ee_rw_rate" not in p["hardware"]
+
+
 def test_an_empty_value_is_not_written_either():
     p = normalize_robot_profile({"robot": {"body": {"interface": {"can": ""}},
                                           "end_effector": {"interface": {"left": {"port": "", "channel": None}}}}})

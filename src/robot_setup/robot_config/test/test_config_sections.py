@@ -67,6 +67,34 @@ def test_the_entry_picks_the_template():
         validate(cfg)
 
 
+@pytest.mark.parametrize("mode", ["position", "joint_impedance", "PD"])
+def test_the_arm_modes_the_arm_driver_knows_are_accepted(mode):
+    cfg = config(control={"arm_mode": mode})
+    assert validate(cfg)["robot"]["entry"] == "whole_body"
+
+
+def test_an_arm_mode_the_arm_driver_does_not_know_is_an_error_that_lists_the_valid_ones():
+    with pytest.raises(ConfigError, match=r"control.arm_mode.*'PD'.*got 'torque'"):
+        validate(config(control={"arm_mode": "torque"}))
+
+
+def hand_rate_config(rate):
+    cfg = config()
+    cfg["robot"]["end_effector"]["interface"]["left"]["rw_rate"] = rate
+    return cfg
+
+
+@pytest.mark.parametrize("rate", [None, 50, 12.5])
+def test_the_read_write_rate_of_a_hand_may_be_left_out_or_be_a_positive_number(rate):
+    validate(hand_rate_config(rate))
+
+
+@pytest.mark.parametrize("rate", [0, -50, "50", True])
+def test_a_read_write_rate_that_is_not_a_positive_number_is_an_error(rate):
+    with pytest.raises(ConfigError, match=r"interface.left.rw_rate"):
+        validate(hand_rate_config(rate))
+
+
 def test_control_patch_and_setup_are_free_form():
     cfg = config(control={"patch": {"any_controller": {"ros__parameters": {"x": 1}}}}, setup={"cameras": {"confirmed": True}})
     validate(cfg)
