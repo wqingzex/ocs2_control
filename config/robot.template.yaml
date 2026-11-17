@@ -1,72 +1,98 @@
-# 本机配置模板：复制成 config/robot.local.yaml 后修改（./scripts/start.sh / ./scripts/setup.sh 默认读取本文件，遥操作和推理都用）。
-# 上半部分：启动什么（机型、手、真机 / 仿真、相机）；字段说明和默认值见 src/robot_hmi/robot_app/config/teleop.yaml，
-# 只写与默认值不同的项即可。下半部分：这台机器的硬件参数（platform / defaults / hardware / control），由 ROS 启动文件读取。
-# 首次使用：./scripts/setup.sh cam 弹窗确认相机画面与左右位置；./scripts/setup.sh hand 确认左右手。
-
-robot:
-  entry: whole_body
-  end_effector: linkerhand_l6     # 末端（手或夹爪）：none | linkerhand_l6 | xhand1 | wuji_hand2 | jodell_rg75
-  end_effector_bus: usb_rs485   # usb_rs485（485 转 USB 接电脑）| arm_rs485（接机械臂末端 485 口）| usb_can（USB-CAN，只支持 linkerhand_l6）| ethernet（只给 wuji_hand2）；xhand1 只能 usb_rs485，jodell_rg75 只能 arm_rs485
-  hardware: real
-
-xr:
-  network_mode: ethernet   # ethernet（默认网线）| wifi（无线）
-  network_interface: ""    # 初始化选择电脑网卡
-  device_id: ""            # 初始化配对后自动记录头显 ID
-
-# record:                  # 可选：录制（默认录到 <工作区>/bags，只录关节）
-#   dir: ""                 # 录包目录，空 = bags/
-#   extra_topics: []        # 每次录制额外加入的话题，如 ["/tf"]
-
-cameras:
-  head:        {serial: ""}   # Gemini 335Lg
-  left_wrist:  {serial: ""}   # Gemini 305
-  right_wrist: {serial: ""}   # Gemini 305
-
-# ---- 硬件参数（ROS 启动文件读取）------------------------------------------------------------------
+# ======================================================================================================
+# 本机配置模板：复制成 config/robot.local.yaml 后修改（./scripts/start.sh / ./scripts/setup.sh 默认读取它）。
 #
-# 末端类型只在上面的 robot.hand 里写一处（start.sh 据此传 type:=）。
-# platform + control.patch apply on every launch that sets robot_profile:=...
-# left_dyn_param / right_dyn_param: optional per-side load override (10 values).
-# Leave them out to let the robot xacro pick dyn_param by end-effector type.
+# 标记：[必改] 新机器上要确认或修改 | [可选] 默认值够用，要改才取消注释 | [自动写入] 由 setup.sh / 网页控制台写回，不用手填
+# 只写与默认值不同的项即可；A 部分字段的默认值见 src/robot_hmi/robot_app/config/teleop.yaml。
+# 首次使用：./scripts/setup.sh cam 确认相机画面与左右位置；./scripts/setup.sh hand 确认左右手。
+# ======================================================================================================
 
+
+# ######################################################################################################
+# A 部分  启动什么（robot_app 读取；启动前可用 ./scripts/start.sh check 校验）
+# ######################################################################################################
+
+# ---- 1. 机型与运行方式 ------------------------------------------------------------------------------
+robot:
+  entry: whole_body              # [必改] 控制入口：whole_body（fa_w2 全身，WBC）| split_body（fa_w2 分体）| dual_arm（M6-CCS 双臂）
+  hardware: real                 # [必改] 运行在哪：real（真机）| mock_components（仿真）| isaac
+
+  # ---- 2. 末端执行器（手或夹爪）----------------------------------------------------------------------
+  end_effector: linkerhand_l6    # [必改] none | linkerhand_l6 | xhand1 | wuji_hand2 | jodell_rg75
+  end_effector_bus: usb_rs485    # [必改] 手和电脑之间的总线，按末端选：
+                                 #   usb_rs485 : 485 转 USB 接电脑（xhand1 只能用这个）
+                                 #   arm_rs485 : 接机械臂末端 485 口（jodell_rg75 只能用这个）
+                                 #   usb_can   : USB-CAN（只支持 linkerhand_l6；接口名见下面 hardware 段）
+                                 #   ethernet  : 网线（只给 wuji_hand2）
+
+# ---- 3. 遥操作输入：XR 头显 ---------------------------------------------------------------------------
+xr:
+  network_mode: ethernet         # [可选] ethernet（默认，网线）| wifi（无线）
+  network_interface: ""          # [自动写入] 初始化时选择的电脑网卡
+  device_id: ""                  # [自动写入] 初始化配对后记录的头显 ID
+
+# ---- 4. 相机 --------------------------------------------------------------------------------------------
+cameras:                         # [自动写入] ./scripts/setup.sh cam 确认后写回序列号、USB 口、旋转
+  head:        {serial: ""}      # Gemini 335Lg
+  left_wrist:  {serial: ""}      # Gemini 305
+  right_wrist: {serial: ""}      # Gemini 305
+
+# ---- 5. 录制 --------------------------------------------------------------------------------------------
+# record:                        # [可选] 默认录到 <工作区>/bags，只录关节
+#   dir: ""                      #   录包目录，空 = bags/
+#   extra_topics: []             #   每次录制额外加入的话题，如 ["/tf"]
+
+
+# ######################################################################################################
+# B 部分  这台机器的硬件参数（ROS 启动文件读取）
+#   platform + control.patch 在每次带 robot_profile:=... 的启动里生效；末端类型只在上面的 robot.end_effector
+#   写一处（start.sh 据此传 type:=）。
+# ######################################################################################################
+
+# ---- 6. 底盘与臂控制模式 ----------------------------------------------------------------------------
 platform:
-  chassis: linkhou_s2          # linkhou_s2 | linkhou_s2_v2
+  chassis: linkhou_s2            # [必改] linkhou_s2 | linkhou_s2_v2
   chassis_joints_movable: "false"
-  arm_ctrl_mode: position      # position | joint_impedance
+  arm_ctrl_mode: position        # position | joint_impedance
 
-defaults:
-  # Per-side load override [m, mx, my, mz, ixx, ixy, ixz, iyy, iyz, izz].
-  # Empty [] -> robot xacro picks dyn_param by end-effector type:
-  #   linkerhand_l6             -> per-side identified values in m6_ccs_description/xacro/eefs.xacro
-  #   xhand1                    -> real hardware uses USB-485; simulation/visualization are supported
-  # Fill in 10 values to override (e.g. after tool_dyn_identify_wizard).
-  left_dyn_param: []
-  right_dyn_param: []
-
+# ---- 7. 天机臂 ----------------------------------------------------------------------------------------
 hardware:
-  # marvin_firmware: 343     # 天机臂 SDK 版本：338（38 版固件）| 343（43 版及以上），要和臂的控制器固件一致，选错驱动会急停；
-                            # 留空时 ./scripts/setup.sh 会询问并写在这里（./scripts/setup.sh marvin 重新选择）
+  # marvin_firmware: 343         # [自动写入] SDK 版本：338（38 版固件）| 343（43 版及以上），要和臂控制器固件一致，
+  #                              #   选错驱动会急停。留空时 ./scripts/setup.sh 会询问并写在这里（setup.sh marvin 重新选择）
   max_joint_speed: 100
   max_joint_acceleration: 100
-  body_can_interface: can0     # 腰、头（Juxie）的 CAN FD 接口；改它之后重新运行 ./scripts/setup.sh host，让免密 sudo 规则用同一个名字
-  # body_can_stats_period_s: 10  # 真机上测总线速度和稳定性时打开：每 10 秒打印一次控制线程和 CAN 的统计（默认 0，只在停止时打印一次）
-  usb_left_port: /dev/ttyUSB0
+
+  # ---- 8. 腰、头（Juxie）CAN ------------------------------------------------------------------------
+  body_can_interface: can0       # CAN FD 接口；改它之后重新运行 ./scripts/setup.sh host，让免密 sudo 规则用同一个名字
+  # body_can_stats_period_s: 10  # [可选] 真机上测总线速度和稳定性时打开：每 10 秒打印控制线程和 CAN 统计（默认 0，只在停止时打印一次）
+
+  # ---- 9. 末端接口：串口与 CAN --------------------------------------------------------------------------
+  usb_left_port: /dev/ttyUSB0    # robot.end_effector_bus 为 usb_rs485 时，左右手的串口
   usb_right_port: /dev/ttyUSB2
-  # end_effector_bus: usb_can 时两只手的 CAN 接口（经典 CAN 1 Mbit/s）；不能用腰、头的 body_can_interface。
+  # robot.end_effector_bus 为 usb_can 时两只手的 CAN 接口（经典 CAN 1 Mbit/s）；不能用腰、头的 body_can_interface。
   # 改了之后重新运行 ./scripts/setup.sh host，让免密 sudo 规则用同样的名字。
   # left_ee_can_interface: can1
   # right_ee_can_interface: can2
 
+# ---- 10. 末端负载覆盖 -------------------------------------------------------------------------------------
+defaults:
+  # 每侧负载 [m, mx, my, mz, ixx, ixy, ixz, iyy, iyz, izz]。
+  # 留空 [] 时 xacro 按末端类型选 dyn_param：
+  #   linkerhand_l6 -> m6_ccs_description/xacro/eefs.xacro 里按侧辨识出的值
+  #   xhand1        -> 真机走 USB-485；仿真和可视化都支持
+  # 要覆盖就填 10 个数（例如跑完 tool_dyn_identify_wizard 之后）。
+  left_dyn_param: []
+  right_dyn_param: []
+
+# ---- 11. 控制器参数覆盖 -----------------------------------------------------------------------------------
 control:
   patch:
     body_joint_controller:
       ros__parameters:
         home_1: [-0.9, -1.8, -0.9, 0.0]
         home_2: [-1.3, -2.6, -1.3, 0.0]
-    # OCS2 .info 选择（可选）：<robot>_description/config/ocs2/<info_file_name>.info，命名「范围_坐标系_变体」。
-    # whole_body_controller 可选 whole_body_fixed_{eef,tcp}_{l6,xhand}、whole_body_mobile_tcp（默认 whole_body_fixed_eef_l6）；
-    # arm_controller 可选 dual_arm_eef、dual_arm_tcp（默认 dual_arm_eef）。
+    # [可选] OCS2 .info 选择：<robot>_description/config/ocs2/<info_file_name>.info，命名「范围_坐标系_变体」。
+    #   whole_body_controller 可选 whole_body_fixed_{eef,tcp}_{l6,xhand}、whole_body_mobile_tcp（默认 whole_body_fixed_eef_l6）
+    #   arm_controller        可选 dual_arm_eef、dual_arm_tcp（默认 dual_arm_eef）
     # whole_body_controller:
     #   ros__parameters:
     #     info_file_name: whole_body_fixed_tcp_l6
