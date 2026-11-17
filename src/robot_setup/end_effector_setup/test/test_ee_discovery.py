@@ -3,7 +3,7 @@ import struct
 
 import pytest
 
-from end_effector_setup import ee_probe
+from end_effector_setup import discovery as ee_probe
 
 
 class L6Transport:

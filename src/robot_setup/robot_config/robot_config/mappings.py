@@ -13,7 +13,7 @@ from typing import Any, Dict
 
 from .config import DEFAULT_ARM_IP, DEFAULTS
 
-# The hand setup and its worker (end_effector_setup.ee_probe) speak of the wiring as usb / 485 / usb_can / ethernet; the config
+# The hand setup and its worker (end_effector_setup.discovery) speak of the wiring as usb / 485 / usb_can / ethernet; the config
 # file says robot.end_effector.interface.bus. Converted at the file boundary only, which also keeps the fingerprint of an
 # unchanged wiring the same as before the rename.
 BUS_TO_DRIVE = {"usb_rs485": "usb", "arm_rs485": "485", "usb_can": "usb_can", "ethernet": "ethernet"}

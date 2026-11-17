@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from end_effector_setup import ee_setup
+from end_effector_setup import session as ee_setup
 
 LEFT_BY_ID = '/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AAAA-if00-port0'
 

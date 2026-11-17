@@ -1,6 +1,6 @@
 """End effector setup (./scripts/setup.sh ee): the draft session, the bounded device probe and the window panel.
 
-    python3 -m end_effector_setup.ee_setup --config C --ws-root W [--yes]"""
+    python3 -m end_effector_setup.session --config C --ws-root W [--yes]"""
 from __future__ import annotations
 
 import copy
@@ -19,7 +19,7 @@ from robot_config.mappings import DRIVE_TO_BUS, HAND_DRIVES, arm_ip, ee_drive, e
 from robot_config.device_setup import Io, SetupSession, main_for, run_wizard
 from robot_runtime.processes import require_idle
 
-from .ee_probe import is_serial_number_path, serial_devices
+from .discovery import is_serial_number_path, serial_devices
 
 
 def _deep_update(target, values):
@@ -37,7 +37,7 @@ def _deep_update(target, values):
 def ee_request(request):
     """Bound native SDK work and reclaim it even if the setup window exits."""
     try:
-        result = subprocess.run([sys.executable, '-m', 'end_effector_setup.ee_probe'],
+        result = subprocess.run([sys.executable, '-m', 'end_effector_setup.discovery'],
             input=json.dumps(request), text=True, capture_output=True, timeout=8, check=False)
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError('手部操作超时，已终止本次设备连接；请检查设备状态后重试') from exc

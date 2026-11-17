@@ -3,7 +3,7 @@ import io
 
 import pytest
 
-from end_effector_setup import ee_setup
+from end_effector_setup import session as ee_setup
 from robot_config import config_edit
 from robot_config.device_setup import Io
 

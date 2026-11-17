@@ -5,7 +5,7 @@ import io
 import pytest
 import yaml
 
-from end_effector_setup import ee_setup
+from end_effector_setup import session as ee_setup
 from robot_config.device_setup import Io
 from robot_config import config_edit
 
@@ -46,7 +46,7 @@ def test_hand_swap_invalidates_feedback_and_confirmation(hand, config):
 def test_serial_devices_lists_only_by_id_serial_number_links(tmp_path, monkeypatch):
     """A hand is identified by the adapter's serial number (/dev/serial/by-id). ttyUSBn is numbered in enumeration
     order and changes when a port is replugged; by-path depends on the physical socket: neither is offered."""
-    from end_effector_setup import ee_probe as hand_probe
+    from end_effector_setup import discovery as hand_probe
     by_id = tmp_path / 'by-id'
     by_id.mkdir()
     (tmp_path / 'ttyUSB2').write_text('')

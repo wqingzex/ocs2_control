@@ -385,7 +385,7 @@ run_python_step() {
   local python_status=0 module python_path="${SETUP_PYTHONPATH}"
   case "$1" in
     cameras) module=camera_setup.session ;;
-    ee) module=end_effector_setup.ee_setup ;;
+    ee) module=end_effector_setup.session ;;
     dyn) module=robot_config.load_identify ;;
     xr)
       module=xr_teleop.pairing
