@@ -14,11 +14,13 @@ MINIMAL=""
 FORCE=""   # --force：完整流程里也重新配置已配置的步骤
 RESET=""   # --reset：dyn 恢复默认负载
 FULL_INIT=""
+ENTRY=""      # --entry：新建配置时的控制入口
 
 # 步骤的顺序和标题；序号 i/N 由这张表算出来。SOFT_STEPS 失败时只记录，不中断后面的步骤。
-STEP_ORDER=(deps host marvin build cameras ee dyn xr summary)
+STEP_ORDER=(deps config host marvin build cameras ee dyn xr summary)
 declare -A STEP_TITLE=(
   [deps]="依赖：子模块 + rosdep"
+  [config]="本机配置 robot.local.yaml（没有就按入口从模板生成，缺的键补上）"
   [host]="主机配置：相机 udev、腰部 CAN 免密 sudo、XRoboToolkit PC Service"
   [marvin]="天机臂 SDK 版本（338 / 343，要和臂的控制器固件一致）"
   [build]="编译整个 ROS 2 工作区（运控、驱动、机器人模型、相机、XR、控制台）"
@@ -71,11 +73,13 @@ step_command() {
 usage() {
   cat <<'EOF_USAGE'
 初始化：./scripts/setup.sh
-  依次完成：依赖、主机 / SDK、天机臂 SDK 版本、编译、相机配置、手配置、负载辨识、XR 配对、最终检查。
+  依次完成：依赖、本机配置、主机 / SDK、天机臂 SDK 版本、编译、相机配置、手配置、负载辨识、XR 配对、最终检查。
   已配置（有确认记录）或默认值可用的步骤会跳过；--force 全部重新配置。
   相机和手会弹出本地配置窗口，确认后保存到 config/robot.local.yaml。
   容器内也保留完整向导；仅不执行物理机的 udev 和 CAN 操作。
 单步重试：./scripts/setup.sh <步骤>，只执行指定步骤：
+  config 本机配置：没有 config/robot.local.yaml 就按入口（--entry whole_body|split_body|dual_arm，默认 whole_body）从模板生成；
+         已有就把缺的键补上（保留你的值和注释，原文件备份为 .bak）。程序不会替你补默认值，模板改了键之后每台机器跑一次。
   cam 相机；ee 末端（手、夹爪）；xr 头显配对；dyn 负载辨识（逐臂询问，默认不辨识；--reset 恢复默认负载）。
   build 编译整个 ROS 2 工作区：运控、驱动、机器人模型、相机、XR、控制台。
         使用增量编译，复用已有结果；不执行设备配置或配对，不启动运控。
@@ -83,7 +87,7 @@ usage() {
   deps 依赖；host 主机 / SDK；check 配置检查。
 从某步继续：./scripts/setup.sh cam --from
   从相机开始，依次执行手、XR 配对和最终检查；其他步骤同样支持 --from。
-可选参数：--yes 使用建议值；--force 重新配置已配置的步骤；--minimal 只编译遥操作必需的包；-c 指定配置文件。
+可选参数：--yes 使用建议值；--force 重新配置已配置的步骤；--minimal 只编译遥操作必需的包；-c 指定配置文件；--entry 新建配置时的控制入口。
 EOF_USAGE
 }
 
@@ -397,6 +401,11 @@ run_python_step() {
   if (( python_status == 130 )); then exit 130; fi  # Ctrl+C cancels the full init, not only this step.
   return "${python_status}"
 }
+# 本机配置：不需要编译过的工作区，只要源码路径和 ruamel.yaml
+step_config() {
+  PYTHONPATH="${SETUP_PYTHONPATH}:${PYTHONPATH:-}" \
+    python3 -m robot_config.sync --config "${CONFIG}" ${ENTRY:+--entry "${ENTRY}"} ${YES}
+}
 step_cameras() { run_python_step cameras; }
 step_ee() { run_python_step ee; }
 step_dyn() { run_python_step dyn; }
@@ -413,6 +422,8 @@ step_ready() {  # 返回 0 表示不用配置；原因写入 READY_REASON
       firmware="$(marvin_firmware_config)" || return 1   # 值不对：不跳过，由 step_marvin 报错
       [[ -n "${firmware}" ]] || return 1
       READY_REASON="已选择 ${firmware}" ;;
+    config)
+      READY_REASON="$(PYTHONPATH="${python_path}" python3 -m robot_config.sync --config "${CONFIG}" --status 2>/dev/null)" || status=$? ;;
     cameras|ee|dyn)
       READY_REASON="$(PYTHONPATH="${python_path}" python3 -m robot_config.config_status status --config "${CONFIG}" "$1" 2>/dev/null)" || status=$? ;;
     xr)
@@ -452,6 +463,7 @@ parse_args() {  # 结果：STEPS（要执行的步骤）、YES、MINIMAL、CONFI
       --force) FORCE=1 ;;
       --reset) RESET="--reset" ;;
       -c) [[ -n "${2:-}" ]] || die "-c 需要配置文件路径"; CONFIG="$2"; shift ;;
+      --entry) [[ -n "${2:-}" ]] || die "--entry 需要取值（whole_body | split_body | dual_arm）"; ENTRY="$2"; shift ;;
       -h|--help|help) usage; exit 0 ;;
       cam) STEPS+=(cameras) ;;
       check) STEPS+=(summary) ;;
@@ -475,11 +487,8 @@ parse_args() {  # 结果：STEPS（要执行的步骤）、YES、MINIMAL、CONFI
   fi
   [[ -z "${RESET}" || " ${STEPS[*]} " == *" dyn "* ]] || die "--reset 只用于 dyn：./scripts/setup.sh dyn --reset"
   [[ "${CONFIG}" = /* ]] || CONFIG="${PWD}/${CONFIG}"
-  if [[ ! -f "${CONFIG}" && "${CONFIG}" == "${WS_DIR}/config/robot.local.yaml" ]]; then  # 新机器：先用模板
-    cp "${WS_DIR}/config/robot.template.yaml" "${CONFIG}"
-    info "已从 config/robot.template.yaml 生成 ${CONFIG}"
-  fi
-  [[ -f "${CONFIG}" ]] || die "配置文件不存在: ${CONFIG}"
+  [[ -f "${CONFIG}" || " ${STEPS[*]} " == *" config "* ]] \
+    || die "配置文件不存在: ${CONFIG}（先运行 ./scripts/setup.sh config 生成）"
 }
 
 is_soft_step() {

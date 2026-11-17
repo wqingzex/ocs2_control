@@ -4,25 +4,22 @@ import json
 import time
 
 import pytest
+import yaml
 
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from robot_config import config_edit  # noqa: E402
+from robot_config.testing import full_config  # noqa: E402
 from robot_app.console import server  # noqa: E402
 from camera_setup.discovery import parse_list_devices  # noqa: E402
 from robot_runtime.units import Unit, UnitSet  # noqa: E402
 
 SLEEPER = ("sh", "-c", "echo hello-from-unit; trap 'exit 0' INT; while true; do sleep 0.05; done")
-CONFIG = """\
-# 控制台测试配置
-robot: {hardware: mock_components}
-xr: {start_pc_service: false}
-cameras:
-  head:        {serial: "CP0000000001", rotation: 90}   # Gemini 335Lg
-  left_wrist:  {serial: "CP0000000002"}
-  right_wrist: {serial: "CP0000000003"}
-"""
+CONFIG = "# 控制台测试配置\n" + yaml.safe_dump(full_config(
+    robot={"hardware": "mock_components"}, xr={"start_pc_service": False},
+    cameras={"head": {"serial": "CP0000000001", "rotation": 90}, "left_wrist": {"serial": "CP0000000002"},
+             "right_wrist": {"serial": "CP0000000003"}}), sort_keys=False).replace("  head:\n", "  head:  # Gemini 335Lg\n", 1)
 SCAN = """\
 [INFO] [1] [list_device_node]: name: Orbbec Gemini 335Lg
 [INFO] [1] [list_device_node]: serial: CP0000000001

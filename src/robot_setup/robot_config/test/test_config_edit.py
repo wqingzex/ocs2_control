@@ -67,3 +67,13 @@ def test_camera_edit_keeps_comments_and_other_fields(ws_root):
 def test_unknown_role_is_rejected(ws_root):
     with pytest.raises(ValueError, match="未知相机角色"):
         config_edit.set_cameras(str(ws_root / "config" / "robot.local.yaml"), {"tail": {"serial": "x"}})
+
+
+def test_saving_keeps_the_mode_of_the_file(tmp_path):
+    import os
+    path = tmp_path / "robot.yaml"
+    path.write_text("robot: {entry: whole_body}\n")
+    os.chmod(path, 0o664)
+    config_edit.set_fields(str(path), "robot", {"hardware": "real"})
+    assert (os.stat(path).st_mode & 0o777) == 0o664
+

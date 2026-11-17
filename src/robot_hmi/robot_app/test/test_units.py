@@ -2,14 +2,13 @@
 import pytest
 
 from robot_app import validate
+from robot_config.testing import full_config
 from robot_app.units import build_units, display_env
 
 
 def make_cfg(**sections):
-    base = {"cameras": {k: dict(v) for k, v in SERIALS.items()}}
-    for key, value in sections.items():
-        base.setdefault(key, {}).update(value)
-    return validate(base)
+    cameras = {**{k: dict(v) for k, v in SERIALS.items()}, **sections.pop("cameras", {})}
+    return validate(full_config(cameras=cameras, **sections))
 
 
 SERIALS = {"head": {"serial": "CP111"}, "left_wrist": {"serial": "CP222"}, "right_wrist": {"serial": "CP333"}}

@@ -11,7 +11,8 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict
 
-from .config import DEFAULT_ARM_IP, DEFAULTS
+from .config import DEFAULT_ARM_IP
+from .template import section_defaults
 
 # The hand setup and its worker (end_effector_setup.discovery) speak of the wiring as usb / 485 / usb_can / ethernet; the config
 # file says robot.end_effector.interface.bus. Converted at the file boundary only, which also keeps the fingerprint of an
@@ -53,7 +54,7 @@ def arm_ip(robot: Dict[str, Any]) -> str:
 
 def camera_mapping(raw: Dict[str, Any]) -> Dict[str, Any]:
     """The cameras section with the defaults filled in: a change to any camera field invalidates the confirmation."""
-    value = copy.deepcopy(DEFAULTS["cameras"])
+    value = section_defaults("cameras")
     for key, item in (raw.get("cameras") or {}).items():
         if isinstance(item, dict) and key in value:
             value[key].update(item)

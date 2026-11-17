@@ -3,8 +3,10 @@ import copy
 import time
 
 import pytest
+import yaml
 
 from end_effector_setup import session as ee_setup
+from robot_config.testing import full_config
 
 LEFT_BY_ID = '/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AAAA-if00-port0'
 
@@ -16,15 +18,11 @@ PORTS = [{'path': LEFT_BY_ID, 'device': '/dev/ttyUSB0'},
          {'path': RIGHT_BY_ID, 'device': '/dev/ttyUSB2'}]
 
 
-CONFIG = '''# preserve this comment
-robot: {end_effector: {type: linkerhand_l6, interface: {bus: usb_rs485, left: {port: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AAAA-if00-port0}, right: {port: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BBBB-if00-port0}}}}
-cameras:
-  head: {serial: HEAD}
-  left_wrist: {serial: LEFT}
-  right_wrist: {serial: RIGHT}
-xr: {device_id: PICO-BOUND}
-control: {limits: {max_joint_speed: 17}}
-'''
+CONFIG = "# preserve this comment\n" + yaml.safe_dump(full_config(
+    robot={"end_effector": {"type": "linkerhand_l6", "interface": {
+        "bus": "usb_rs485", "left": {"port": LEFT_BY_ID}, "right": {"port": RIGHT_BY_ID}}}},
+    cameras={"head": {"serial": "HEAD"}, "left_wrist": {"serial": "LEFT"}, "right_wrist": {"serial": "RIGHT"}},
+    xr={"device_id": "PICO-BOUND"}, control={"limits": {"max_joint_speed": 17}}), sort_keys=False)
 
 
 @pytest.fixture

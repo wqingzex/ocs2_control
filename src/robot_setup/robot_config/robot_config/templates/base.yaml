@@ -1,0 +1,108 @@
+# ======================================================================================================
+# 本机配置 robot.local.yaml：./scripts/setup.sh config 按入口从这份模板生成（缺的键也由它补）。
+# 所有键都必须存在；程序不会替你补默认值。值写 null 表示"没设置"，由机器人描述包自己的默认值决定。
+#
+# 标记：[必改] 新机器上要确认或修改 | [自动写入] 由 setup.sh 或网页控制台写回，不用手填
+# ======================================================================================================
+
+# ---- robot：机器。每个部件先写"是什么"（type），再写"怎么连"（interface）--------------------------------
+robot:
+  entry: whole_body              # [必改] 控制入口：whole_body（fa_w2 全身，WBC）| split_body（fa_w2 分体）| dual_arm（M6-CCS 双臂）
+  hardware: real                 # [必改] 运行方式：real（真机）| mock_components（仿真）| isaac；各部件的 interface 只在真机生效
+  variant: ""                    # 整机外观变体，空 = 机型默认
+
+  base:                          # 底盘（双臂入口没有底盘，留空）
+    type: linkhou_s2             # [必改] linkhou_s2 | linkhou_s2_v2
+    joints_movable: false        # 底盘关节是否可动
+
+  body:                          # 腰、头
+    type: juxie                  # JX 电机，CAN FD 通信
+    interface:
+      can: can0                  # CAN FD 接口；改它之后重新运行 ./scripts/setup.sh host，让免密 sudo 规则用同一个名字
+      stats_period_s: 0          # 真机上测总线速度和稳定性时设成 10：每 10 秒打印控制线程和 CAN 统计（0 = 只在停止时打印一次）
+
+  arm:                           # 臂
+    type: marvin                 # 臂驱动：marvin（天机，M6 等）。目前只有 marvin 有机器模型
+    interface:
+      ip: 192.168.1.190          # 臂控制器的以太网地址；接在臂末端 485 口的手也走这个地址
+      firmware: null             # [自动写入] SDK 版本：338（38 版固件）| 343（43 版及以上），要和臂控制器固件一致，选错驱动会急停；
+                                 #   null 时 ./scripts/setup.sh 会询问并写在这里（./scripts/setup.sh marvin 重新选择）
+
+  end_effector:                  # 末端执行器（手或夹爪）
+    type: linkerhand_l6          # [必改] none | linkerhand_l6 | xhand1 | wuji_hand2 | jodell_rg75
+    interface:
+      bus: usb_rs485             # [必改] 手和电脑之间的总线，按末端选：
+                                 #   usb_rs485 : 485 转 USB 接电脑（xhand1 只能用这个）
+                                 #   arm_rs485 : 接机械臂末端 485 口（jodell_rg75 只能用这个）
+                                 #   usb_can   : USB-CAN（只支持 linkerhand_l6）
+                                 #   ethernet  : 网线（只给 wuji_hand2）
+      # 左右手各自用到的项：
+      #   port    usb_rs485 用：串口，必须是 /dev/serial/by-id/…（按适配器序列号识别；./scripts/setup.sh ee 确认后写入）
+      #   can     usb_can 用：CAN 接口（经典 CAN 1 Mbit/s）；不能用腰、头的 body.interface.can；
+      #           改了之后重新运行 ./scripts/setup.sh host，让免密 sudo 规则用同样的名字
+      #   channel arm_rs485 用：485 通道 1 | 2 | 3，null = 1
+      left:  {port: "", can: can1, channel: null}
+      right: {port: "", can: can2, channel: null}
+    # 每侧工具负载 [m, mx, my, mz, ixx, ixy, ixz, iyy, iyz, izz]；[] = 按末端类型取内置辨识值；
+    # 跑完 ./scripts/setup.sh dyn（负载辨识）会自动写入这里
+    dyn_param: {left: [], right: []}
+
+# ---- control：控制参数 ---------------------------------------------------------------------------------
+control:
+  arm_mode: position             # 臂控制模式：position | joint_impedance
+  limits:
+    max_joint_speed: 100
+    max_joint_acceleration: 100
+  # 对 ros2_control 控制器参数的覆盖，例如：
+  #   body_joint_controller:
+  #     ros__parameters:
+  #       home_1: [-0.9, -1.8, -0.9, 0.0]
+  #   whole_body_controller:            # OCS2 .info 选择：whole_body_fixed_{eef,tcp}_{l6,xhand}、whole_body_mobile_tcp
+  #     ros__parameters:
+  #       info_file_name: whole_body_fixed_eef_l6
+  #   arm_controller:                   # dual_arm_eef | dual_arm_tcp
+  #     ros__parameters:
+  #       info_file_name: dual_arm_eef
+  patch: {}
+
+# ---- setup：设备确认记录，由 setup.sh 和网页控制台写入，不用手填 -------------------------------------------
+setup: {}
+
+# ---- 遥操作与采集 -------------------------------------------------------------------------------------
+xr:                              # XR 头显
+  enable: true                   # 启动 xr_bridge_node（XRoboToolkit -> /teleop/*）
+  start_pc_service: true         # PC Service 没运行时自动启动
+  pc_service_script: /opt/apps/roboticsservice/runService.sh
+  frame_timeout_ms: 300          # 多久没有头显帧就停止发布，/teleop/connection_status=false
+  reconnect_interval_s: 3.0      # PC Service 断开这么久后重新初始化 SDK
+  network_mode: ethernet         # ethernet（网线）| wifi（无线）
+  network_interface: ""          # [自动写入] 配对时选的电脑网卡
+  device_id: ""                  # [自动写入] 配对后记录的头显 ID
+
+cameras:                         # [自动写入] ./scripts/setup.sh cam 确认后写回序列号、USB 口、旋转
+  enable: true
+  fps: 30                        # 30 | 60（Gemini 305 上 60 Hz 是实验性的）
+  white_balance: 5600
+  ae_max_exposure: 120
+  wrist_exposure: 50             # 腕部相机用固定曝光和增益
+  wrist_gain: 16
+  head:        {enable: true, serial: "", usb_port: "", rotation: 0}   # Gemini 335Lg；rotation: 0 | 90 | 180 | 270
+  left_wrist:  {enable: true, serial: "", usb_port: "", rotation: 0}   # Gemini 305
+  right_wrist: {enable: true, serial: "", usb_port: "", rotation: 0}   # Gemini 305
+
+joystick:
+  device: ""                     # 空 = 自动，或 /dev/input/jsN
+
+log:
+  mode: normal                   # normal | debug：debug 把我们自己组件的日志降到 DEBUG；运行期间不能切换，改完重启
+
+record:
+  dir: ""                        # 录包目录，空 = <工作区>/bags
+  extra_topics: []               # 每次录制额外加入的话题，如 ["/tf"]
+
+navigation:
+  robot: fa_w2
+  map: ""                        # 空 = 标了 default 的地图
+  map_only: false                # true：只用静态地图，不处理点云
+  map_config_package: ""         # 空 = 按标准顺序查找
+  nav_config_package: ""

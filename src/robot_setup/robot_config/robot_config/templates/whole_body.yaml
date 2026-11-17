@@ -1,0 +1,3 @@
+# fa_w2 全身：基础模板的值就是它的值
+robot:
+  entry: whole_body

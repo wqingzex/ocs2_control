@@ -3,6 +3,7 @@ import pytest
 import yaml
 
 from robot_app import config, recording
+from robot_config.testing import full_config
 from robot_app.recording import RecordingError
 
 THREE_CAMERAS = {"head": {"serial": "A"}, "left_wrist": {"serial": "B"}, "right_wrist": {"serial": "C"}}
@@ -12,7 +13,7 @@ CAMERA_TOPICS = ["/camera_head/color/image_raw/compressed", "/camera_left_wrist/
 
 def make_cfg(**sections):
     sections.setdefault("cameras", THREE_CAMERAS)
-    return config.validate(sections)
+    return config.validate(full_config(**sections))
 
 
 def write_bag(root, name, topics=("/joint_states",), messages=10, seconds=2.5, started=1_700_000_000):

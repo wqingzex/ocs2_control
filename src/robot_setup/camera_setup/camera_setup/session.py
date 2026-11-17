@@ -16,7 +16,8 @@ from typing import Callable, List
 import yaml
 
 from robot_config import config_edit
-from robot_config.config import DEFAULTS, ROLES, ROTATIONS, validate_camera_assignments
+from robot_config.config import ROLES, ROTATIONS, validate_camera_assignments
+from robot_config.template import section_defaults
 from robot_config.config_edit import confirmed
 from robot_config.device_setup import Io, SetupSession, main_for, run_wizard
 from robot_runtime.processes import OwnedDrivers, require_idle
@@ -50,7 +51,7 @@ class CameraPreviews:
         index = list(self.entries).index(device.serial) if old else len(self.entries)
         role = 'left_wrist' if '305' in device.model else 'head'
         cfg = copy.deepcopy(self.raw)
-        cfg['cameras'] = {**copy.deepcopy(DEFAULTS['cameras']), **copy.deepcopy(self.raw.get('cameras') or {})}
+        cfg['cameras'] = {**section_defaults('cameras'), **copy.deepcopy(self.raw.get('cameras') or {})}
         cfg['cameras']['enable'] = True
         for name in ROLES:
             cfg['cameras'][name] = {'enable': name == role, 'serial': device.serial if name == role else '',

@@ -2,15 +2,17 @@
 import copy
 
 import pytest
+import yaml
 
 from robot_app import config
+from robot_config.testing import full_config
 from robot_app.config import ConfigError
 from robot_app.overrides import apply_overrides, parse_assignment
 from robot_app.robot import viz_launch
 from robot_app.units import build_units
 from robot_app.units_cli import up_names
 
-CAMERAS_OFF = {"cameras": {"enable": False}}
+CAMERAS_OFF = {"enable": False}
 
 
 @pytest.mark.parametrize("text, expected", [
@@ -53,9 +55,9 @@ def test_a_scalar_in_the_way_is_an_error():
         apply_overrides({"robot": 3}, ["robot.hardware=isaac"])
 
 
-def _write(tmp_path, text="cameras: {enable: false}\nrobot: {hardware: real}\n"):
+def _write(tmp_path, cameras_off=True):
     path = tmp_path / "robot.yaml"
-    path.write_text(text)
+    path.write_text(yaml.safe_dump(full_config(cameras=CAMERAS_OFF if cameras_off else {})))
     return str(path)
 
 
@@ -74,7 +76,7 @@ def test_overridden_values_are_validated_with_the_field_name(tmp_path):
 
 
 def test_load_lenient_keeps_overrides_when_cameras_are_not_set_up(tmp_path):
-    path = _write(tmp_path, "robot: {hardware: real}\n")  # cameras enabled but no serials: strict load fails
+    path = _write(tmp_path, cameras_off=False)  # cameras enabled but no serials: strict load fails
     assert config.load_lenient(path, ["robot.hardware=isaac"])["robot"]["hardware"] == "isaac"
 
 
@@ -84,11 +86,11 @@ def test_load_lenient_keeps_overrides_when_cameras_are_not_set_up(tmp_path):
     ("dual_arm", ("robot_visualize", "manipulator.launch.py", {"robot": "m6_ccs", "arms": "dual"})),
 ])
 def test_viz_launch_shows_the_model_only(entry, expected):
-    assert viz_launch(config.validate({**CAMERAS_OFF, "robot": {"entry": entry}})) == expected
+    assert viz_launch(config.validate(full_config(entry, cameras=CAMERAS_OFF))) == expected
 
 
 def test_up_with_adds_on_demand_units_after_the_regular_ones():
-    units = build_units(config.validate({**CAMERAS_OFF, "xr": {"start_pc_service": False}}), "/c.yaml", "/ws")
+    units = build_units(config.validate(full_config(cameras=CAMERAS_OFF, xr={"start_pc_service": False})), "/c.yaml", "/ws")
     assert up_names(units, [], []) is None
     assert up_names(units, ["control"], []) == ["control", "rviz"]  # naming the controller brings RViz
     assert up_names(units, ["control"], [], no_rviz=True) == ["control"]

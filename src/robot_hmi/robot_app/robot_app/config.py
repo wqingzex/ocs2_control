@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Iterable, Optional
 
 from robot_config import config as common
 from robot_config.config import ConfigError, Extension, expect
-from xr_teleop.config import DEFAULTS as XR_DEFAULTS, EXTENSION as XR_EXTENSION
+from xr_teleop.config import EXTENSION as XR_EXTENSION
 
 JOYSTICK_RE = re.compile(r"^(/dev/input/js\d+)?$")
 NAME_RE = re.compile(r"^[A-Za-z0-9_.-]*$")  # map ids and ROS package names
@@ -21,26 +21,6 @@ ENTRIES = {
 # entry -> the arm drivers that have a robot model there (the registered drivers are robot_config.config.ARM_TYPES)
 ENTRY_ARM_TYPES = {"split_body": ("marvin",), "dual_arm": ("marvin",), "whole_body": ("marvin",)}
 
-SECTION_DEFAULTS: Dict[str, Any] = {
-    "joystick": {
-        "device": "",  # "" = let joystick_teleop pick; or /dev/input/jsN
-    },
-    "log": {
-        "mode": "normal",    # normal | debug: see src/robot_utils/README.md; fixed for a run, change it and restart
-    },
-    "record": {
-        "dir": "",           # "" = <workspace>/bags
-        "extra_topics": [],  # added to every recording, e.g. ["/tf"]
-    },
-    "navigation": {
-        "robot": "fa_w2",
-        "map": "",                  # "" = the map flagged default
-        "map_only": False,          # True: static map only, no point cloud processing
-        "map_config_package": "",   # "" = search the standard chain
-        "nav_config_package": "",
-    },
-}
-DEFAULTS: Dict[str, Any] = {**common.DEFAULTS, **SECTION_DEFAULTS, **XR_DEFAULTS}
 TOPIC_RE = re.compile(r"^/[A-Za-z0-9_]+(/[A-Za-z0-9_]+)*$")
 
 
@@ -70,7 +50,7 @@ def _check_teleop(cfg: Dict[str, Any]) -> None:
     _check_record(cfg["record"])
 
 
-EXTENSION = Extension(defaults=SECTION_DEFAULTS, checks=(_check_teleop,)).merge(XR_EXTENSION)
+EXTENSION = Extension(checks=(_check_teleop,)).merge(XR_EXTENSION)
 
 
 def _edit(overrides: Iterable[str]) -> Optional[Callable[[Dict[str, Any]], Dict[str, Any]]]:
@@ -94,4 +74,4 @@ def load_lenient(path: str, overrides: Iterable[str] = ()) -> Dict[str, Any]:
     return common.load_lenient(path, EXTENSION, _edit(overrides))
 
 
-__all__ = ["ConfigError", "DEFAULTS", "ENTRIES", "JOYSTICK_RE", "load", "load_lenient", "validate"]
+__all__ = ["ConfigError", "ENTRIES", "JOYSTICK_RE", "load", "load_lenient", "validate"]

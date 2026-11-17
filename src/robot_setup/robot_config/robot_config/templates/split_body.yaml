@@ -1,0 +1,3 @@
+# fa_w2 分体：和全身用同一台机器的描述，只有入口不同
+robot:
+  entry: split_body

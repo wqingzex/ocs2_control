@@ -10,12 +10,15 @@ APPLICATION_NAMES = ("robot_app", "joystick_teleop", "keyboard_teleop", "target_
 #   load_identify -> config_status / device_setup -> config_edit -> mappings -> config (config_status also reads mappings).
 # The device packages (camera, end_effector) sit above all of these; robot_config never imports them.
 ALLOWED = {
-    "config": set(),
-    "mappings": {"config"},
+    "template": set(),
+    "testing": {"template"},
+    "config": {"template"},
+    "mappings": {"config", "template"},
     "config_edit": {"config", "mappings"},
     "device_setup": {"config_edit"},
     "config_status": {"config", "config_edit", "mappings"},
     "load_identify": {"config_edit", "config_status", "device_setup"},
+    "sync": {"config_edit", "device_setup", "template"},
 }
 
 

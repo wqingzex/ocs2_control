@@ -1,6 +1,7 @@
 """Navigation launch helper: map choice and the ros2 launch command (no ROS needed)."""
 import pytest
 
+from robot_config.testing import full_config
 from robot_app import navigation
 from robot_app.config import validate
 
@@ -9,7 +10,7 @@ MAPS = [{"id": "lab", "source": "fa_w2_description", "default": False},
 
 
 def make_cfg(**navigation_fields):
-    return validate({"cameras": {"enable": False}, "navigation": navigation_fields})
+    return validate(full_config(cameras={"enable": False}, navigation=navigation_fields))
 
 
 def test_default_map_is_used_when_none_is_named():

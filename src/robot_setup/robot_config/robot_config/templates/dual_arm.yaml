@@ -1,0 +1,12 @@
+# M6-CCS 双臂：没有底盘和腰头；末端的 CAN 接口、关节速度上限的默认值和 fa_w2 不同（m6_ccs_description 的 xacro 默认）
+robot:
+  entry: dual_arm
+  base: {type: "", joints_movable: null}
+  body:
+    interface: {can: "", stats_period_s: null}
+  end_effector:
+    interface:
+      left: {can: can0}
+      right: {can: can1}
+control:
+  limits: {max_joint_speed: 50, max_joint_acceleration: 30}

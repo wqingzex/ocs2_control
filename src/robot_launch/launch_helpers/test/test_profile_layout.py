@@ -64,3 +64,18 @@ def test_the_load_override_is_passed_as_the_driver_reads_it():
     p = normalize_robot_profile({"robot": {"end_effector": {"dyn_param": {"right": [1.5] + [0.0] * 9}}}})
 
     assert p["hardware"] == {"right_dyn_param": "1.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0"}
+
+
+def test_the_template_reaches_the_xacro_with_the_values_the_descriptions_use_anyway():
+    """The template's values are the descriptions' own defaults, so a config made from it changes nothing."""
+    from robot_config.template import template_for
+    whole = normalize_robot_profile(template_for("whole_body"))
+    assert whole["xacro"] == {"base": "linkhou_s2", "base_joints_movable": "false"}
+    assert whole["hardware"] == {
+        "arm_driver": "marvin", "device_ip": "192.168.1.190", "body_can_interface": "can0", "body_can_stats_period_s": "0",
+        "arm_ctrl_mode": "position", "max_joint_speed": "100", "max_joint_acceleration": "100",
+        "left_ee_can_interface": "can1", "right_ee_can_interface": "can2"}
+    dual = normalize_robot_profile(template_for("dual_arm"))
+    assert dual["xacro"] == {}  # no base on the dual arm
+    assert dual["hardware"]["max_joint_speed"] == "50" and dual["hardware"]["max_joint_acceleration"] == "30"
+    assert dual["hardware"]["left_ee_can_interface"] == "can0" and "body_can_interface" not in dual["hardware"]

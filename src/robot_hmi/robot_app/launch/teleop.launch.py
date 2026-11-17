@@ -73,8 +73,7 @@ def launch_setup(context):
 
 
 def generate_launch_description():
-    default_config = os.path.join(get_package_share_directory("robot_app"), "config", "teleop.yaml")
     return LaunchDescription([
-        DeclareLaunchArgument("config", default_value=default_config, description="robot config YAML (config/robot.local.yaml)"),
+        DeclareLaunchArgument("config", description="robot config YAML (config/robot.local.yaml, made by ./scripts/setup.sh config)"),
         OpaqueFunction(function=launch_setup),
     ])

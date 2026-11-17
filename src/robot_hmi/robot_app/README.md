@@ -33,12 +33,11 @@
 |---|---|
 | `src/` | C++：`console_launcher`（生成 `robot_control_suite控制台`） |
 | `robot_app/` | Python：配置加载与校验、构造运控和 RViz 单元并汇总各设备包的单元（`units`）、命令行（`units_cli`）、Web 控制台（`console/`，FastAPI）、导航、录制、诊断。进程管理在 [`robot_utils`](../../robot_utils/README.md)，头显配对在 [`xr_teleop`](../../robot_teleop/xr_teleop/README.md) |
-| `config/teleop.yaml` | 配置段的默认值：`robot`、`xr`、`cameras` |
 | `launch/teleop.launch.py` | 旧的"一个 launch 起全部" |
 
 ## 配置
 
-本机配置是仓库根目录的 `config/robot.local.yaml`（模板 `config/robot.template.yaml`）。本包管 `robot`（`entry`: `whole_body`（默认）/ `split_body` / `dual_arm`，手、硬件）、`xr`（桥接、PC Service、网卡、头显 ID）、`cameras`（三台相机序列号和旋转）等段；`platform`、`hardware`、`control` 段由 ROS 启动文件读取。启动前校验：
+本机配置是仓库根目录的 `config/robot.local.yaml`（`./scripts/setup.sh config` 按入口从 [`robot_config` 的模板](../../robot_setup/robot_config/robot_config/templates/base.yaml) 生成）。本包管 `robot`（`entry`: `whole_body`（默认）/ `split_body` / `dual_arm`，手、硬件）、`xr`（桥接、PC Service、网卡、头显 ID）、`cameras`（三台相机序列号和旋转）等段；`platform`、`hardware`、`control` 段由 ROS 启动文件读取。启动前校验：
 
 ```bash
 python3 -m robot_app.check config/robot.local.yaml <工作区根目录>

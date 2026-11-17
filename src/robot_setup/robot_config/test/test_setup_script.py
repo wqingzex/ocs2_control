@@ -20,7 +20,7 @@ is_container() { [[ "$W2_TEST_CONTAINER" == 1 ]]; }
 record_step() { printf '%s\\n' "$1" >> "$W2_TEST_STEPS"; }
 '''
     for function, step in (
-        ("step_deps", "deps"), ("host_udev", "udev"), ("host_sudoers", "can"),
+        ("step_deps", "deps"), ("step_config", "config"), ("host_udev", "udev"), ("host_sudoers", "can"),
         ("host_pc_service", "sdk"), ("step_marvin", "marvin"), ("step_build", "build"), ("step_cameras", "cameras"),
         ("step_ee", "ee"), ("step_dyn", "dyn"), ("step_xr", "xr"), ("step_summary", "summary"),
     ):
@@ -40,15 +40,15 @@ def test_default_init_keeps_camera_hand_and_xr_steps(tmp_path, container):
     result, steps = run_init(tmp_path, container=container)
     assert result.returncode == 0, result.stdout + result.stderr
     host_setup = [] if container else ["udev", "can"]
-    assert steps == ["deps", *host_setup, "sdk", "marvin", "build", "cameras", "ee", "xr", "summary"]
-    assert "9/9" in result.stdout and "dyn: 默认值" in result.stdout
+    assert steps == ["deps", "config", *host_setup, "sdk", "marvin", "build", "cameras", "ee", "xr", "summary"]
+    assert "10/10" in result.stdout and "dyn: 默认值" in result.stdout
 
 
 @pytest.mark.parametrize("failed_step", ["ee", "xr", "summary"])
 def test_unfinished_configuration_does_not_report_init_success(tmp_path, failed_step):
     result, steps = run_init(tmp_path, container=True, failed_step=failed_step)
     assert result.returncode == 1
-    assert steps == ["deps", "sdk", "marvin", "build", "cameras", "ee", "xr", "summary"]
+    assert steps == ["deps", "config", "sdk", "marvin", "build", "cameras", "ee", "xr", "summary"]
     assert "初始化尚未完成" in result.stderr
     assert "下一步：./scripts/start.sh" not in result.stdout
 
@@ -58,7 +58,7 @@ def test_camera_failure_exits_before_hand_xr_or_summary(tmp_path, container):
     result, steps = run_init(tmp_path, container=container, failed_step="cameras")
     assert result.returncode == 1
     host_setup = [] if container else ["udev", "can"]
-    assert steps == ["deps", *host_setup, "sdk", "marvin", "build", "cameras"]
+    assert steps == ["deps", "config", *host_setup, "sdk", "marvin", "build", "cameras"]
     assert "初始化结果" not in result.stdout
     assert "下一步：./scripts/start.sh" not in result.stdout
 
@@ -66,7 +66,7 @@ def test_camera_failure_exits_before_hand_xr_or_summary(tmp_path, container):
 @pytest.mark.parametrize("command,expected", [
     ("cam", "cameras"), ("ee", "ee"), ("xr", "xr"),
     ("build", "build"), ("marvin", "marvin"),
-    ("deps", "deps"), ("host", "sdk"), ("check", "summary"),
+    ("deps", "deps"), ("config", "config"), ("host", "sdk"), ("check", "summary"),
     ("cameras", "cameras"), ("summary", "summary"),
 ])
 def test_single_step_never_runs_other_stages(tmp_path, command, expected):
@@ -87,17 +87,17 @@ def test_camera_retry_does_not_repeat_dependency_install_or_build(tmp_path):
 
 @pytest.mark.parametrize("container", [False, True])
 @pytest.mark.parametrize("command,index", [
-    ("deps", 0), ("host", 1), ("marvin", 2), ("build", 3), ("cam", 4),
-    ("ee", 5), ("xr", 7), ("check", 8),
+    ("deps", 0), ("config", 1), ("host", 2), ("marvin", 3), ("build", 4), ("cam", 5),
+    ("ee", 6), ("xr", 8), ("check", 9),
 ])
 def test_from_runs_only_the_selected_step_and_remaining_stages(tmp_path, container, command, index):
     result, steps = run_init(tmp_path, container=container, args=(command, "--from"))
     assert result.returncode == 0, result.stdout + result.stderr
     host = ["sdk"] if container else ["udev", "can", "sdk"]
-    stages = [["deps"], host, ["marvin"], ["build"], ["cameras"], ["ee"], [], ["xr"], ["summary"]]  # dyn: default usable
+    stages = [["deps"], ["config"], host, ["marvin"], ["build"], ["cameras"], ["ee"], [], ["xr"], ["summary"]]  # dyn: default usable
     assert steps == [step for stage in stages[index:] for step in stage]
-    assert f"{index + 1}/9" in result.stdout
-    assert "9/9" in result.stdout
+    assert f"{index + 1}/10" in result.stdout
+    assert "10/10" in result.stdout
     assert "下一步：./scripts/start.sh" in result.stdout
 
 
@@ -149,16 +149,14 @@ def _merge(target, values):
 
 
 def configured_config(**overrides):
-    """A config whose camera and hand mappings carry valid confirmation receipts and a paired headset."""
+    """A complete config whose camera and hand mappings carry valid confirmation receipts and a paired headset."""
     import yaml
     from robot_config.config_edit import receipt
-    raw = {"cameras": {"head": {"serial": "A"}, "left_wrist": {"serial": "B"}, "right_wrist": {"serial": "C"}},
-           "xr": {"device_id": "PICO-1"}, "robot": {"arm": {"interface": {"firmware": 338}}}}
-    for key, value in overrides.items():  # a given section is merged into the robot section, not replacing it
-        if key == "robot":
-            _merge(raw["robot"], value)
-        else:
-            raw[key] = value
+    from robot_config.testing import full_config
+    raw = full_config(cameras={"head": {"serial": "A"}, "left_wrist": {"serial": "B"}, "right_wrist": {"serial": "C"}},
+                      xr={"device_id": "PICO-1"}, robot={"arm": {"interface": {"firmware": 338}}})
+    for key, value in overrides.items():  # a given section is merged into the section, not replacing it
+        _merge(raw[key], value)
     raw["setup"] = {"cameras": receipt(raw, "cameras"), "ee": receipt(raw, "ee")}
     return yaml.safe_dump(raw)
 
@@ -167,19 +165,19 @@ def test_configured_steps_are_skipped_in_the_full_flow(tmp_path):
     result, steps = run_init(tmp_path, container=True, config_text=configured_config())
     assert result.returncode == 0, result.stdout + result.stderr
     assert steps == ["deps", "sdk", "build", "summary"]
-    for line in ("已选择 338", "相机映射已确认", "左右手实物已确认", "已绑定头显 PICO-1", "使用 linkerhand_l6 的内置辨识值"):
+    for line in ("配置完整", "已选择 338", "相机映射已确认", "左右手实物已确认", "已绑定头显 PICO-1", "使用 linkerhand_l6 的内置辨识值"):
         assert line in result.stdout
-    assert result.stdout.count("已跳过") == 5
+    assert result.stdout.count("已跳过") == 6
 
 
 def test_force_configures_everything_again(tmp_path):
     result, steps = run_init(tmp_path, container=True, config_text=configured_config(), args=("--force",))
     assert result.returncode == 0, result.stdout + result.stderr
-    assert steps == ["deps", "sdk", "marvin", "build", "cameras", "ee", "dyn", "xr", "summary"]
+    assert steps == ["deps", "config", "sdk", "marvin", "build", "cameras", "ee", "dyn", "xr", "summary"]
     assert "已跳过" not in result.stdout
 
 
-@pytest.mark.parametrize("step, expected", [("cam", "cameras"), ("ee", "ee"), ("dyn", "dyn"), ("xr", "xr")])
+@pytest.mark.parametrize("step, expected", [("cam", "cameras"), ("ee", "ee"), ("dyn", "dyn"), ("xr", "xr"), ("config", "config")])
 def test_a_single_step_always_runs_even_when_it_is_configured(tmp_path, step, expected):
     result, steps = run_init(tmp_path, container=True, config_text=configured_config(), args=(step,))
     assert result.returncode == 0, result.stdout + result.stderr
@@ -267,3 +265,38 @@ def test_build_without_a_choice_keeps_the_built_version_and_warns(tmp_path):
 def test_an_invalid_version_in_the_config_is_an_error(tmp_path):
     result = call(tmp_path, "marvin_cmake_arg", "robot: {arm: {interface: {firmware: 340}}}\n")
     assert result.returncode != 0 and "robot.arm.interface.firmware" in result.stderr and "338 或 343" in result.stderr
+
+
+# ---- the config step is real here: it writes and completes robot.local.yaml --------------------------
+def _run_config_step(tmp_path, args, config_text=None):
+    script = Path(__file__).resolve().parents[4] / "scripts" / "setup.sh"
+    config = tmp_path / "config" / "robot.local.yaml"
+    if config_text is not None:
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text(config_text)
+    harness = 'source "$1"\nshift\nCONFIG="$W2_TEST_CONFIG"\nmain "$@"\n'
+    result = subprocess.run(["bash", "-c", harness, "--", str(script), *args], text=True, capture_output=True, timeout=30,
+                            env=dict(os.environ, W2_TEST_CONFIG=str(config)))
+    return result, config
+
+
+def test_the_config_step_creates_the_file_from_the_template_of_the_entry(tmp_path):
+    import yaml
+    from robot_config.template import template_for
+    result, config = _run_config_step(tmp_path, ("config", "--entry", "dual_arm", "--yes"))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert yaml.safe_load(config.read_text()) == template_for("dual_arm")
+
+
+def test_the_config_step_adds_the_keys_an_old_file_lacks(tmp_path):
+    import yaml
+    result, config = _run_config_step(tmp_path, ("config", "--yes"), "robot: {entry: whole_body, hardware: mock_components}\n")
+    assert result.returncode == 0, result.stdout + result.stderr
+    cfg = yaml.safe_load(config.read_text())
+    assert cfg["robot"]["hardware"] == "mock_components" and cfg["xr"]["network_mode"] == "ethernet"
+    assert (config.parent / "robot.local.yaml.bak").exists()
+
+
+def test_a_step_that_needs_the_file_says_how_to_create_it(tmp_path):
+    result, _ = _run_config_step(tmp_path, ("cam",))
+    assert result.returncode != 0 and "setup.sh config" in result.stderr

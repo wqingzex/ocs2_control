@@ -1,15 +1,18 @@
-"""Load and validate the shared part of config/robot.local.yaml (sections robot and cameras).
+"""Load and validate config/robot.local.yaml.
 
-Other packages add the sections they own through an Extension. Unknown keys and bad values
-raise ConfigError naming the field."""
+The file must have every key of the template for its robot.entry (template.py), no more, and good values: nothing is
+filled in at load time. Other packages add checks of the sections they own through an Extension. A missing or unknown key
+or a bad value raises ConfigError naming the field."""
 from __future__ import annotations
 
 import copy
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, Tuple
 
 import yaml
+
+from .template import FREEFORM, entries, template_for
 
 ROTATIONS = (0, 90, 180, 270)
 ROLES = ("head", "left_wrist", "right_wrist")  # camera positions
@@ -28,40 +31,6 @@ DEFAULT_ARM_IP = "192.168.1.190"
 ARM_MODES = ("position", "joint_impedance")
 DYN_LENGTH = 10  # load override: m, mx, my, mz, ixx, ixy, ixz, iyy, iyz, izz
 SIDES = ("left", "right")
-# Optional values default to None / "": unset means the robot description's own default applies.
-
-DEFAULTS: Dict[str, Any] = {
-    "robot": {
-        "entry": "whole_body",  # which controller launch to start; the owner of the entries checks the value
-        "hardware": "real",  # run mode: real | mock_components | isaac
-        "variant": "",
-        # Every part: what it is (type), then how it is connected (interface).
-        "base": {"type": "", "joints_movable": None},
-        "body": {"type": "juxie", "interface": {"can": "", "stats_period_s": None}},
-        "arm": {"type": "marvin", "interface": {"ip": "", "firmware": None}},
-        "end_effector": {
-            "type": "linkerhand_l6",
-            "interface": {
-                "bus": "usb_rs485",
-                "left": {"port": "", "can": "", "channel": None},
-                "right": {"port": "", "can": "", "channel": None},
-            },
-            "dyn_param": {"left": [], "right": []},  # load override per side (10 numbers); [] = by end effector type
-        },
-    },
-    "cameras": {
-        "enable": True,
-        "fps": 30,
-        "white_balance": 5600,
-        "ae_max_exposure": 120,
-        "wrist_exposure": 50,
-        "wrist_gain": 16,
-        "head": {"enable": True, "serial": "", "usb_port": "", "rotation": 0},
-        "left_wrist": {"enable": True, "serial": "", "usb_port": "", "rotation": 0},
-        "right_wrist": {"enable": True, "serial": "", "usb_port": "", "rotation": 0},
-    },
-}
-
 
 class ConfigError(ValueError):
     """Invalid robot configuration (message names the offending field)."""
@@ -69,52 +38,21 @@ class ConfigError(ValueError):
 
 @dataclass(frozen=True)
 class Extension:
-    """Sections another package owns: their defaults, renamed fields and checks of the merged config."""
-    defaults: Dict[str, Any] = field(default_factory=dict)
-    renamed: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    """Checks another package makes of the sections it owns (the values; which keys exist is the template's business)."""
     checks: Tuple[Callable[[Dict[str, Any]], None], ...] = ()
 
     def merge(self, *others: "Extension") -> "Extension":
-        """This extension plus others: every package that owns a section contributes its own."""
-        defaults, renamed, checks = dict(self.defaults), {k: dict(v) for k, v in self.renamed.items()}, list(self.checks)
+        """This extension plus others: every package that owns a section contributes its own checks."""
+        checks = list(self.checks)
         for other in others:
-            overlap = set(defaults) & set(other.defaults)
-            if overlap:
-                raise ValueError(f"config sections defined twice: {sorted(overlap)}")
-            defaults.update(other.defaults)
-            for section, names in other.renamed.items():
-                renamed.setdefault(section, {}).update(names)
             checks.extend(other.checks)
-        return Extension(defaults, renamed, tuple(checks))
-
-
-def _merge(defaults: Dict[str, Any], user: Dict[str, Any], path: str) -> Dict[str, Any]:
-    merged = copy.deepcopy(defaults)
-    for key, value in user.items():
-        name = f"{path}.{key}" if path else key
-        if key not in defaults:
-            raise ConfigError(f"unknown field '{name}'")
-        if isinstance(defaults[key], dict):
-            if not isinstance(value, dict):
-                raise ConfigError(f"'{name}' must be a mapping")
-            merged[key] = _merge(defaults[key], value, name)
-        else:
-            merged[key] = value
-    return merged
+        return Extension(tuple(checks))
 
 
 # Sections the robot launch files read from the same file (the robot profile): checked by _check_control only.
 PROFILE_SECTIONS = ("control", "setup")
 CONTROL_KEYS = ("arm_mode", "limits", "patch")
 LIMIT_KEYS = ("max_joint_speed", "max_joint_acceleration")
-
-
-def _rename_fields(cfg: Dict[str, Any], renamed: Dict[str, Dict[str, str]]) -> Dict[str, Any]:
-    cleaned = dict(cfg)
-    for section, names in renamed.items():
-        if isinstance(cleaned.get(section), dict):
-            cleaned[section] = {names.get(k, k): v for k, v in cleaned[section].items()}
-    return cleaned
 
 
 def expect(cond: bool, message: str) -> None:
@@ -220,27 +158,38 @@ def _check_cameras(cams: Dict[str, Any]) -> None:
                    f"or set 'cameras.{name}.enable: false'")
 
 
-def validate(cfg: Dict[str, Any], ext: Extension | None = None) -> Dict[str, Any]:
-    """Merge with defaults and validate; returns the complete config.
+def _check_shape(schema: Dict[str, Any], cfg: Dict[str, Any], path: str) -> None:
+    """Every key of the schema is in cfg and cfg has no other key; scalars have the type of the template's value."""
+    for key, node in schema.items():
+        name = f"{path}.{key}" if path else key
+        expect(key in cfg, f"missing field '{name}' (run ./scripts/setup.sh config to add it)")
+        value = cfg[key]
+        if name in FREEFORM:
+            expect(isinstance(value, dict), f"'{name}' must be a mapping")
+        elif isinstance(node, dict):
+            expect(isinstance(value, dict), f"'{name}' must be a mapping")
+            _check_shape(node, value, name)
+    for key in cfg:
+        expect(key in schema, f"unknown field '{path + '.' if path else ''}{key}'")
 
-    Without ext only the sections of this package are checked and returned; the sections of other
-    packages are ignored. With ext every top-level section must be known."""
-    cfg = {} if cfg is None else cfg
+
+def validate(cfg: Dict[str, Any], ext: Extension | None = None) -> Dict[str, Any]:
+    """Check a config against the template of its robot.entry; returns it without the control and setup sections."""
     expect(isinstance(cfg, dict), "config root must be a mapping")
-    ext = ext or Extension()
-    cfg = _rename_fields(cfg, ext.renamed)
-    for name in PROFILE_SECTIONS:
-        expect(cfg.get(name) is None or isinstance(cfg[name], dict), f"'{name}' must be a mapping")
-    owned = {**DEFAULTS, **ext.defaults}
-    skipped = set(PROFILE_SECTIONS) if ext.defaults else set(PROFILE_SECTIONS) | (set(cfg) - set(owned))
-    merged = _merge(owned, {k: v for k, v in cfg.items() if k not in skipped}, "")
-    _check_type(merged, owned, "")
-    _check_robot(merged["robot"])
-    _check_control(cfg.get("control"))
-    _check_cameras(merged["cameras"])
-    for check in ext.checks:
-        check(merged)
-    return merged
+    expect(isinstance(cfg.get("robot"), dict) and "entry" in cfg["robot"],
+           "missing field 'robot.entry' (run ./scripts/setup.sh config to create the file)")
+    entry = cfg["robot"]["entry"]
+    expect(entry in entries(), f"'robot.entry' must be one of {list(entries())}, got {entry!r}")
+    schema = template_for(entry)
+    _check_shape(schema, cfg, "")
+    checked = {key: value for key, value in cfg.items() if key not in PROFILE_SECTIONS}
+    _check_type(checked, {key: value for key, value in schema.items() if key not in PROFILE_SECTIONS}, "")
+    _check_robot(checked["robot"])
+    _check_control(cfg["control"])
+    _check_cameras(checked["cameras"])
+    for check in (ext or Extension()).checks:
+        check(checked)
+    return copy.deepcopy(checked)
 
 
 def validate_camera_assignments(assignments: Dict[str, Dict[str, Any]]) -> None:
@@ -289,5 +238,5 @@ def load_lenient(path: str, ext: Extension | None = None, edit: Edit | None = No
         raw = dict(read_yaml(path) or {})
         if edit is not None:
             raw = edit(raw)
-        raw["cameras"] = {"enable": False}
+        raw["cameras"] = {**(raw.get("cameras") or {}), "enable": False}
         return validate(raw, ext)

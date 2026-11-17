@@ -2,28 +2,18 @@
 import io
 
 import pytest
+import yaml
 
 from robot_config import config_edit
+from robot_config.template import section_defaults
+from robot_config.testing import full_config
 from robot_config.device_setup import Io
 from xr_setup import session as pairing
 
-TELEOP = """\
-# 本机配置（注释必须保留）
-robot:
-  entry: split_body
-  end_effector:
-    type: linkerhand_l6   # 末端
-    interface: {bus: usb_rs485}
-
-cameras:
-  enable: false
-"""
-
-PROFILE = """\
-# 平台配置（和上面同一个文件）
-control:
-  limits: {max_joint_speed: 100}
-"""
+def config_text(**xr):
+    """A complete config (split_body, cameras off) with the given xr keys, and a comment that must survive."""
+    return "# 本机配置（注释必须保留）\n" + yaml.safe_dump(
+        full_config("split_body", cameras={"enable": False}, xr=xr), sort_keys=False)
 
 
 class ScriptedIo(Io):
@@ -41,7 +31,7 @@ class ScriptedIo(Io):
 @pytest.fixture
 def ws_root(tmp_path):
     (tmp_path / "config").mkdir()
-    (tmp_path / "config" / "robot.local.yaml").write_text(TELEOP + "\n" + PROFILE, encoding="utf-8")
+    (tmp_path / "config" / "robot.local.yaml").write_text(config_text(), encoding="utf-8")
     return tmp_path
 
 
@@ -49,7 +39,7 @@ def ws_root(tmp_path):
 
 def test_xr_step_reports_missing_pc_service(ws_root):
     path = ws_root / "config" / "robot.local.yaml"
-    path.write_text(TELEOP + "xr:\n  pc_service_script: /nonexistent/runService.sh\n", encoding="utf-8")
+    path.write_text(config_text(pc_service_script="/nonexistent/runService.sh"), encoding="utf-8")
     out = io.StringIO()
     assert not pairing.step_xr(str(path), str(ws_root), Io(assume_yes=True, out=out))
     assert "未安装 XRoboToolkit PC Service" in out.getvalue()
@@ -57,7 +47,7 @@ def test_xr_step_reports_missing_pc_service(ws_root):
 
 def test_xr_step_skips_only_when_user_declines(ws_root):
     path = ws_root / "config" / "robot.local.yaml"
-    path.write_text(TELEOP + "xr:\n  enable: false\n", encoding="utf-8")
+    path.write_text(config_text(enable=False), encoding="utf-8")
     assert pairing.step_xr(str(path), str(ws_root), ScriptedIo(["n"]))
 
 
@@ -95,7 +85,7 @@ def connected_xr(monkeypatch):
 def test_xr_step_can_enable_and_verify_pairing(ws_root, connected_xr):
     ConnectedProbe, events = connected_xr
     path = ws_root / "config/robot.local.yaml"
-    path.write_text(TELEOP + "xr:\n  enable: false\n  start_pc_service: false\n", encoding="utf-8")
+    path.write_text(config_text(enable=False, start_pc_service=False), encoding="utf-8")
     assert pairing.step_xr(str(path), str(ws_root), ScriptedIo(["y"]), probe_factory=ConnectedProbe)
     _, data = config_edit.load_rt(str(path))
     assert data["xr"]["enable"] is True
@@ -118,7 +108,7 @@ def test_xr_default_wait_can_exceed_sixty_seconds(ws_root, connected_xr, monkeyp
 
     monkeypatch.setattr(pairing.time, "sleep", advance)
     path = ws_root / "config/robot.local.yaml"
-    path.write_text(TELEOP + "xr:\n  start_pc_service: false\n", encoding="utf-8")
+    path.write_text(config_text(start_pc_service=False), encoding="utf-8")
     io = ScriptedIo([])
     assert pairing.step_xr(str(path), str(ws_root), io, probe_factory=probe)
     assert clock[0] >= 130.0
@@ -134,7 +124,7 @@ def test_cancelling_xr_wait_closes_probe_and_only_started_units(ws_root, connect
 
     monkeypatch.setattr(pairing.time, "sleep", cancel)
     path = ws_root / "config/robot.local.yaml"
-    path.write_text(TELEOP + "xr:\n  start_pc_service: false\n", encoding="utf-8")
+    path.write_text(config_text(start_pc_service=False), encoding="utf-8")
     with pytest.raises(KeyboardInterrupt):
         pairing.step_xr(str(path), str(ws_root), ScriptedIo([]), probe_factory=probe)
     assert events == [("start", "xr"), "probe_closed", ("stop", "xr")]
@@ -155,7 +145,7 @@ def test_xr_does_not_pair_without_device_identity(ws_root, connected_xr, monkeyp
     probe.xr_device_id = ""
     monkeypatch.setattr(pairing.time, "sleep", lambda _: None)
     path = ws_root / "config/robot.local.yaml"
-    path.write_text(TELEOP + "xr:\n  start_pc_service: false\n", encoding="utf-8")
+    path.write_text(config_text(start_pc_service=False), encoding="utf-8")
     assert not pairing.step_xr(str(path), str(ws_root), ScriptedIo([]), timeout_s=0.01, probe_factory=probe)
     _, raw = config_edit.load_rt(str(path))
     assert not raw["xr"].get("device_id")
@@ -166,7 +156,7 @@ def test_failed_rebinding_preserves_previous_headset(ws_root, connected_xr, monk
     probe.xr_connected = False
     monkeypatch.setattr(pairing.time, "sleep", lambda _: None)
     path = ws_root / "config/robot.local.yaml"
-    path.write_text(TELEOP + "xr:\n  start_pc_service: false\n  device_id: PICO-OLD\n", encoding="utf-8")
+    path.write_text(config_text(start_pc_service=False, device_id="PICO-OLD"), encoding="utf-8")
     assert not pairing.step_xr(str(path), str(ws_root), ScriptedIo(["ethernet", "y"]),
                                  timeout_s=0.01, probe_factory=probe)
     _, raw = config_edit.load_rt(str(path))
@@ -175,9 +165,8 @@ def test_failed_rebinding_preserves_previous_headset(ws_root, connected_xr, monk
 
 def test_xr_network_can_select_wifi(ws_root, monkeypatch):
     from xr_teleop.xr_network import NetworkAddress
-    from xr_teleop.config import DEFAULTS
     path = str(ws_root / "config/robot.local.yaml")
-    xr = dict(DEFAULTS["xr"])
+    xr = section_defaults("xr")
     modes = []
 
     def addresses(mode):
@@ -194,13 +183,12 @@ def test_xr_network_can_select_wifi(ws_root, monkeypatch):
 
 def test_the_cable_to_the_arm_is_not_offered_and_the_only_other_adapter_is_taken(ws_root, monkeypatch):
     from xr_teleop.xr_network import NetworkAddress
-    from xr_teleop.config import DEFAULTS
     path = str(ws_root / "config/robot.local.yaml")
     monkeypatch.setattr(pairing, "network_addresses", lambda mode="": [
         NetworkAddress("enp4s0", "192.168.1.100", "ethernet", "192.168.1.0/24"),
         NetworkAddress("enx1", "192.168.10.101", "ethernet", "192.168.10.0/24")])
     io = ScriptedIo([])
-    assert pairing._xr_network(path, dict(DEFAULTS["xr"]), io)
+    assert pairing._xr_network(path, section_defaults("xr"), io)
     assert "enp4s0" not in io.out.getvalue()
     assert not any("网卡编号" in question for question, _ in io.questions)  # one adapter left: no question
     _, raw = config_edit.load_rt(path)
@@ -208,10 +196,9 @@ def test_the_cable_to_the_arm_is_not_offered_and_the_only_other_adapter_is_taken
 
 
 def test_xr_network_missing_address_does_not_wait_silently(ws_root, monkeypatch):
-    from xr_teleop.config import DEFAULTS
     monkeypatch.setattr(pairing, "network_addresses", lambda mode="": [])
     out = ScriptedIo([])
-    assert not pairing._xr_network(str(ws_root / "config/robot.local.yaml"), dict(DEFAULTS["xr"]), out)
+    assert not pairing._xr_network(str(ws_root / "config/robot.local.yaml"), section_defaults("xr"), out)
     assert "没有找到可用的有线 IPv4 地址" in out.out.getvalue()
 
 

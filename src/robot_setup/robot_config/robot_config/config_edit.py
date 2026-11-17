@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import tempfile
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
@@ -39,6 +40,8 @@ def save_rt(path: str, yaml, data) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             yaml.dump(data, handle)
+        if os.path.exists(path):
+            shutil.copymode(path, tmp)  # mkstemp makes the file 0600; keep the mode the file had
         os.replace(tmp, path)
     except BaseException:
         if os.path.exists(tmp):

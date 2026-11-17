@@ -1,4 +1,4 @@
-"""The xr section of config/robot.local.yaml: defaults and checks. The headset, PC Service and network belong here."""
+"""The xr section of config/robot.local.yaml: its checks (the keys and their values are in robot_config's template)."""
 from __future__ import annotations
 
 import re
@@ -7,20 +7,6 @@ from typing import Any, Dict
 from robot_config.config import Extension, expect
 
 NAME_RE = re.compile(r"^[A-Za-z0-9_.-]*$")  # network interface names
-
-DEFAULTS: Dict[str, Any] = {
-    "xr": {
-        "enable": True,
-        "start_pc_service": True,
-        "pc_service_script": "/opt/apps/roboticsservice/runService.sh",
-        "frame_timeout_ms": 300,
-        "reconnect_interval_s": 3.0,
-        "network_mode": "ethernet",
-        "network_interface": "",
-        "device_id": "",
-    },
-}
-
 
 def _check_xr(cfg: Dict[str, Any]) -> None:
     xr = cfg["xr"]
@@ -32,4 +18,4 @@ def _check_xr(cfg: Dict[str, Any]) -> None:
     expect(xr["reconnect_interval_s"] > 0, "'xr.reconnect_interval_s' must be > 0")
 
 
-EXTENSION = Extension(defaults=DEFAULTS, checks=(_check_xr,))
+EXTENSION = Extension(checks=(_check_xr,))

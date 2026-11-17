@@ -24,7 +24,7 @@ target_link_options(console_launcher PRIVATE -no-pie)
 # Module supervision, command line, web console, recording and diagnostics (start.sh, robot_control_suite控制台)
 ament_python_install_package(robot_app)
 
-install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME} OPTIONAL)
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME} OPTIONAL)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
