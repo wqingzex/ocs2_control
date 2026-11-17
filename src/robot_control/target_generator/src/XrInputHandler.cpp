@@ -231,6 +231,14 @@ namespace target_generator
     void XrInputHandler::disable()
     {
         enabled_.store(false);
+        // Following must not outlive the headset: the bases captured before the drop-out no longer match where
+        // the headset (and its origin) is after it returns, so resuming would send a far-away target.
+        // The next toggleFollow() recaptures both bases.
+        if (is_update_mode_.exchange(false))
+        {
+            RCLCPP_WARN(node_->get_logger(),
+                        "[TEL-001] XR control disabled while following: following stopped, press the right stick again to resume");
+        }
         RCLCPP_INFO(node_->get_logger(), "🕹️🕶️🕹️ XR control DISABLED!");
     }
 

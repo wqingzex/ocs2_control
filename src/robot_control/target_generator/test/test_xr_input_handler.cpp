@@ -252,6 +252,42 @@ TEST_F(XrInputHandlerTest, rightStickAgainStopsFollowing)
     EXPECT_TRUE(left_targets_.empty());
 }
 
+// The headset drops out while following (xr_target_node disappears from the graph), then comes back with a different
+// tracking origin. Nobody pressed the right stick again, so nothing may be sent: the base poses taken before the
+// drop-out belong to a headset session that no longer exists.
+TEST_F(XrInputHandlerTest, followingDoesNotResumeByItselfAfterTheHeadsetDropsOutAndReturns)
+{
+    fsmIs(kOcs2);
+    press(kToggleFollow);
+    moveLeftController(0.05, 0.0, 0.0);
+    ASSERT_FALSE(left_targets_.empty()) << "precondition: following works";
+
+    // The headset goes away: the next pose callback notices that /xr_target_node is gone.
+    executor_.remove_node(bridge_);
+    bridge_.reset();
+    ASSERT_TRUE(spinUntil([this]() {
+        left_pose_pub_->publish(pose(0.05, 0.0, 0.0));
+        return !handler_->isEnabled();
+    })) << "XR control was never disabled";
+
+    // It comes back (new session, tracking origin moved by about 2 m) and nobody touches the stick.
+    bridge_ = std::make_shared<rclcpp::Node>("xr_target_node");
+    executor_.add_node(bridge_);
+    left_targets_.clear();
+    ASSERT_TRUE(spinUntil([this]() {
+        left_pose_pub_->publish(pose(2.0, 1.0, 0.0));
+        return handler_->isEnabled();
+    })) << "XR control was never enabled again";
+    moveLeftController(2.0, 1.0, 0.0);
+
+    for (const auto& target : left_targets_)
+    {
+        ADD_FAILURE() << "target sent without a new start of following: (" << target.position.x << ", "
+                      << target.position.y << ", " << target.position.z << ")";
+        break;
+    }
+}
+
 TEST_F(XrInputHandlerTest, leavingOcs2StopsFollowingAndNeedsTheStickAgain)
 {
     fsmIs(kOcs2);
