@@ -1,6 +1,6 @@
 """Camera setup (./scripts/setup.sh cam): the draft session, the driver previews and the window panel.
 
-    python3 -m camera_setup.camera_setup --config C --ws-root W [--yes]"""
+    python3 -m camera_setup.session --config C --ws-root W [--yes]"""
 from __future__ import annotations
 
 import copy
@@ -21,9 +21,10 @@ from robot_config.config_edit import confirmed
 from robot_config.device_setup import Io, SetupSession, main_for, run_wizard
 from robot_runtime.processes import OwnedDrivers, require_idle
 
-from . import camera
-from .camera import (DRIVER_READY_LOG, DRIVER_READY_TIMEOUT_S, camera_error, find_camera_processes,
-                     stop_camera_processes)
+from launch_helpers.devices.camera import DRIVER_READY_LOG, DRIVER_READY_TIMEOUT_S
+
+from . import discovery
+from .discovery import camera_error, find_camera_processes, stop_camera_processes
 
 TITLES = {'head': '头部', 'left_wrist': '左腕', 'right_wrist': '右腕'}
 
@@ -61,7 +62,7 @@ class CameraPreviews:
         topic = f'/{prefix}camera_{role}/color/image_raw/compressed'
         self.probe.watch_image(topic)
         self.supervisor.configure(name,
-            ('ros2', 'launch', 'camera_setup', 'cameras.launch.py', f'config:={path}', f'name_prefix:={prefix}'))
+            ('ros2', 'launch', 'robot_bringup', 'cameras.launch.py', f'config:={path}', f'name_prefix:={prefix}'))
         self.entries[device.serial] = {'unit': name, 'topic': topic, 'rotation': rotation,
                                       'since': time.monotonic(), 'generation': uuid.uuid4().hex}
         # Return once this driver has initialized the device: the drivers share one lock, so a camera started
@@ -121,7 +122,7 @@ class CameraSetup(SetupSession):
             raise ValueError('没有发现相机；检查连接与容器 USB 映射')
         self.preview_factory, self.previews, self.errors = preview_factory, None, {}
         self.mapping = {d.serial: {'role': '', 'rotation': 0} for d in found}
-        suggestions = camera.suggest_roles(found, config_edit.camera_serials(config_path))
+        suggestions = discovery.suggest_roles(found, config_edit.camera_serials(config_path))
         for role, device in suggestions.items():
             if device:
                 self.mapping[device.serial] = {'role': role,
@@ -315,7 +316,7 @@ class CameraPanel:
 
 
 def step_cameras(config_path: str, ws_root: str, io: Io,
-                 scanner: Callable[[], List[camera.Device]] = camera.scan, runner=None) -> bool:
+                 scanner: Callable[[], List[discovery.Device]] = discovery.scan, runner=None) -> bool:
     _, raw = config_edit.load_rt(config_path)
     if (raw.get("cameras") or {}).get("enable") is False:
         answer = io.ask("相机当前关闭，是否现在配置并启用？y/n", "y")
@@ -333,7 +334,7 @@ def step_cameras(config_path: str, ws_root: str, io: Io,
         return False
     for i, d in enumerate(devs, 1):
         io.info(f"  [{i}] {d.model:<24} 序列号 {d.serial:<16} 连接 {d.connection or '-':<8} 端口 {d.usb_port or '-'}")
-    for serial, node in camera.inaccessible_usb_devices():
+    for serial, node in discovery.inaccessible_usb_devices():
         io.warn(f'检测到相机 {serial}，但当前环境无法访问 {node}；检查权限或容器 USB 映射，热插拔后设备编号可能变化')
     if len(devs) < len(ROLES):
         io.warn(f"只发现 {len(devs)} 台相机（正常为 {len(ROLES)} 台）")

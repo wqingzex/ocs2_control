@@ -7,7 +7,7 @@ import argparse
 import os
 import sys
 
-from camera_setup.camera import camera_specs
+from launch_helpers.devices.camera import camera_specs
 from .config import ConfigError, load
 from .robot import controller_launch
 

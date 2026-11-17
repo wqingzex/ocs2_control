@@ -3,7 +3,7 @@ import io
 
 import pytest
 
-from camera_setup import camera as devices, camera_setup
+from camera_setup import discovery as devices, session as camera_setup
 from robot_config import config_edit
 from robot_config.device_setup import Io
 

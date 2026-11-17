@@ -2,13 +2,15 @@
 <package format="3">
   <name>camera_setup</name>
   <version>0.1.0</version>
-  <description>W2 Orbbec cameras: discovery, driver launch and the camera setup window.</description>
+  <description>Orbbec camera setup: discovery, preview and the camera setup window. How the cameras are started is in launch_helpers and robot_bringup.</description>
   <maintainer email="TODO@email.com"/>
   <license>Apache-2.0</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>
   <exec_depend>robot_config</exec_depend>
   <exec_depend>robot_utils</exec_depend>
+  <exec_depend>launch_helpers</exec_depend>
+  <exec_depend>robot_bringup</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>rclpy</exec_depend>

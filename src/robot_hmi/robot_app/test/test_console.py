@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from robot_config import config_edit  # noqa: E402
 from robot_app.console import server  # noqa: E402
-from camera_setup.camera import parse_list_devices  # noqa: E402
+from camera_setup.discovery import parse_list_devices  # noqa: E402
 from robot_runtime.units import Unit, UnitSet  # noqa: E402
 
 SLEEPER = ("sh", "-c", "echo hello-from-unit; trap 'exit 0' INT; while true; do sleep 0.05; done")

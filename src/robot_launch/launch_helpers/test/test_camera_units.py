@@ -1,5 +1,5 @@
 """The camera units declare a ready text, so the supervisor starts them one after another."""
-from camera_setup.units import camera_units
+from launch_helpers.devices.camera import camera_units
 from robot_config.config import validate
 
 

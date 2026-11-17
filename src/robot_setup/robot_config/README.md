@@ -15,7 +15,7 @@ W2 外接装置的公共部分：机器人配置文件的读取、设置窗口�
 
 ```python
 from robot_config.config import load
-from camera_setup.camera import camera_specs
+from launch_helpers.devices.camera import camera_specs
 
 cameras = camera_specs(load("config/robot.local.yaml"))
 ```

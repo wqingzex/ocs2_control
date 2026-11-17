@@ -6,7 +6,7 @@ import time
 import pytest
 import yaml
 
-from camera_setup import camera_setup
+from camera_setup import session as camera_setup
 from robot_config import config_edit
 from robot_config.device_setup import Io
 
@@ -152,7 +152,7 @@ def test_image_probe_uses_its_own_context_and_only_subscribes_to_selected_image(
     import rclpy
     from rclpy.qos import qos_profile_sensor_data
     from sensor_msgs.msg import CompressedImage
-    from camera_setup.camera import ImageProbe
+    from camera_setup.discovery import ImageProbe
     previous = rclpy.ok()
     probe = ImageProbe('setup_image_test_' + uuid.uuid4().hex[:8])
     topic = '/setup_test_' + uuid.uuid4().hex + '/image'

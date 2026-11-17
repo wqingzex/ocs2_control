@@ -67,7 +67,7 @@ def launch_setup(context):
     if cfg["cameras"]["enable"]:
         actions.append(IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(
-                get_package_share_directory("camera_setup"), "launch", "cameras.launch.py")),
+                get_package_share_directory("robot_bringup"), "launch", "cameras.launch.py")),
             launch_arguments={"config": config_path}.items()))
     return actions
 

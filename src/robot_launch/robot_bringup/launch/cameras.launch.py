@@ -1,6 +1,6 @@
 """Start the Orbbec cameras of a teleop YAML, one driver process each (only:= picks some).
 
-    ros2 launch camera_setup cameras.launch.py config:=/path/to/robot.local.yaml [only:=camera_head]"""
+    ros2 launch robot_bringup cameras.launch.py config:=/path/to/robot.local.yaml [only:=camera_head]"""
 import os
 import re
 
@@ -12,7 +12,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import SetRemap
 from launch_ros.substitutions import FindPackageShare
 
-from camera_setup.camera import camera_specs, runtime_dir
+from launch_helpers.devices.camera import camera_specs, runtime_dir
 from robot_config.config import load
 
 

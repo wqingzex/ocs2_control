@@ -14,7 +14,7 @@ from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 
 from robot_config import config_edit
-from camera_setup import camera as devices
+from camera_setup import discovery as devices
 from .. import navigation
 from . import health
 from ..diag import make_bundle

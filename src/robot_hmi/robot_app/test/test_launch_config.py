@@ -5,7 +5,7 @@ import pytest
 import yaml
 
 from robot_app import ConfigError, validate
-from camera_setup.camera import camera_specs, wrist_eye
+from launch_helpers.devices.camera import camera_specs, wrist_eye
 from robot_app.check import main as check_main
 from robot_app.robot import controller_launch
 

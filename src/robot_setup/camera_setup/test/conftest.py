@@ -4,8 +4,8 @@ import time
 
 import pytest
 
-from camera_setup import camera_setup
-from camera_setup.camera import Device
+from camera_setup import session as camera_setup
+from camera_setup.discovery import Device
 
 DEVICES = [Device('Orbbec Gemini 335Lg', 'HEAD', 'USB3.0', '2-2'),
            Device('Orbbec Gemini 305', 'LEFT', 'USB3.0', '2-4'),

@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from camera_setup import camera as processes
-from camera_setup.camera import Device
-from camera_setup.camera_setup import CameraPreviews
+from camera_setup import discovery as processes
+from camera_setup.discovery import Device
+from camera_setup.session import CameraPreviews
 
 
 def process(root, pid, args, ticks=500, state='S'):
@@ -86,7 +86,7 @@ def test_busy_error_is_readable_and_old_error_does_not_mask_recovered_frames():
 
 
 def test_image_probe_rate_counts_frames_of_the_last_window_only(monkeypatch):
-    from camera_setup.camera import ImageProbe, RATE_WINDOW_S
+    from camera_setup.discovery import ImageProbe, RATE_WINDOW_S
     probe = ImageProbe.__new__(ImageProbe)
     probe.lock, probe.images, probe.arrivals = __import__('threading').Lock(), {}, {}
     message = SimpleNamespace(format='jpeg', data=b'x')
@@ -99,7 +99,7 @@ def test_image_probe_rate_counts_frames_of_the_last_window_only(monkeypatch):
 
 
 def test_image_probe_rate_is_frames_per_second(monkeypatch):
-    from camera_setup.camera import ImageProbe, RATE_WINDOW_S
+    from camera_setup.discovery import ImageProbe, RATE_WINDOW_S
     probe = ImageProbe.__new__(ImageProbe)
     probe.lock, probe.images, probe.arrivals = __import__('threading').Lock(), {}, {}
     message = SimpleNamespace(format='jpeg', data=b'x')

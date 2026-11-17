@@ -384,7 +384,7 @@ run_python_step() {
   source_ros --workspace
   local python_status=0 module python_path="${SETUP_PYTHONPATH}"
   case "$1" in
-    cameras) module=camera_setup.camera_setup ;;
+    cameras) module=camera_setup.session ;;
     ee) module=end_effector_setup.ee_setup ;;
     dyn) module=robot_config.load_identify ;;
     xr)

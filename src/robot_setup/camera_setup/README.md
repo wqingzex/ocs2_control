@@ -1,10 +1,9 @@
-# camera
+# camera_setup
 
-W2 的 Orbbec 相机：头部 Gemini 335Lg，左右腕 Gemini 305。依赖 [`robot_config`](../robot_config/README.md) 的配置框架。
+Orbbec 相机的**配置**：头部 Gemini 335Lg，左右腕 Gemini 305。依赖 [`robot_config`](../robot_config/README.md) 的配置框架。相机怎么**启动**在 `robot_launch`（见下）。
 
 ```bash
 ./scripts/setup.sh cam      # 弹窗：按实时画面分配头部、左右腕，设置旋转，显示帧率，逐项确认
-ros2 launch camera_setup cameras.launch.py config:=/绝对路径/config/robot.local.yaml [only:=camera_head]
 ```
 
 旋转角度保存到 `cameras.<位置>.rotation`，启动时按它生效。左右以机器人自身方向为准。
@@ -17,8 +16,14 @@ ros2 launch camera_setup cameras.launch.py config:=/绝对路径/config/robot.lo
 
 | 文件 | 内容 |
 |---|---|
-| `camera.py` | USB 扫描、相机规格与驱动参数、旧采集进程识别、画面订阅与帧率 |
-| `camera_setup.py` | 相机配置会话、预览、窗口卡片、`setup.sh cam` 入口 |
-| `launch/cameras.launch.py` | 启动 `orbbec_camera` 驱动，每台一个进程 |
+| `discovery.py` | **找设备**：USB 扫描、位置推荐、旧采集进程识别、画面订阅与帧率 |
+| `session.py` | **配置步骤**：配置会话、预览、窗口卡片、`setup.sh cam` 入口 |
 
-`camera.py` 不依赖 Qt 和配置改写，`robot_app` 启动相机只用它。
+## 启动相机（在 robot_launch）
+
+| 内容 | 位置 |
+|---|---|
+| 配置转驱动参数 `camera_specs`、单元定义 `camera_units` | [`launch_helpers/devices/camera.py`](../../robot_launch/launch_helpers/launch_helpers/devices/camera.py) |
+| 启动文件 | `ros2 launch robot_bringup cameras.launch.py config:=/绝对路径/config/robot.local.yaml [only:=camera_head]` |
+
+设置窗口的预览会调用上面的启动文件，所以 `camera_setup` 依赖 `launch_helpers` 和 `robot_bringup`，反过来不依赖。
