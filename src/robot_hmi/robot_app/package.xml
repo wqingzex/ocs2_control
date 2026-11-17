@@ -21,10 +21,10 @@
   <exec_depend>python3-ruamel.yaml</exec_depend>
   <exec_depend>python3-fastapi</exec_depend>
   <exec_depend>python3-uvicorn</exec_depend>
-  <exec_depend>fa_w2_payload</exec_depend>
+  <exec_depend>robot_config</exec_depend>
   <exec_depend>robot_utils</exec_depend>
-  <exec_depend>camera</exec_depend>
-  <exec_depend>end_effector</exec_depend>
+  <exec_depend>camera_setup</exec_depend>
+  <exec_depend>end_effector_setup</exec_depend>
   <exec_depend>orbbec_camera</exec_depend>
   <exec_depend>target_generator</exec_depend>
   <exec_depend>robot_bringup</exec_depend>

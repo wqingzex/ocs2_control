@@ -12,7 +12,7 @@ set -u
 
 if (( $# == 0 )); then
   mapfile -t packages < <(colcon list --names-only --base-paths src/robot_control src/robot_description \
-    src/robot_hardware src/robot_hmi src/robot_launch src/robot_utils src/robot_payload src/teleop)
+    src/robot_hardware src/robot_hmi src/robot_launch src/robot_utils src/robot_setup src/robot_teleop)
   set -- --packages-select "${packages[@]}"
 fi
 

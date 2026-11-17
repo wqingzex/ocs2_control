@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import yaml
 
-from camera.camera import camera_specs
+from camera_setup.camera import camera_specs
 from .config import TOPIC_RE, ConfigError, load
 
 JOINT_TOPICS = ("/joint_states", "/fsm_state")

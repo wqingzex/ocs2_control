@@ -5,7 +5,7 @@ import pytest
 import yaml
 
 from robot_app import ConfigError, validate
-from camera.camera import camera_specs, wrist_eye
+from camera_setup.camera import camera_specs, wrist_eye
 from robot_app.check import main as check_main
 from robot_app.robot import controller_launch
 
@@ -65,7 +65,7 @@ def test_load_lenient_disables_cameras_without_serials(tmp_path):
 
 
 def test_camera_assignment_values_are_checked():
-    from fa_w2_payload.config import validate_camera_assignments
+    from robot_config.config import validate_camera_assignments
     validate_camera_assignments({"head": {"serial": "CP1", "rotation": 90, "usb_port": "2-1.3", "enable": True},
                                  "left_wrist": {"enable": False}})
     for bad in ({"rotation": 45}, {"serial": "a b"}, {"enable": "yes"}, {"usb_port": "x y"}, {"rotation": True}):

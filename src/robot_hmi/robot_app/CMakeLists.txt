@@ -31,7 +31,7 @@ if(BUILD_TESTING)
   foreach(t test_launch_config test_units test_stop_hook test_console test_navigation)
     ament_add_pytest_test(${t} test/${t}.py
       PYTHON_EXECUTABLE python3
-      APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_payload/input/xr_teleop:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_payload/input/joystick_teleop:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_payload/fa_w2_payload/common:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_payload/fa_w2_payload/camera:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_payload/fa_w2_payload/end_effector:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_utils/python)
+      APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_teleop/xr_teleop:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_teleop/joystick_teleop:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_setup/robot_config:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_setup/camera_setup:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_setup/end_effector_setup:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_utils/python)
   endforeach()
   ament_add_pytest_test(test_console_launcher test/test_console_launcher.py
     PYTHON_EXECUTABLE python3

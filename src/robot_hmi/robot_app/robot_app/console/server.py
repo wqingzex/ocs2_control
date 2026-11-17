@@ -13,8 +13,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 
-from fa_w2_payload import config_edit
-from camera import camera as devices
+from robot_config import config_edit
+from camera_setup import camera as devices
 from .. import navigation
 from . import health
 from ..diag import make_bundle

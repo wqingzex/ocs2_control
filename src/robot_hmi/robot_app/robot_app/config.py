@@ -1,11 +1,11 @@
-"""Teleop configuration: the xr / joystick / navigation sections and robot.entry on top of fa_w2_payload's."""
+"""Teleop configuration: the xr / joystick / navigation sections and robot.entry on top of robot_config's."""
 from __future__ import annotations
 
 import re
 from typing import Any, Callable, Dict, Iterable, Optional
 
-from fa_w2_payload import config as common
-from fa_w2_payload.config import ConfigError, Extension, expect
+from robot_config import config as common
+from robot_config.config import ConfigError, Extension, expect
 from xr_teleop.config import DEFAULTS as XR_DEFAULTS, EXTENSION as XR_EXTENSION
 
 JOYSTICK_RE = re.compile(r"^(/dev/input/js\d+)?$")
@@ -18,7 +18,7 @@ ENTRIES = {
     "whole_body": ("whole_body.launch.py", "fa_w2"),
 }
 
-# entry -> the arm drivers that have a robot model there (the registered drivers are fa_w2_payload.config.ARM_TYPES)
+# entry -> the arm drivers that have a robot model there (the registered drivers are robot_config.config.ARM_TYPES)
 ENTRY_ARM_TYPES = {"split_body": ("marvin",), "dual_arm": ("marvin",), "whole_body": ("marvin",)}
 
 SECTION_DEFAULTS: Dict[str, Any] = {

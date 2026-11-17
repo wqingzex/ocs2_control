@@ -7,7 +7,7 @@ import argparse
 import os
 import sys
 
-from camera.camera import camera_specs
+from camera_setup.camera import camera_specs
 from .config import ConfigError, load
 from .robot import controller_launch
 
@@ -52,10 +52,10 @@ def main(argv=None) -> int:
     cam_text = ", ".join("{}({})".format(c.name, c.args["serial_number"]) for c in cams) if cams else "关闭"
     print(f"  相机: {cam_text}")
     import yaml
-    from fa_w2_payload.config_edit import confirmed
+    from robot_config.config_edit import confirmed
     with open(path, encoding='utf-8') as handle:
         raw = yaml.safe_load(handle) or {}
-    from fa_w2_payload.config_status import DEFAULT, ee_status
+    from robot_config.config_status import DEFAULT, ee_status
     if cams:
         status = '已确认' if confirmed(raw, 'cameras') else '尚未确认或配置已变化'
         print(f"  相机画面与位置: {status}（./scripts/setup.sh cam）")

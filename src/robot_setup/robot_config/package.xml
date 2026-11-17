@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>robot_config</name>
+  <version>0.1.0</version>
+  <description>Shared W2 hardware configuration, setup framework and process tracking for teleoperation and inference.</description>
+  <maintainer email="TODO@email.com"/>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>python3-ruamel.yaml</exec_depend>
+  <exec_depend>python3-pyqt5</exec_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
+  <test_depend>robot_utils</test_depend>  <!-- test_device_setup uses robot_runtime -->
+  <test_depend>python3-pytest</test_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

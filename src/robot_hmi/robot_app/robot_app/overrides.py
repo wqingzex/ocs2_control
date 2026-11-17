@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterable, List, Tuple
 
 import yaml
 
-from fa_w2_payload.config import PROFILE_SECTIONS, ConfigError
+from robot_config.config import PROFILE_SECTIONS, ConfigError
 
 DENIED_FIELDS = re.compile(r"^(cameras\.(head|left_wrist|right_wrist)\.(serial|usb_port|rotation)|xr\.device_id"
                            r"|robot\.end_effector\.interface\.(left|right)\.port)$")

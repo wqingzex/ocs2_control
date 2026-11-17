@@ -48,4 +48,4 @@
 
 增量不超过 0.1 rad，用于 [`docs/使用手册.md`](../docs/使用手册.md)；需要容器里的 ROS 环境。
 
-模块、日志位置和排查方法见 [`docs/使用手册.md`](../docs/使用手册.md)；背后的实现在 [`robot_app`](../src/robot_hmi/robot_app/README.md) 和 [`fa_w2_payload`](../src/robot_payload/fa_w2_payload/README.md)。
+模块、日志位置和排查方法见 [`docs/使用手册.md`](../docs/使用手册.md)；背后的实现在 [`robot_app`](../src/robot_hmi/robot_app/README.md) 和 [`robot_config`](../src/robot_setup/robot_config/README.md)。

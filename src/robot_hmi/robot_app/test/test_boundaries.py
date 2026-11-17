@@ -52,4 +52,4 @@ def test_retired_package_names_are_gone(name):
 def test_shared_code_is_not_re_exported_under_robot_app():
     shims = [p.name for p in (PACKAGE_DIR / "robot_app").glob("*.py")
              if "sys.modules[__name__]" in p.read_text(encoding="utf-8")]
-    assert not shims, f"alias modules hide the dependency on fa_w2_payload: {shims}"
+    assert not shims, f"alias modules hide the dependency on robot_config: {shims}"

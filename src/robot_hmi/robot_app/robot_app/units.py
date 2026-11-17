@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional, Tuple
 from joystick_teleop.units import joystick_units
 from robot_log_tools.log import LOG_MODE_ENV  # set for every unit; the C++ components read it too
 from robot_runtime.units import Unit, UnitSet
-from camera.units import camera_units
+from camera_setup.units import camera_units
 from xr_teleop.units import xr_units
 
 from .robot import controller_launch

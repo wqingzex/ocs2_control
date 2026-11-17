@@ -48,7 +48,7 @@ MARVIN_FIRMWARE_DEFAULT=343   # 和 marvin_hardware/CMakeLists.txt 的默认值�
 # build --minimal 只编译这些包及其依赖。
 MINIMAL_PACKAGES=(
   fa_w2_description juxie_hardware marvin_hardware end_effector_hardware
-  joystick_teleop keyboard_teleop xr_teleop topic_based_hardware robot_app camera end_effector
+  joystick_teleop keyboard_teleop xr_teleop topic_based_hardware robot_app camera_setup end_effector_setup
 )
 
 # ==================================================================================================
@@ -356,9 +356,9 @@ step_marvin() {
     choice="${choice:-${suggestion}}"
   fi
   is_marvin_firmware "${choice}" || die "天机臂 SDK 版本只能是 338 或 343，输入的是 '${choice}'"
-  PYTHONPATH="${PAYLOAD_PYTHONPATH}:${PYTHONPATH:-}" python3 - "${CONFIG}" "${choice}" <<'PY'
+  PYTHONPATH="${SETUP_PYTHONPATH}:${PYTHONPATH:-}" python3 - "${CONFIG}" "${choice}" <<'PY'
 import sys
-from fa_w2_payload.config_edit import set_fields
+from robot_config.config_edit import set_fields
 set_fields(sys.argv[1], "robot.arm.interface", {"firmware": int(sys.argv[2])})
 PY
   info "已写入 robot.arm.interface.firmware: ${choice}（之后编译 marvin_hardware 都用这个版本）"
@@ -378,18 +378,18 @@ step_build() {
     --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF "${marvin_arg}"
 }
 
-# ---- 相机 camera、手 end_effector、负载辨识 fa_w2_payload；XR 由遥操作模块处理 ---------------------------------
-PAYLOAD_PYTHONPATH="${WS_DIR}/src/robot_payload/fa_w2_payload/common:${WS_DIR}/src/robot_payload/fa_w2_payload/camera:${WS_DIR}/src/robot_payload/fa_w2_payload/end_effector"
+# ---- 相机 camera_setup、末端 end_effector_setup、负载辨识 robot_config；XR 配对由 xr_teleop 处理 ---------------------------------
+SETUP_PYTHONPATH="${WS_DIR}/src/robot_setup/robot_config:${WS_DIR}/src/robot_setup/camera_setup:${WS_DIR}/src/robot_setup/end_effector_setup"
 run_python_step() {
   source_ros --workspace
-  local python_status=0 module python_path="${PAYLOAD_PYTHONPATH}"
+  local python_status=0 module python_path="${SETUP_PYTHONPATH}"
   case "$1" in
-    cameras) module=camera.camera_setup ;;
-    ee) module=end_effector.ee_setup ;;
-    dyn) module=fa_w2_payload.load_identify ;;
+    cameras) module=camera_setup.camera_setup ;;
+    ee) module=end_effector_setup.ee_setup ;;
+    dyn) module=robot_config.load_identify ;;
     xr)
       module=xr_teleop.pairing
-      python_path="${python_path}:${WS_DIR}/src/robot_payload/input/xr_teleop" ;;
+      python_path="${python_path}:${WS_DIR}/src/robot_teleop/xr_teleop" ;;
   esac
   # shellcheck disable=SC2086
   PYTHONPATH="${python_path}:${PYTHONPATH:-}" \
@@ -405,7 +405,7 @@ step_xr() { run_python_step xr; }
 # ---- 已配置或默认值可用的步骤不再配置 ---------------------------------------------------------------
 # 完整流程里这样的步骤直接跳过；单步命令（如 ./scripts/setup.sh cam）和 --force 永远重新配置。
 step_ready() {  # 返回 0 表示不用配置；原因写入 READY_REASON
-  local status=0 python_path="${PAYLOAD_PYTHONPATH}:${PYTHONPATH:-}"
+  local status=0 python_path="${SETUP_PYTHONPATH}:${PYTHONPATH:-}"
   READY_REASON=""
   case "$1" in
     marvin)
@@ -414,9 +414,9 @@ step_ready() {  # 返回 0 表示不用配置；原因写入 READY_REASON
       [[ -n "${firmware}" ]] || return 1
       READY_REASON="已选择 ${firmware}" ;;
     cameras|ee|dyn)
-      READY_REASON="$(PYTHONPATH="${python_path}" python3 -m fa_w2_payload.config_status status --config "${CONFIG}" "$1" 2>/dev/null)" || status=$? ;;
+      READY_REASON="$(PYTHONPATH="${python_path}" python3 -m robot_config.config_status status --config "${CONFIG}" "$1" 2>/dev/null)" || status=$? ;;
     xr)
-      READY_REASON="$(PYTHONPATH="${WS_DIR}/src/robot_payload/input/xr_teleop:${python_path}" python3 -m xr_teleop.pairing \
+      READY_REASON="$(PYTHONPATH="${WS_DIR}/src/robot_teleop/xr_teleop:${python_path}" python3 -m xr_teleop.pairing \
         --config "${CONFIG}" --ws-root "${WS_DIR}" --status xr 2>/dev/null)" || status=$? ;;
     *) return 1 ;;
   esac
@@ -426,8 +426,8 @@ step_ready() {  # 返回 0 表示不用配置；原因写入 READY_REASON
 # ---- summary --------------------------------------------------------------------------------------
 step_summary() {
   source_ros --workspace
-  PYTHONPATH="${PAYLOAD_PYTHONPATH}:${PYTHONPATH:-}" \
-    python3 -m fa_w2_payload.config_status check "${CONFIG}"
+  PYTHONPATH="${SETUP_PYTHONPATH}:${PYTHONPATH:-}" \
+    python3 -m robot_config.config_status check "${CONFIG}"
   local chosen built
   chosen="$(marvin_firmware_config)"
   built="$(marvin_firmware_built)"
