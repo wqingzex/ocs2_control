@@ -11,9 +11,8 @@ from typing import Any, Dict, NamedTuple, Optional, Sequence
 
 import yaml
 
-from .config import DYN_LENGTH, ROLES, ConfigError, load
+from .config import DYN_LENGTH, ROLES, ConfigError, ee_bus, ee_side, ee_type, load
 from .config_edit import confirmed, load_rt
-from .mappings import ee_bus, ee_type, ee_side
 
 
 CONFIGURED, DEFAULT, NEEDED = "已配置", "默认值", "需配置"

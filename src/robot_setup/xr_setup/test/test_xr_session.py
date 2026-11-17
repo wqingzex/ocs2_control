@@ -5,7 +5,7 @@ import pytest
 import yaml
 
 from robot_config import config_edit
-from robot_config.template import section_defaults
+from robot_config.config import section_defaults
 from robot_config.testing import full_config
 from robot_config.device_setup import Io
 from xr_setup import session as pairing

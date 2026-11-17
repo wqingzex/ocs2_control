@@ -5,9 +5,8 @@ import pytest
 import yaml
 
 from robot_config import sync
-from robot_config.config import validate
+from robot_config.config import template_for, validate
 from robot_config.device_setup import Io
-from robot_config.template import template_for
 
 
 class Quiet(Io):

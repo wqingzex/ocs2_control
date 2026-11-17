@@ -68,7 +68,7 @@ def test_the_load_override_is_passed_as_the_driver_reads_it():
 
 def test_the_template_reaches_the_xacro_with_the_values_the_descriptions_use_anyway():
     """The template's values are the descriptions' own defaults, so a config made from it changes nothing."""
-    from robot_config.template import template_for
+    from robot_config.config import template_for
     whole = normalize_robot_profile(template_for("whole_body"))
     assert whole["xacro"] == {"base": "linkhou_s2", "base_joints_movable": "false"}
     assert whole["hardware"] == {

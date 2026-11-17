@@ -282,7 +282,7 @@ def _run_config_step(tmp_path, args, config_text=None):
 
 def test_the_config_step_creates_the_file_from_the_template_of_the_entry(tmp_path):
     import yaml
-    from robot_config.template import template_for
+    from robot_config.config import template_for
     result, config = _run_config_step(tmp_path, ("config", "--entry", "dual_arm", "--yes"))
     assert result.returncode == 0, result.stdout + result.stderr
     assert yaml.safe_load(config.read_text()) == template_for("dual_arm")

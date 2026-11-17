@@ -12,10 +12,10 @@ from pathlib import Path
 from typing import Callable, List
 
 from robot_config import config_edit
-from robot_config.config import END_EFFECTORS as HANDS, validate
+from robot_config.config import (DRIVE_TO_BUS, END_EFFECTORS as HANDS, HAND_DRIVES, arm_ip, ee_drive, ee_side, ee_type,
+                                 validate)
 
 from robot_config.config_edit import confirmed
-from robot_config.mappings import DRIVE_TO_BUS, HAND_DRIVES, arm_ip, ee_drive, ee_type, ee_side
 from robot_config.device_setup import Io, SetupSession, main_for, run_wizard
 from robot_runtime.processes import require_idle
 

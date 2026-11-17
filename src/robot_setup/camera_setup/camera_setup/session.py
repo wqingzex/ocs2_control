@@ -16,8 +16,7 @@ from typing import Callable, List
 import yaml
 
 from robot_config import config_edit
-from robot_config.config import ROLES, ROTATIONS, validate_camera_assignments
-from robot_config.template import section_defaults
+from robot_config.config import ROLES, ROTATIONS, section_defaults, validate_camera_assignments
 from robot_config.config_edit import confirmed
 from robot_config.device_setup import Io, SetupSession, main_for, run_wizard
 from robot_runtime.processes import OwnedDrivers, require_idle

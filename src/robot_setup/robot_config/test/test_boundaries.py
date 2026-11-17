@@ -7,18 +7,16 @@ import pytest
 PACKAGE_DIR = Path(__file__).resolve().parents[1] / "robot_config"
 APPLICATION_NAMES = ("robot_app", "joystick_teleop", "keyboard_teleop", "target_generator", "arm_controller", "robot_startup", "launch_helpers", "robot_visualize", "robot_navigation")
 # module -> the robot_config modules it may import. Dependencies only point down:
-#   load_identify -> config_status / device_setup -> config_edit -> mappings -> config (config_status also reads mappings).
+#   load_identify -> config_status / device_setup -> config_edit -> config (the template, the validation, the device mappings).
 # The device packages (camera, end_effector) sit above all of these; robot_config never imports them.
 ALLOWED = {
-    "template": set(),
-    "testing": {"template"},
-    "config": {"template"},
-    "mappings": {"config", "template"},
-    "config_edit": {"config", "mappings"},
+    "config": set(),
+    "testing": {"config"},
+    "config_edit": {"config"},
     "device_setup": {"config_edit"},
-    "config_status": {"config", "config_edit", "mappings"},
+    "config_status": {"config", "config_edit"},
     "load_identify": {"config_edit", "config_status", "device_setup"},
-    "sync": {"config_edit", "device_setup", "template"},
+    "sync": {"config", "config_edit", "device_setup"},
 }
 
 

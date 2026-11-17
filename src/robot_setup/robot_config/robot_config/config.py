@@ -1,18 +1,91 @@
-"""Load and validate config/robot.local.yaml.
+"""Load, validate and describe config/robot.local.yaml.
 
-The file must have every key of the template for its robot.entry (template.py), no more, and good values: nothing is
-filled in at load time. Other packages add checks of the sections they own through an Extension. A missing or unknown key
-or a bad value raises ConfigError naming the field."""
+The template (templates/) is the schema: the file must have every key of the template for its robot.entry, no more, and good
+values; nothing is filled in at load time. `./scripts/setup.sh config` writes a new file from the template and adds the keys
+a file lacks. Other packages add checks of the sections they own through an Extension. A missing or unknown key or a bad
+value raises ConfigError naming the field.
+
+Three parts: the template (what keys exist and their values), the validation (ConfigError, load, validate), and the device
+mappings (which fields make up the camera and hand mapping a setup step confirms; the fingerprint values must stay what
+they were, test_mappings: a changed value makes every operator confirm again)."""
 from __future__ import annotations
 
 import copy
+import io
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Dict, Tuple
 
 import yaml
 
-from .template import FREEFORM, entries, template_for
+# ---- the template ---------------------------------------------------------------------------------------
+
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+BASE = TEMPLATE_DIR / "base.yaml"
+# Contents that are not part of the schema: ros2_control overrides written by hand, and the confirmation records.
+FREEFORM = ("control.patch", "setup")
+
+
+def entries() -> Tuple[str, ...]:
+    """The robot.entry values: one overlay file per entry."""
+    return tuple(sorted(path.stem for path in TEMPLATE_DIR.glob("*.yaml") if path != BASE))
+
+
+def _overlay_path(entry: str) -> Path:
+    if entry not in entries():
+        raise ValueError(f"no template for robot.entry {entry!r} (one of {list(entries())})")
+    return TEMPLATE_DIR / f"{entry}.yaml"
+
+
+def _merge(target: Dict[str, Any], overlay: Dict[str, Any]) -> None:
+    for key, value in overlay.items():
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            _merge(target[key], value)
+        else:
+            target[key] = copy.deepcopy(value)
+
+
+def template_for(entry: str) -> Dict[str, Any]:
+    """The complete config of an entry with every key at its template value."""
+    with open(BASE, encoding="utf-8") as handle:
+        schema = yaml.safe_load(handle)
+    with open(_overlay_path(entry), encoding="utf-8") as handle:
+        _merge(schema, yaml.safe_load(handle) or {})
+    return schema
+
+
+def section_defaults(section: str) -> Dict[str, Any]:
+    """One section's template values; the same for every entry (cameras, xr, ...)."""
+    return template_for(entries()[0])[section]
+
+
+def _yaml():
+    from ruamel.yaml import YAML
+    yaml_rt = YAML()
+    yaml_rt.preserve_quotes = True
+    yaml_rt.width = 4096
+    return yaml_rt
+
+
+def template_document(entry: str):
+    """The template of an entry as a round-trip document (comments kept), for writing and for adding missing keys."""
+    yaml_rt = _yaml()
+    with open(BASE, encoding="utf-8") as handle:
+        document = yaml_rt.load(handle)
+    with open(_overlay_path(entry), encoding="utf-8") as handle:
+        _merge(document, yaml_rt.load(handle) or {})
+    return document
+
+
+def template_text(entry: str) -> str:
+    """The text of a new robot.local.yaml for an entry."""
+    buffer = io.StringIO()
+    _yaml().dump(template_document(entry), buffer)
+    return buffer.getvalue()
+
+
+# ---- validation ------------------------------------------------------------------------------------------
 
 ROTATIONS = (0, 90, 180, 270)
 ROLES = ("head", "left_wrist", "right_wrist")  # camera positions
@@ -254,3 +327,77 @@ def load_lenient(path: str, ext: Extension | None = None, edit: Edit | None = No
             raw = edit(raw)
         raw["cameras"] = {**(raw.get("cameras") or {}), "enable": False}
         return validate(raw, ext)
+
+
+# ---- device mappings (what a setup step confirms) --------------------------------------------------------
+
+# The hand setup and its worker (end_effector_setup.discovery) speak of the wiring as usb / 485 / usb_can / ethernet; the config
+# file says robot.end_effector.interface.bus. Converted at the file boundary only, which also keeps the fingerprint of an
+# unchanged wiring the same as before the rename.
+BUS_TO_DRIVE = {"usb_rs485": "usb", "arm_rs485": "485", "usb_can": "usb_can", "ethernet": "ethernet"}
+DRIVE_TO_BUS = {drive: bus for bus, drive in BUS_TO_DRIVE.items()}
+HAND_DRIVES = tuple(DRIVE_TO_BUS)
+
+
+def _mapping(value: Any) -> Dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def ee_type(robot: Dict[str, Any]) -> str:
+    """robot.end_effector.type with its default."""
+    return _mapping(robot.get("end_effector")).get("type") or "linkerhand_l6"
+
+
+def ee_bus(robot: Dict[str, Any]) -> str:
+    """robot.end_effector.interface.bus with its default."""
+    return _mapping(_mapping(robot.get("end_effector")).get("interface")).get("bus") or "usb_rs485"
+
+
+def ee_drive(robot: Dict[str, Any]) -> str:
+    """The bus as the setup code names the wiring."""
+    bus = ee_bus(robot)
+    return BUS_TO_DRIVE.get(bus, bus)
+
+
+def ee_side(robot: Dict[str, Any], side: str) -> Dict[str, Any]:
+    """robot.end_effector.interface.<side>: port, can, channel (only what is written)."""
+    return _mapping(_mapping(_mapping(robot.get("end_effector")).get("interface")).get(side))
+
+
+def arm_ip(robot: Dict[str, Any]) -> str:
+    """robot.arm.interface.ip with its default (the Marvin controller, also reached by the arm's RS485 port)."""
+    return _mapping(_mapping(robot.get("arm")).get("interface")).get("ip") or DEFAULT_ARM_IP
+
+
+def camera_mapping(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """The cameras section with the defaults filled in: a change to any camera field invalidates the confirmation."""
+    value = section_defaults("cameras")
+    for key, item in (raw.get("cameras") or {}).items():
+        if isinstance(item, dict) and key in value:
+            value[key].update(item)
+        else:
+            value[key] = item
+    return value
+
+
+def ee_mapping(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """The hand, its wiring and the ports or channels that wiring uses."""
+    robot = raw.get("robot") or {}
+    value = {"hand": ee_type(robot), "drive": ee_drive(robot)}
+    if value["hand"] != "none":
+        left, right = ee_side(robot, "left"), ee_side(robot, "right")
+        if value["drive"] == "usb":
+            keys = {"usb_left_port": left.get("port") or "", "usb_right_port": right.get("port") or ""}
+        elif value["drive"] == "usb_can":
+            keys = {"left_ee_can_interface": left.get("can") or "can1", "right_ee_can_interface": right.get("can") or "can2"}
+        elif value["drive"] == "ethernet":
+            keys = {}  # Wuji: the driver scans and matches each hand by hand_side
+        else:
+            keys = {"device_ip": arm_ip(robot), "left_ee_channel": left.get("channel") or 1,
+                    "right_ee_channel": right.get("channel") or 1}
+        value.update(keys)
+    return value
+
+
+# setup step -> the fields its confirmation covers
+FIELDS = {"cameras": camera_mapping, "ee": ee_mapping}

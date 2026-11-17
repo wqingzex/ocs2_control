@@ -15,7 +15,7 @@ from typing import Any, List, Optional, Tuple
 
 from . import config_edit
 from .device_setup import Io
-from .template import FREEFORM, entries, template_document, template_text
+from .config import FREEFORM, entries, template_document, template_text
 
 DEFAULT_ENTRY = "whole_body"
 

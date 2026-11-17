@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from .template import _merge, template_for
+from .config import _merge, template_for
 
 
 def full_config(entry: str = "whole_body", **sections: Any) -> Dict[str, Any]:

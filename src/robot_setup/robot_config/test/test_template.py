@@ -4,7 +4,7 @@ import io
 import pytest
 import yaml
 
-from robot_config import template
+from robot_config import config
 from robot_config.config import validate
 from robot_config.testing import full_config
 
@@ -14,7 +14,7 @@ def keys(node, prefix=""):
     found = set()
     for key, value in node.items():
         path = f"{prefix}.{key}" if prefix else key
-        if isinstance(value, dict) and path not in template.FREEFORM:
+        if isinstance(value, dict) and path not in config.FREEFORM:
             found |= keys(value, path)
         else:
             found.add(path)
@@ -22,23 +22,23 @@ def keys(node, prefix=""):
 
 
 def test_there_is_one_overlay_per_entry():
-    assert template.entries() == ("dual_arm", "split_body", "whole_body")
+    assert config.entries() == ("dual_arm", "split_body", "whole_body")
 
 
-@pytest.mark.parametrize("entry", template.entries())
+@pytest.mark.parametrize("entry", config.entries())
 def test_the_template_of_every_entry_is_valid_with_the_cameras_off(entry):
     cfg = full_config(entry, cameras={"enable": False})
     assert validate(cfg)["robot"]["entry"] == entry
 
 
 def test_every_entry_has_the_same_keys():
-    reference = keys(template.template_for("whole_body"))
-    for entry in template.entries():
-        assert keys(template.template_for(entry)) == reference, entry
+    reference = keys(config.template_for("whole_body"))
+    for entry in config.entries():
+        assert keys(config.template_for(entry)) == reference, entry
 
 
 def test_an_overlay_only_changes_values():
-    base, dual = template.template_for("whole_body"), template.template_for("dual_arm")
+    base, dual = config.template_for("whole_body"), config.template_for("dual_arm")
     assert dual["control"]["limits"] == {"max_joint_speed": 50, "max_joint_acceleration": 30}
     assert base["control"]["limits"] == {"max_joint_speed": 100, "max_joint_acceleration": 100}
     assert dual["robot"]["base"] == {"type": "", "joints_movable": None}
@@ -46,16 +46,16 @@ def test_an_overlay_only_changes_values():
 
 
 def test_the_text_of_a_new_file_is_the_template_with_its_comments():
-    text = template.template_text("dual_arm")
-    assert yaml.safe_load(io.StringIO(text)) == template.template_for("dual_arm")
+    text = config.template_text("dual_arm")
+    assert yaml.safe_load(io.StringIO(text)) == config.template_for("dual_arm")
     assert "[必改]" in text and text.startswith("#")
 
 
 def test_an_unknown_entry_has_no_template():
     with pytest.raises(ValueError, match="no template"):
-        template.template_for("nonsense")
+        config.template_for("nonsense")
 
 
 def test_section_defaults_are_the_same_for_every_entry():
-    assert template.section_defaults("cameras")["fps"] == 30
-    assert all(template.template_for(e)["cameras"] == template.section_defaults("cameras") for e in template.entries())
+    assert config.section_defaults("cameras")["fps"] == 30
+    assert all(config.template_for(e)["cameras"] == config.section_defaults("cameras") for e in config.entries())

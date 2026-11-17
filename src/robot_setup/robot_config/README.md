@@ -26,12 +26,15 @@ cameras = camera_specs(load("config/robot.local.yaml"))
 
 | 文件 | 内容 |
 |---|---|
-| `config.py` | 配置框架与校验（`robot`、`cameras` 两段），不依赖包内其他文件 |
-| `config_edit.py` | 保留注释地改写配置；确认记录：各设备包登记“哪些字段属于映射”，映射变化后要重新确认 |
-| `processes.py` | `run/<模块>.json` 状态文件、进程识别、setup 自己拉起的子进程 |
+| `config.py` | 模板（`templates/`，键的清单）、加载和校验、设备映射字段（相机和手的确认由哪些字段决定）；不依赖包内其他文件 |
+| `config_edit.py` | 保留注释地改写配置；确认记录和指纹，映射变化后要重新确认 |
 | `device_setup.py` | 设备配置的公共框架：会话基类、Qt 窗口外壳、终端输入输出、各步骤的命令行入口 |
 | `config_status.py` | 各步骤是否需要配置，配置检查（`check`） |
-| `load_identify.py` | 负载辨识 |
+| `sync.py` | `setup.sh config`：按入口生成配置，补缺的键 |
+| `load_identify.py` | 负载辨识（`setup.sh dyn`） |
+| `testing.py` | 测试用：由模板得到完整配置 `full_config` |
+
+`sync`、`config_status`、`load_identify` 是 `setup.sh` 直接 `python3 -m` 调用的命令入口，所以各占一个文件。
 
 设备包提供会话（草稿、校验、保存）和面板（窗口里的卡片），窗口框架不认识具体设备。
 

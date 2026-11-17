@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from robot_config import config_edit, mappings
+from robot_config import config, config_edit
 
 # case -> (cameras fingerprint, hand fingerprint)
 GOLDEN = {
@@ -61,12 +61,12 @@ def test_a_camera_field_that_changes_changes_the_camera_fingerprint_only():
     ("arm_rs485", {"device_ip", "left_ee_channel", "right_ee_channel"}),
 ])
 def test_the_hand_mapping_holds_the_fields_its_wiring_uses(bus, expected_keys):
-    value = mappings.ee_mapping({"robot": {"end_effector": {"type": "linkerhand_l6", "interface": {"bus": bus}}}})
+    value = config.ee_mapping({"robot": {"end_effector": {"type": "linkerhand_l6", "interface": {"bus": bus}}}})
     assert set(value) - {"hand", "drive"} == expected_keys
 
 
 def test_no_end_effector_has_no_wiring_fields():
-    assert mappings.ee_mapping({"robot": {"end_effector": {"type": "none"}}}) == {"hand": "none", "drive": "usb"}
+    assert config.ee_mapping({"robot": {"end_effector": {"type": "none"}}}) == {"hand": "none", "drive": "usb"}
 
 
 def test_an_unknown_section_is_an_error_naming_the_known_ones():

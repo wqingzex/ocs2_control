@@ -12,8 +12,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
-from .config import ROLES, validate_camera_assignments
-from .mappings import FIELDS
+from .config import FIELDS, ROLES, validate_camera_assignments
 
 
 def _yaml():
