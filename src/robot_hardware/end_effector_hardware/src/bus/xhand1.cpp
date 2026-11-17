@@ -112,7 +112,7 @@ namespace end_effector_hardware
                 const std::size_t id = frame[at];
                 if (id >= kJoints) continue;
                 state.position[id] = getFloat(frame, at + 2);
-                state.effort[id] = getU16(frame, at + 6);
+                state.effort[id] = static_cast<int16_t>(getU16(frame, at + 6));  // signed: 0xFFF8 is -8
             }
             return state;
         }

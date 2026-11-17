@@ -450,6 +450,42 @@ TEST(XHand1Frame, ReplyLengthFromTheHeaderAndGarbageEndsAtOnce)
     EXPECT_EQ(xh::replyLength({0x55, 0xAA, 0x80, 0xFE, 0x02, 0xFF, 0xFF}), 7u);  // longer than any reply
 }
 
+TEST(XHand1Frame, EffortIsASignedTorqueReading)
+{
+    // The hand reports the motor torque as a signed 16-bit value: on the robot an index finger bending gave raw
+    // 0xFFF8 .. 0xFFE0 (a few units against the motion) and 185 .. 235 on the way back, never a real 65528.
+    const std::size_t data = xh::kJoints * xh::kStateBytesPerJoint + xh::kTactileBytes;
+    std::vector<uint8_t> frame{0x55, 0xAA, 0x80, 0xFE, 0x02, static_cast<uint8_t>(data & 0xFF),
+                               static_cast<uint8_t>(data >> 8)};
+    for (std::size_t id = 0; id < xh::kJoints; ++id)
+    {
+        std::vector<uint8_t> record(24, 0);
+        record[0] = static_cast<uint8_t>(id);
+        if (id == 4)  // 0xFFF8 = -8
+        {
+            record[6] = 0xF8;
+            record[7] = 0xFF;
+        }
+        if (id == 5)  // 185
+        {
+            record[6] = 0xB9;
+            record[7] = 0x00;
+        }
+        frame.insert(frame.end(), record.begin(), record.end());
+    }
+    frame.resize(frame.size() + xh::kTactileBytes, 0);
+    const uint16_t crc = xh::crc16(frame.data(), frame.size());
+    frame.push_back(static_cast<uint8_t>(crc & 0xFF));
+    frame.push_back(static_cast<uint8_t>(crc >> 8));
+
+    const auto state = xh::parseReply(frame, 0xFE, 0);
+
+    ASSERT_TRUE(state.has_value());
+    EXPECT_DOUBLE_EQ(state->effort[4], -8.0);
+    EXPECT_DOUBLE_EQ(state->effort[5], 185.0);
+    EXPECT_DOUBLE_EQ(state->effort[0], 0.0);
+}
+
 TEST(XHand1, ProbesWithZeroTorqueThenHoldsAndFollows)
 {
     Rig rig("arm_rs485://10.1.0.20/left/port1");
