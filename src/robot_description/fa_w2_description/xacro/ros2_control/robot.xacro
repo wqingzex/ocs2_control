@@ -4,6 +4,14 @@
 	<xacro:arg name="ros2_control_hardware_type" default="mock_components"/>
 	<xacro:arg name="arm_ctrl_mode" default="position"/>
 	<xacro:arg name="device_ip" default="192.168.1.190"/>
+	<!-- arm_driver: the arm driver of the real robot (robot.arm.type). marvin is the only one registered; a new driver
+	     adds its name to arm_drivers and a ros2_control block next to the marvin one.
+	     (arm_type in marvin_hardware_block is something else: the arm topology dual | left | right.) -->
+	<xacro:arg name="arm_driver" default="marvin"/>
+	<xacro:property name="arm_drivers" value="${['marvin']}"/>
+	<xacro:unless value="${'$(arg arm_driver)' in arm_drivers}">
+		${xacro.fatal('arm_driver must be one of ' + ', '.join(arm_drivers) + '; got ' + '$(arg arm_driver)')}
+	</xacro:unless>
 	<!-- left_/right_end_effector_bus: where each end effector is wired (robot.end_effector_bus): usb_rs485 | arm_rs485 |
 	     usb_can | ethernet. Empty: arm_rs485 on the real robot. Converted once here to the drive keys the macros use. -->
 	<xacro:arg name="left_end_effector_bus" default=""/>
@@ -50,6 +58,7 @@
 	<xacro:include filename="$(find fa_w2_description)/xacro/ros2_control/body.xacro"/>
 
 	<xacro:if value="${is_real_hardware}">
+		<xacro:if value="${'$(arg arm_driver)' == 'marvin'}">
 		<ros2_control name="arms" type="system">
 			<hardware>
 				<xacro:marvin_hardware_block
@@ -63,6 +72,7 @@
 			</hardware>
 			<xacro:dual_arm_ee_block mode="real"/>
 		</ros2_control>
+		</xacro:if>
 
 		<ros2_control name="juxie_body" type="system">
 			<hardware>
