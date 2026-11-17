@@ -1,7 +1,7 @@
 """XR headset pairing (./scripts/setup.sh xr): choose the network adapter, start the PC Service and the bridge,
-wait for the headset and save its id.
+wait for the headset (discovery.py) and save its id.
 
-    python3 -m xr_teleop.pairing --config C --ws-root W [--yes] [--xr-timeout S] xr"""
+    python3 -m xr_setup.session --config C --ws-root W [--yes] [--xr-timeout S] xr"""
 from __future__ import annotations
 
 import argparse
@@ -17,15 +17,12 @@ from robot_config import config_edit
 from robot_config.config import load_lenient
 from robot_config.device_setup import Io
 
-from .config import EXTENSION
-from .units import xr_units
-from .xr_network import arm_ip, network_addresses, without_arm_link
+from xr_teleop.config import EXTENSION
+from xr_teleop.xr_network import arm_ip, network_addresses, without_arm_link
+
+from . import discovery
 
 # ---- XR --------------------------------------------------------------------------------------------
-
-def host_ips() -> List[str]:
-    return [f"{entry.address} ({entry.interface})" for entry in network_addresses()]
-
 
 def _xr_network(config_path: str, xr: Dict, io: Io) -> bool:
     mode = io.ask("XR 连接方式：ethernet（网线）| wifi（无线）", xr["network_mode"]).lower()
@@ -84,6 +81,8 @@ def step_xr(config_path: str, ws_root: str, io: Io, timeout_s: Optional[float] =
             xr["device_id"] = ""  # Save a new ID only after successful tracking reception.
             expected_id = ""
 
+    from launch_helpers.devices.xr import xr_units  # not at the top: needs ROS, and --status runs without it
+
     units = UnitSet(xr_units(cfg))
     sup = Supervisor(units, os.path.join(ws_root, "run"), os.path.join(ws_root, "logs"))
     if rebind and sup.is_running("xr"):
@@ -94,29 +93,23 @@ def step_xr(config_path: str, ws_root: str, io: Io, timeout_s: Optional[float] =
         for name in started:
             sup.start(name)
         if probe_factory is None:
-            from .probe import XrProbe
-            probe_factory = lambda: XrProbe("xr_teleop_pairing")  # noqa: E731
+            probe_factory = lambda: discovery.XrProbe("xr_teleop_pairing")  # noqa: E731
         probe = probe_factory()
         try:
-            deadline = time.monotonic() + timeout_s if timeout_s is not None and timeout_s > 0 else None
-            io.info("等待头显连接（不限时，Ctrl+C 取消）..." if deadline is None
-                    else f"等待头显连接（最多 {timeout_s:.0f} s，Ctrl+C 取消）...")
-            while deadline is None or time.monotonic() < deadline:
-                device_id = getattr(probe, "xr_device_id", "")
-                if probe.xr_connected and device_id and (not expected_id or expected_id == device_id):
-                    if not expected_id:
-                        answer = io.ask(f"收到头显 {device_id} 的追踪数据，是否绑定？y/n", "y")
-                        if answer.lower() not in ("y", "yes", "是"):
-                            io.error("未绑定头显，配对未完成")
-                            return False
-                    config_edit.set_fields(config_path, "xr", {"device_id": device_id})
-                    io.info(f"头显已连接并保存 ID: {device_id}；日常启动自动匹配，断线后等待同一设备恢复")
-                    return True
-                time.sleep(0.5)
+            device_id = discovery.wait_for_headset(probe, expected_id, timeout_s, io)
         finally:
             probe.close()
-        io.error("未收到目标头显的追踪数据和设备 ID；确认头显 App 已连接上述地址、正在发送追踪数据且网络可达；日志见 logs/xr/latest.log")
-        return False
+        if device_id is None:
+            io.error("未收到目标头显的追踪数据和设备 ID；确认头显 App 已连接上述地址、正在发送追踪数据且网络可达；日志见 logs/xr/latest.log")
+            return False
+        if not expected_id:
+            answer = io.ask(f"收到头显 {device_id} 的追踪数据，是否绑定？y/n", "y")
+            if answer.lower() not in ("y", "yes", "是"):
+                io.error("未绑定头显，配对未完成")
+                return False
+        config_edit.set_fields(config_path, "xr", {"device_id": device_id})
+        io.info(f"头显已连接并保存 ID: {device_id}；日常启动自动匹配，断线后等待同一设备恢复")
+        return True
     except UnitError as exc:
         io.warn(str(exc))
         return False

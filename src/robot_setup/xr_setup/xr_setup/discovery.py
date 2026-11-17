@@ -1,9 +1,11 @@
-"""A small ROS node that listens for the headset: connection state and device id (both latched by the bridge).
+"""Finding the headset: a small ROS node that listens for its connection state and device id (both latched by the
+bridge), and the wait for its tracking data.
 
 rclpy is imported only when a probe is created, so the rest of the package works (and tests) without ROS."""
 from __future__ import annotations
 
 import threading
+import time
 from typing import Optional
 
 
@@ -47,3 +49,18 @@ class XrProbe:
         self.node.destroy_node()
         if self._rclpy.ok():
             self._rclpy.try_shutdown()
+
+
+def wait_for_headset(probe, expected_id: str, timeout_s: Optional[float], io) -> Optional[str]:
+    """Wait until the probe reports a connected headset and return its device id; None when the time is up.
+
+    With an expected id only that headset counts. Asking whether to bind a new one is the session's job."""
+    deadline = time.monotonic() + timeout_s if timeout_s is not None and timeout_s > 0 else None
+    io.info("等待头显连接（不限时，Ctrl+C 取消）..." if deadline is None
+            else f"等待头显连接（最多 {timeout_s:.0f} s，Ctrl+C 取消）...")
+    while deadline is None or time.monotonic() < deadline:
+        device_id = getattr(probe, "xr_device_id", "")
+        if probe.xr_connected and device_id and (not expected_id or expected_id == device_id):
+            return device_id
+        time.sleep(0.5)
+    return None

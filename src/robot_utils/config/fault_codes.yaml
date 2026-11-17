@@ -50,7 +50,7 @@
   title: PC Service 没装或起不来
   behavior: supervisor 启动 pc_service 模块时报错，XR 模块不会启动，遥操作不可用（机器人不会动）
   check: "ls /opt/apps/roboticsservice/runService.sh；桌面版需要 DISPLAY；或把 xr.start_pc_service 设为 false 后手动启动"
-  source: {file: src/robot_teleop/xr_teleop/xr_teleop/pc_service.py, match: "XRoboToolkit PC Service not found"}
+  source: {file: src/robot_launch/launch_helpers/launch_helpers/devices/xr.py, match: "XRoboToolkit PC Service not found"}
 
 - code: XR-006
   class: M

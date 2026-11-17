@@ -13,7 +13,7 @@ from typing import Callable, List, Optional
 
 from .config import ConfigError, load
 from .control_ready import FAILED, PENDING, wait_ready
-from xr_teleop import xr_ready
+from launch_helpers.devices import xr as xr_ready
 from .diag import clock_warning, make_bundle, report_path
 from .events import session_info
 from .ros_probe import FSM_HOLD, fsm_name

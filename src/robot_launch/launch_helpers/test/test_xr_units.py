@@ -1,11 +1,15 @@
 """The PC Service unit: its output is kept in its own log, and a service that was running already makes none."""
 from robot_runtime.units import Unit
-from xr_teleop.units import PcServiceDriver
+from launch_helpers.devices.xr import PcServiceDriver
+
+XR = {"enable": True, "start_pc_service": True, "pc_service_script": "/opt/apps/roboticsservice/runService.sh",
+      "frame_timeout_ms": 300, "reconnect_interval_s": 3.0, "network_mode": "ethernet", "network_interface": "",
+      "device_id": ""}
 
 
 def fake_pc_service(monkeypatch, tmp_path, already_running=False):
     """A runService.sh that prints, and a process table that shows the service once the script has run."""
-    from xr_teleop import pc_service
+    from launch_helpers.devices import xr as pc_service
     marker = tmp_path / "service_started"
     script = tmp_path / "runService.sh"
     script.write_text(f"#!/bin/bash\necho 'service says hello'\necho 'service complains' >&2\ntouch {marker}\n")
@@ -40,7 +44,7 @@ def test_a_zombie_service_is_not_running(monkeypatch):
     import os
     import time
     from types import SimpleNamespace
-    from xr_teleop import pc_service
+    from launch_helpers.devices import xr as pc_service
     child = os.fork()
     if child == 0:
         os._exit(0)
@@ -59,16 +63,13 @@ def test_a_zombie_service_is_not_running(monkeypatch):
 
 def test_the_bridge_does_not_inherit_a_proxy():
     """gRPC sends even the connection to the PC Service on 127.0.0.1 through http_proxy."""
-    from xr_teleop.config import DEFAULTS
-    from xr_teleop.units import xr_units
-    units = xr_units({"xr": dict(DEFAULTS["xr"])})
+    from launch_helpers.devices.xr import xr_units
+    units = xr_units({"xr": dict(XR)})
     assert {"http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"} <= set(units["xr"].unset_env)
 
 
 def test_the_bridge_gets_no_key_scheme_parameter():
     """One key table: the bridge has no control_scheme parameter any more."""
-    from xr_teleop.config import DEFAULTS
-    from xr_teleop.units import xr_units
-    cmd = xr_units({"xr": dict(DEFAULTS["xr"])})["xr"].cmd
+    from launch_helpers.devices.xr import xr_units
+    cmd = xr_units({"xr": dict(XR)})["xr"].cmd
     assert not any("control_scheme" in arg for arg in cmd)
-    assert "control_scheme" not in DEFAULTS["xr"]

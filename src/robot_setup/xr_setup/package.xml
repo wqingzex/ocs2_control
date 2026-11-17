@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>xr_setup</name>
+  <version>0.1.0</version>
+  <description>XR headset pairing: choose the network adapter, start the PC Service and the bridge, wait for the headset and save its id. How the XR units are started is in launch_helpers.</description>
+  <maintainer email="TODO@email.com"/>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+  <exec_depend>robot_config</exec_depend>
+  <exec_depend>robot_utils</exec_depend>
+  <exec_depend>launch_helpers</exec_depend>
+  <exec_depend>xr_teleop</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
+  <test_depend>python3-pytest</test_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

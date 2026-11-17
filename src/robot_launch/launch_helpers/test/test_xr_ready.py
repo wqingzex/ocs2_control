@@ -1,5 +1,5 @@
 """The bridge log decides whether `up xr` really has a headset (lines copied from real runs)."""
-from xr_teleop.xr_ready import FAILED, PENDING, READY, judge
+from launch_helpers.devices.xr import FAILED, PENDING, READY, judge
 
 SELECTED = "[INFO] [xr_target_node]: 头显选择：PA9410MGL7110258G\n"
 CONNECTED = "[INFO] [xr_target_node]: SDK 事件: PC Service 已连接 \n"

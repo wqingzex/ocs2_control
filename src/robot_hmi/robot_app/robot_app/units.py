@@ -10,7 +10,7 @@ from joystick_teleop.units import joystick_units
 from robot_log_tools.log import LOG_MODE_ENV  # set for every unit; the C++ components read it too
 from robot_runtime.units import Unit, UnitSet
 from launch_helpers.devices.camera import camera_units
-from xr_teleop.units import xr_units
+from launch_helpers.devices.xr import xr_units
 
 from .robot import controller_launch
 

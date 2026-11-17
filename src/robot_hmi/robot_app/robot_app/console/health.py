@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from xr_teleop import xr_ready
+from launch_helpers.devices import xr as xr_ready
 
 from ..control_ready import FAILED, READY, judge as judge_control
 

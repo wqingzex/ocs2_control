@@ -14,7 +14,7 @@ from launch_ros.actions import Node
 
 from robot_app import load
 from robot_app.robot import controller_launch
-from xr_teleop import pc_service
+from launch_helpers.devices import xr as pc_service
 
 
 def _xr_bridge_installed() -> bool:
@@ -30,11 +30,11 @@ def launch_setup(context):
     # 1. PC Service
     xr = cfg["xr"]
     if xr["enable"] and xr["start_pc_service"]:
-        started = pc_service.start(xr["pc_service_script"])
+        started = pc_service.start_pc_service(xr["pc_service_script"])
         if started:
             actions.append(LogInfo(msg=f"XRoboToolkit PC Service started (pid {started})"))
             actions.append(RegisterEventHandler(OnShutdown(
-                on_shutdown=[OpaqueFunction(function=lambda _ctx: pc_service.stop(started) or [])])))
+                on_shutdown=[OpaqueFunction(function=lambda _ctx: pc_service.stop_pc_service(started) or [])])))
         else:
             actions.append(LogInfo(msg="XRoboToolkit PC Service already running"))
 

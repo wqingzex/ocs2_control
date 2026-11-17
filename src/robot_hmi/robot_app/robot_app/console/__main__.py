@@ -50,7 +50,7 @@ def main(argv=None) -> int:
     console = Console(args.config, args.ws_root, probe_factory=probe_factory)
     app = create_app(console, static_dir(args.ws_root))
 
-    from xr_teleop.pairing import host_ips
+    from xr_teleop.xr_network import host_ips
     local_only = args.host in ("127.0.0.1", "localhost")
     console.access_urls = [] if local_only else access_urls(host_ips(), args.port)
     print(">>> robot_control_suite 控制台（Ctrl+C 退出；已启动的模块不受影响）")

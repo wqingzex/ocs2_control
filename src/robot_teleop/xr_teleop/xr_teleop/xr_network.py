@@ -74,3 +74,8 @@ def network_addresses(mode: str = "") -> List[NetworkAddress]:
         if not mode or kind == mode:
             addresses.append(NetworkAddress(interface, address, kind, network))
     return sorted(addresses, key=lambda entry: (entry.mode != "ethernet", entry.interface))
+
+
+def host_ips() -> List[str]:
+    """Addresses of this computer as 'address (interface)', for the console banner."""
+    return [f"{entry.address} ({entry.interface})" for entry in network_addresses()]

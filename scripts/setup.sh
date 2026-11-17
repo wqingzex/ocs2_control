@@ -379,7 +379,7 @@ step_build() {
 }
 
 # ---- 相机 camera_setup、末端 end_effector_setup、负载辨识 robot_config；XR 配对由 xr_teleop 处理 ---------------------------------
-SETUP_PYTHONPATH="${WS_DIR}/src/robot_setup/robot_config:${WS_DIR}/src/robot_setup/camera_setup:${WS_DIR}/src/robot_setup/end_effector_setup"
+SETUP_PYTHONPATH="${WS_DIR}/src/robot_setup/robot_config:${WS_DIR}/src/robot_setup/camera_setup:${WS_DIR}/src/robot_setup/end_effector_setup:${WS_DIR}/src/robot_setup/xr_setup"
 run_python_step() {
   source_ros --workspace
   local python_status=0 module python_path="${SETUP_PYTHONPATH}"
@@ -388,7 +388,7 @@ run_python_step() {
     ee) module=end_effector_setup.session ;;
     dyn) module=robot_config.load_identify ;;
     xr)
-      module=xr_teleop.pairing
+      module=xr_setup.session
       python_path="${python_path}:${WS_DIR}/src/robot_teleop/xr_teleop" ;;
   esac
   # shellcheck disable=SC2086
@@ -416,7 +416,7 @@ step_ready() {  # 返回 0 表示不用配置；原因写入 READY_REASON
     cameras|ee|dyn)
       READY_REASON="$(PYTHONPATH="${python_path}" python3 -m robot_config.config_status status --config "${CONFIG}" "$1" 2>/dev/null)" || status=$? ;;
     xr)
-      READY_REASON="$(PYTHONPATH="${WS_DIR}/src/robot_teleop/xr_teleop:${python_path}" python3 -m xr_teleop.pairing \
+      READY_REASON="$(PYTHONPATH="${WS_DIR}/src/robot_teleop/xr_teleop:${python_path}" python3 -m xr_setup.session \
         --config "${CONFIG}" --ws-root "${WS_DIR}" --status xr 2>/dev/null)" || status=$? ;;
     *) return 1 ;;
   esac

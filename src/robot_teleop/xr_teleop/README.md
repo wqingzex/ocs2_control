@@ -7,13 +7,11 @@ XR 头显（Pico + XRoboToolkit PC Service）的遥操作输入：把头显和�
 | 路径 | 内容 |
 |---|---|
 | `src/`、`include/xr_teleop/` | C++：`xr_bridge`（组件，节点 `/xr_target_node`）、SDK 客户端、位姿转换、按键编码 |
-| `xr_teleop/pc_service.py` | 启停 PC Service（只停止自己启动的） |
-| `xr_teleop/xr_network.py` | 列出可用网卡和 IPv4 地址，供配对时选择 |
-| `xr_teleop/pairing.py` | 头显配对（`./scripts/setup.sh xr`）：选网卡、启动 PC Service 和桥、等头显连上、保存头显 ID |
-| `xr_teleop/units.py` | 本设备的单元：PC Service（守护进程，由 `Driver` 管理）和 `xr` 桥，由 `robot_app` 汇总 |
+| `xr_teleop/xr_network.py` | 列出可用网卡和 IPv4 地址，配对和 `start.sh check` 用 |
 | `xr_teleop/config.py` | 配置的 `xr` 段：默认值和校验 |
-| `xr_teleop/probe.py` | 只订阅 `/teleop/connection_status` 和 `/teleop/device_id` 的小探针，配对用 |
 | `scripts/xr_stub.py` | 无头显联调，模拟 XR 数据：`ros2 run xr_teleop xr_stub.py [--script steps.json] [--silent]` |
+
+这个包只放头显本身（桥节点和协议）。PC Service 的起停、单元定义和就绪判断在 [`launch_helpers/devices/xr.py`](../../robot_launch/launch_helpers/launch_helpers/devices/xr.py)，头显配对在 [`robot_setup/xr_setup`](../../robot_setup/xr_setup/README.md)。
 
 编译 `xr_bridge` 需要 PC Service 的 SDK（`/opt/apps/roboticsservice/SDK`，或设置 `XRT_SDK_DIR`）；没有时只编译核心库和测试。用法、配对、故障排查见 [`docs/使用手册.md`](../../../docs/使用手册.md)。
 

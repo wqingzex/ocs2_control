@@ -5,7 +5,7 @@ import pytest
 
 from robot_config import config_edit
 from robot_config.device_setup import Io
-from xr_teleop import pairing
+from xr_setup import session as pairing
 
 TELEOP = """\
 # 本机配置（注释必须保留）

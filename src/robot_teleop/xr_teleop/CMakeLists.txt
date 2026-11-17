@@ -84,7 +84,7 @@ if(BUILD_TESTING)
   endif()
 
   find_package(ament_cmake_pytest REQUIRED)
-  foreach(t test_xr_network test_pairing test_units)
+  foreach(t test_xr_network)
     ament_add_pytest_test(${t} test/${t}.py
       PYTHON_EXECUTABLE python3
       APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_utils/python:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_setup/robot_config)

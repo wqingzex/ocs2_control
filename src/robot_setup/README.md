@@ -7,8 +7,11 @@
 | [`robot_config`](robot_config/README.md) | 机器人配置读取与校验、配置改写和确认记录、设置窗口框架、负载辨识 |
 | [`camera_setup`](camera_setup/README.md) | Orbbec 相机：扫描、相机设置窗口、预览 |
 | [`end_effector_setup`](end_effector_setup/README.md) | 末端（灵巧手、夹爪）：串口探测、开合测试、末端设置窗口 |
+| [`xr_setup`](xr_setup/README.md) | XR 头显配对：选网卡、等头显连上、保存头显 ID |
 
-依赖方向：`camera_setup`、`end_effector_setup` 依赖 `robot_config`，`robot_config` 不引用它们。
+依赖方向：各 `*_setup` 包依赖 `robot_config`，`robot_config` 不引用它们；`camera_setup`、`xr_setup` 还依赖 `launch_helpers`（预览和配对要临时启动设备），反过来不依赖。
+
+每个 `*_setup` 包的模块命名一样：`discovery.py` 找设备，`session.py` 是配置步骤（也是 `python3 -m` 的入口）。
 
 目录 `robot_setup/` 本身不是包：colcon 找到一个包之后不会再往它里面找，所以这些包并列放在这里。
 
