@@ -35,11 +35,13 @@ namespace
         bool answer = true;
         std::array<uint16_t, 18> regs{100, 100, 100, 100, 100, 100};
         std::vector<uint16_t> write_counts;
+        int reads = 0;  ///< read requests answered
         std::optional<std::vector<uint8_t>> operator()(const std::vector<uint8_t>& r)
         {
             if (!answer || r[0] != 0x28) return std::nullopt;
             if (r[1] == rtu::kReadInputRegisters)
             {
+                ++reads;
                 std::vector<uint8_t> out{0x28, 0x04, 12};
                 for (int i = 0; i < 6; ++i)
                 {
@@ -224,6 +226,28 @@ TEST_F(EndEffectorHardwareTest, ReadReportsAFailedInitialization)
     ASSERT_EQ(configure(), CallbackReturn::SUCCESS);
     ASSERT_EQ(activate(), CallbackReturn::SUCCESS);
     EXPECT_EQ(cycle(10), return_type::ERROR);
+}
+
+// A USB adapter pulled out while running: the bus goes Failed (a write returns EIO) and reopens by itself once the
+// adapter is back. read() must not return ERROR for that: ros2_control would deactivate the component, and every
+// controller using its interfaces (the joint state broadcaster of the whole robot), and nothing activates them again.
+TEST_F(EndEffectorHardwareTest, ALostBusIsNotAReadErrorAndTheHandResumesWhenTheBusReturns)
+{
+    provide();
+    ASSERT_EQ(init(), CallbackReturn::SUCCESS);
+    ASSERT_EQ(configure(), CallbackReturn::SUCCESS);
+    ASSERT_EQ(activate(), CallbackReturn::SUCCESS);
+    ASSERT_EQ(cycle(10), return_type::OK);
+    ASSERT_FALSE(sim_.write_counts.empty());  // running: initialized and writing
+
+    bus_->setFailed("serial write failed: Input/output error");  // the adapter is pulled out
+
+    EXPECT_EQ(cycle(5), return_type::OK);  // still active: only logged
+
+    bus_->setReady(true);  // the bus reopened the port
+    const int reads_before = sim_.reads;
+    EXPECT_EQ(cycle(10), return_type::OK);
+    EXPECT_GT(sim_.reads, reads_before);  // polling the hand again
 }
 
 TEST_F(EndEffectorHardwareTest, UsbPortThatCannotBeOpenedFailsConfigure)

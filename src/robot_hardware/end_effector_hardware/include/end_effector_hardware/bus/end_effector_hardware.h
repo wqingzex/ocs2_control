@@ -58,6 +58,7 @@ namespace end_effector_hardware
         std::atomic<double> velocity_{1.0};
         std::atomic<bool> dynamics_changed_{false};  ///< set by the parameter callback, applied in write()
         bool failure_reported_ = false;
+        bool bus_failure_reported_ = false;  ///< the bus is Failed and that was logged; cleared when it is back
         rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr parameter_callback_;
     };
 }  // namespace end_effector_hardware

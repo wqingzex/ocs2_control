@@ -197,11 +197,23 @@ namespace end_effector_hardware
             }
             return hardware_interface::return_type::ERROR;
         }
+        // A lost line (a USB adapter pulled out): the bus reopens the port by itself, the device goes offline meanwhile
+        // (HW-004) and probes again when the line is back. Returning ERROR here would make ros2_control deactivate this
+        // component and every controller using its interfaces (the joint state broadcaster of the whole robot), and
+        // nothing activates them again.
         if (device_->bus()->state() == robot_comm::BusState::Failed)
         {
-            RCLCPP_ERROR(get_logger(), "%s: bus %s failed: %s", info_.name.c_str(), bus_name_.c_str(),
-                         device_->bus()->stats().last_error.c_str());
-            return hardware_interface::return_type::ERROR;
+            if (!bus_failure_reported_)
+            {
+                RCLCPP_ERROR(get_logger(), "%s: bus %s failed: %s; the port is reopened automatically", info_.name.c_str(),
+                             bus_name_.c_str(), device_->bus()->stats().last_error.c_str());
+                bus_failure_reported_ = true;
+            }
+        }
+        else if (bus_failure_reported_)
+        {
+            RCLCPP_INFO(get_logger(), "%s: bus %s is back", info_.name.c_str(), bus_name_.c_str());
+            bus_failure_reported_ = false;
         }
         return hardware_interface::return_type::OK;
     }
