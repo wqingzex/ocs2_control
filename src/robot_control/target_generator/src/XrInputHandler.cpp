@@ -111,7 +111,10 @@ namespace target_generator
         fsm_command_publisher_ = std::make_unique<robot_controller_core::FSMCommandPublisher>(
             node_, pub_fsm_command);
 
-        // 注意：FSM命令订阅在 target_generator_node 中统一处理，FSM状态通过 fsmCommandCallback() 由外部调用
+        // 控制器实际所处的状态（transient_local：晚启动也能拿到当前状态）
+        sub_fsm_state_ = node_->create_subscription<std_msgs::msg::Int32>(
+            "/fsm_state", rclcpp::QoS(1).transient_local(),
+            [this](std_msgs::msg::Int32::SharedPtr msg) { fsmStateCallback(msg); });
 
         RCLCPP_INFO(node_->get_logger(), "🕹️🕶️🕹️ XrInputHandler created (XR control is DISABLED until %s appears)",
                     XR_NODE_NAME.c_str());
@@ -957,26 +960,22 @@ namespace target_generator
         }
     }
 
-    void XrInputHandler::fsmCommandCallback(std_msgs::msg::Int32::SharedPtr msg)
+    void XrInputHandler::fsmStateCallback(std_msgs::msg::Int32::SharedPtr msg)
     {
-        int32_t command = msg->data;
-
-        // 忽略重置命令（command=0）和 REST 姿态切换（状态保持 HOME）
-        if (command == 0 || command == kFsmRestToggle)
+        const int32_t state = msg->data;
+        if (state != kFsmHome && state != kFsmHold && state != kFsmOcs2 && state != kFsmMoveJ)
         {
-            return;
-        }
-        if (command != kFsmHome && command != kFsmHold && command != kFsmOcs2 && command != kFsmMoveJ)
-        {
-            return;
+            return;  // 0 = 控制器还没有有效状态
         }
 
-        int32_t old_state = current_fsm_state_.exchange(command);
+        const int32_t old_state = current_fsm_state_.exchange(state);
         // 离开 OCS2 时自动切换到存储模式：再次进入 OCS2 后要重新按右摇杆才跟随，不会一进 OCS2 就跳
-        if (command != old_state && command != kFsmOcs2 && is_update_mode_.load())
+        if (state != old_state && state != kFsmOcs2 && is_update_mode_.load())
         {
             is_update_mode_.store(false);
-            RCLCPP_INFO(node_->get_logger(), "🕹️🕶️🕹️ FSM状态不是OCS2，自动切换到STORAGE模式 (状态=%d)", command);
+            last_accepted_left_.reset();
+            last_accepted_right_.reset();
+            RCLCPP_INFO(node_->get_logger(), "🕹️🕶️🕹️ FSM状态不是OCS2，自动切换到STORAGE模式 (状态=%d)", state);
         }
     }
 

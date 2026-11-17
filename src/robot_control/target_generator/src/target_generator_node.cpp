@@ -141,25 +141,15 @@ int main(int argc, char** argv)
                 }
             });
 
-        // 创建 FSM 命令订阅器（用于状态切换和 marker 形态更新）
-        // 统一处理 TargetGenerator 和 XrInputHandler 的 FSM 状态更新，避免重复订阅冲突
+        // 创建 FSM 命令订阅器（用于状态切换和 marker 形态更新）。
+        // XrInputHandler 不再看命令，它自己订阅控制器实际发布的 /fsm_state。
         auto fsm_command_subscription = node->create_subscription<std_msgs::msg::Int32>(
             "/fsm_command", 10,
-            [target_generator_ptr = target_generator.get(), xr_handler_ptr = xr_handler.get()](
-            const std_msgs::msg::Int32::ConstSharedPtr msg)
+            [target_generator_ptr = target_generator.get()](const std_msgs::msg::Int32::ConstSharedPtr msg)
             {
-                // 处理 FSM 状态切换 - TargetGenerator
                 if (target_generator_ptr)
                 {
                     target_generator_ptr->fsmCommandCallback(msg);
-                }
-                
-                // 处理 FSM 状态切换 - XrInputHandler（如果启用）
-                if (xr_handler_ptr)
-                {
-                    // 转换为 SharedPtr 以匹配 XrInputHandler 的回调签名
-                    auto shared_msg = std::const_pointer_cast<std_msgs::msg::Int32>(msg);
-                    xr_handler_ptr->fsmCommandCallback(shared_msg);
                 }
             });
 

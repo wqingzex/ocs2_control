@@ -63,6 +63,7 @@ namespace
                 1.0, "base_link");
 
             event_pub_ = probe_->create_publisher<std_msgs::msg::Int32>("/teleop/controller_state", 10);
+            fsm_state_pub_ = probe_->create_publisher<std_msgs::msg::Int32>("/fsm_state", rclcpp::QoS(1).transient_local());
             left_pose_pub_ = probe_->create_publisher<Pose>("/teleop/left_ee_pose", 10);
             trigger_pub_ = probe_->create_publisher<geometry_msgs::msg::Twist>("/teleop/trigger_values", 10);
             fsm_sub_ = probe_->create_subscription<std_msgs::msg::Int32>(
@@ -127,12 +128,13 @@ namespace
             spinFor(150ms);
         }
 
-        /// What target_generator_node does with every /fsm_command it sees.
+        /// The controller reports its real state on /fsm_state.
         void fsmIs(int state)
         {
-            auto m = std::make_shared<std_msgs::msg::Int32>();
-            m->data = state;
-            handler_->fsmCommandCallback(m);
+            std_msgs::msg::Int32 m;
+            m.data = state;
+            fsm_state_pub_->publish(m);
+            spinFor(100ms);
         }
 
         void robotLeftAt(double x, double y, double z)
@@ -159,7 +161,7 @@ namespace
         rclcpp::Node::SharedPtr node_, bridge_, probe_;
         std::unique_ptr<target_generator::XrInputHandler> handler_;
         rclcpp::executors::SingleThreadedExecutor executor_;
-        rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr event_pub_;
+        rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr event_pub_, fsm_state_pub_;
         rclcpp::Publisher<Pose>::SharedPtr left_pose_pub_;
         rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr trigger_pub_;
         rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr fsm_sub_;
@@ -336,6 +338,26 @@ TEST_F(XrInputHandlerTest, theStepReferenceStartsOverWhenFollowingIsStartedAgain
     ASSERT_FALSE(left_targets_.empty());
     EXPECT_NEAR(left_targets_.back().position.y, 0.24, 1e-6)
         << "the previous session's target was used as the step reference";
+}
+
+// The controller ignores HOME while in OCS2 (only HOLD is accepted), so the state stays OCS2. The handler must go by
+// the state the controller reports, not by the command that was sent.
+TEST_F(XrInputHandlerTest, aCommandTheControllerIgnoresDoesNotStopFollowing)
+{
+    fsmIs(kOcs2);
+    press(kToggleFollow);
+    moveLeftController(0.03, 0.0, 0.0);
+    ASSERT_FALSE(left_targets_.empty());
+
+    auto command_pub = probe_->create_publisher<std_msgs::msg::Int32>("/fsm_command", 10);
+    std_msgs::msg::Int32 home;
+    home.data = kHome;
+    command_pub->publish(home);  // no /fsm_state follows: the controller stayed in OCS2
+    spinFor(150ms);
+
+    left_targets_.clear();
+    moveLeftController(0.06, 0.0, 0.0);
+    EXPECT_FALSE(left_targets_.empty()) << "following stopped because of a command that changed nothing";
 }
 
 TEST_F(XrInputHandlerTest, leavingOcs2StopsFollowingAndNeedsTheStickAgain)

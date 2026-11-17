@@ -94,11 +94,11 @@ namespace target_generator
         bool checkNodeExists(const std::shared_ptr<rclcpp::Node>& node, const std::string& targetNodeName);
 
         /**
-         * FSM命令回调函数（用于跟踪FSM状态）
-         * 由外部统一订阅后调用，避免重复订阅
-         * @param msg FSM命令消息
+         * FSM 状态回调（/fsm_state，控制器实际所处的状态）
+         * 用状态而不是命令：命令可能被控制器忽略（例如 MOVEJ 下发 HOME），按命令判断会和真实状态不一致。
+         * @param msg 1=HOME, 2=HOLD, 3=OCS2, 4=MOVEJ；其他值忽略
          */
-        void fsmCommandCallback(std_msgs::msg::Int32::SharedPtr msg);
+        void fsmStateCallback(std_msgs::msg::Int32::SharedPtr msg);
 
         /**
          * 机器人左臂当前pose回调函数
@@ -283,6 +283,7 @@ namespace target_generator
         rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr sub_head_;
         // 按钮事件订阅器（Int32类型）
         rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr sub_controller_state_;
+        rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr sub_fsm_state_;
         // 扳机模拟量订阅器（合并订阅左右扳机，使用 Twist 消息）
         rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_trigger_values_;
         // 机器人 current_pose 订阅和 FSM 命令订阅在 target_generator_node 中统一处理
