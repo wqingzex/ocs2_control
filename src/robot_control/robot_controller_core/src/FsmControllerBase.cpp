@@ -51,6 +51,15 @@ namespace robot_controller_core
         robot_log::CycleTimer cycle_timer(cycle_stats_, last_cycle_begin_ns_, late_period_ns_);  // health line, see startHealthReport()
         const std::string fsm_at_cycle_start = current_state_ ? current_state_->state_name_string : "none";
         onCycleBegin(time);
+        if (const auto failed = ctrl_interfaces_.takePositionReadFailures(); failed > 0)
+        {
+            // The last good reading was used instead (never 0.0); see CtrlInterfaces::measuredJointPosition.
+            position_read_failures_total_ += failed;
+            RCLCPP_WARN_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+                                 "[CTL-012] measured joint position unavailable: %zu read(s) failed in the last cycle "
+                                 "(%llu since activation); using the last good reading",
+                                 failed, static_cast<unsigned long long>(position_read_failures_total_));
+        }
         if (current_state_) { recordCycleState(current_state_->state_name); }
 
         if (mode_ == FSMMode::NORMAL)
@@ -139,6 +148,7 @@ namespace robot_controller_core
             ? static_cast<std::uint64_t>(1.5e9 / ctrl_interfaces_.frequency_)
             : 0;
         last_cycle_begin_ns_ = 0;
+        position_read_failures_total_ = 0;
         cycle_stats_.take();  // drop whatever an earlier activation left
         health_window_s_ = robot_log::healthWindowSeconds();
         health_timer_ = get_node()->create_wall_timer(

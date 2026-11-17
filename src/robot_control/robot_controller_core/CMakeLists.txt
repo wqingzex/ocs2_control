@@ -109,4 +109,10 @@ install(
 ament_export_dependencies(${dependencies})
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_measured_position test/test_measured_position.cpp)
+  target_link_libraries(test_measured_position ${PROJECT_NAME})
+endif()
+
 ament_package()

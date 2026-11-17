@@ -1149,13 +1149,11 @@ void WholeBodyMpcTask::updateObservation(const rclcpp::Time& time) {
         observation_.state[1] = base_y_;
         observation_.state[2] = base_yaw_;
         for (size_t i = 0; i < joint_names_.size(); ++i) {
-            auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
-            observation_.state[3 + i] = value.value_or(0.0);
+            observation_.state[3 + i] = ctrl_interfaces_.measuredJointPosition(i);
         }
     } else {
         for (size_t i = 0; i < joint_names_.size(); ++i) {
-            auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
-            observation_.state[i] = value.value_or(0.0);
+            observation_.state[i] = ctrl_interfaces_.measuredJointPosition(i);
         }
     }
 

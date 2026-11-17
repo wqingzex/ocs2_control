@@ -104,6 +104,7 @@ namespace robot_controller_core
         void recordCycleCommand(FSMStateName state);
         std::shared_ptr<robot_log::FlightRecorder> flight_;
         std::uint64_t last_cycle_begin_ns_{0};
+        std::uint64_t position_read_failures_total_{0};  ///< measured-position reads that failed since activation (CTL-012)
         std::uint64_t late_period_ns_{0};
         double health_window_s_{10.0};
         rclcpp::TimerBase::SharedPtr health_timer_;

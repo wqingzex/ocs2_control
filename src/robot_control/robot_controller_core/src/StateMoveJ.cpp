@@ -773,10 +773,9 @@ namespace robot_controller_core
 
         // Get current joint positions as starting positions
         start_pos_.clear();
-        for (auto i : ctrl_interfaces_.joint_position_state_interface_)
+        for (size_t i = 0; i < ctrl_interfaces_.joint_position_state_interface_.size(); ++i)
         {
-            auto value = i.get().get_optional();
-            start_pos_.push_back(value.value_or(0.0));
+            start_pos_.push_back(ctrl_interfaces_.measuredJointPosition(i));
         }
         refreshHoldPositions();
 
@@ -1219,10 +1218,9 @@ namespace robot_controller_core
             {
                 // Get commanded joint positions
                 std::vector<double> commanded_positions;
-                for (auto i : ctrl_interfaces_.joint_position_command_interface_)
+                for (size_t i = 0; i < ctrl_interfaces_.joint_position_command_interface_.size(); ++i)
                 {
-                    auto value = i.get().get_optional();
-                    commanded_positions.push_back(value.value_or(0.0));
+                    commanded_positions.push_back(ctrl_interfaces_.commandedJointPosition(i));
                 }
 
                 // Calculate static torques
@@ -1453,10 +1451,9 @@ namespace robot_controller_core
         {
             // Get interpolated joint positions
             std::vector<double> interpolated_positions;
-            for (auto i : ctrl_interfaces_.joint_position_command_interface_)
+            for (size_t i = 0; i < ctrl_interfaces_.joint_position_command_interface_.size(); ++i)
             {
-                auto value = i.get().get_optional();
-                interpolated_positions.push_back(value.value_or(0.0));
+                interpolated_positions.push_back(ctrl_interfaces_.commandedJointPosition(i));
             }
 
             // Calculate static torques
@@ -2065,8 +2062,7 @@ namespace robot_controller_core
             for (size_t i = 0; i < ctrl_interfaces_.joint_position_state_interface_.size() &&
                  i < target_pos_.size(); ++i)
             {
-                auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
-                target_pos_[i] = value.value_or(0.0);
+                target_pos_[i] = ctrl_interfaces_.measuredJointPosition(i);
             }
         }
 
@@ -2405,10 +2401,9 @@ namespace robot_controller_core
         // 3. Get current positions as starting point (first waypoint)
         std::vector<double> current_positions;
         current_positions.reserve(joint_names_.size());
-        for (auto i : ctrl_interfaces_.joint_position_state_interface_)
+        for (size_t i = 0; i < ctrl_interfaces_.joint_position_state_interface_.size(); ++i)
         {
-            auto value = i.get().get_optional();
-            current_positions.push_back(value.value_or(0.0));
+            current_positions.push_back(ctrl_interfaces_.measuredJointPosition(i));
         }
 
         // Apply joint limits to current position
@@ -3408,9 +3403,7 @@ namespace robot_controller_core
         }
         else if (waist_turning_joint_index_ < ctrl_interfaces_.joint_position_state_interface_.size())
         {
-            auto value = ctrl_interfaces_.joint_position_state_interface_[waist_turning_joint_index_].get().
-                get_optional();
-            angles3d(0) = value.value_or(0.0);
+            angles3d(0) = ctrl_interfaces_.measuredJointPosition(waist_turning_joint_index_);
         }
 
         double clamped_factor = std::clamp(factor, -1.0, 1.0);
@@ -3662,14 +3655,12 @@ namespace robot_controller_core
             Eigen::VectorXd angles = Eigen::VectorXd::Zero(2);
             if (waist_lift_joint_index_ < ctrl_interfaces_.joint_position_state_interface_.size())
             {
-                auto value = ctrl_interfaces_.joint_position_state_interface_[waist_lift_joint_index_].get().get_optional();
-                angles(0) = value.value_or(0.0);
+                angles(0) = ctrl_interfaces_.measuredJointPosition(waist_lift_joint_index_);
             }
             if (waist_single_joint_has_pitch_ &&
                 waist_pitch_joint_index_ < ctrl_interfaces_.joint_position_state_interface_.size())
             {
-                auto value = ctrl_interfaces_.joint_position_state_interface_[waist_pitch_joint_index_].get().get_optional();
-                angles(1) = value.value_or(0.0);
+                angles(1) = ctrl_interfaces_.measuredJointPosition(waist_pitch_joint_index_);
             }
             return angles;
         }
@@ -3679,8 +3670,7 @@ namespace robot_controller_core
         for (size_t i = 0; i < waist_joint_count_ &&
              i < ctrl_interfaces_.joint_position_state_interface_.size(); i++)
         {
-            auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
-            angles(i) = value.value_or(0.0);
+            angles(i) = ctrl_interfaces_.measuredJointPosition(i);
         }
 
         return angles;
@@ -4073,8 +4063,7 @@ namespace robot_controller_core
             {
                 if (joint_names_[i] == req_joint)
                 {
-                    auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
-                    positions.push_back(value.value_or(0.0));
+                    positions.push_back(ctrl_interfaces_.measuredJointPosition(i));
                     break;
                 }
             }
@@ -4093,8 +4082,7 @@ namespace robot_controller_core
         for (size_t i = 0; i < joint_names_.size() &&
              i < ctrl_interfaces_.joint_position_state_interface_.size(); i++)
         {
-            auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
-            full_positions[i] = value.value_or(0.0);
+            full_positions[i] = ctrl_interfaces_.measuredJointPosition(i);
         }
 
         // 更新请求中指定的关节
@@ -5552,8 +5540,7 @@ namespace robot_controller_core
 
         for (size_t i = 0; i < num_joints; ++i)
         {
-            auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
-            angles(i) = value.value_or(0.0);
+            angles(i) = ctrl_interfaces_.measuredJointPosition(i);
         }
         return angles;
     }

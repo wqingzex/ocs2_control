@@ -150,6 +150,14 @@
   source: {file: src/robot_control/robot_controller_core/src/FsmControllerBase.cpp, match: "CTL-011"}
   untagged: 前缀 [CTL-011] 由 robot_log::logCycleHealth 按传入的编码加在 WARN 行上
 
+- code: CTL-012
+  class: M
+  title: 读不到关节实测位置（取不到状态句柄的锁）
+  behavior: 控制器改用该关节上一次读到的有效值继续运行，每秒最多一行 WARN，带本周期失败次数和激活以来的累计；不再把读不到当成 0.0（旧行为会让 HOLD 把整台机器拽向全零位姿）。激活时就读不到则拒绝激活
+  check: 次数多说明有别的线程长时间占着状态句柄的写锁（异步硬件的读线程、其他控制器）；对照 CTL-011 和硬件侧的 HW-013；偶发几次且之后正常，多半是读写撞车
+  escalation: 持续失败（上一次有效值越来越旧）应升级为 S2（切 HOLD 并停发新目标）；阈值要用真机数据定，现在只记录
+  source: {file: src/robot_control/robot_controller_core/src/FsmControllerBase.cpp, match: "CTL-012"}
+
 - code: HW-001
   class: S1
   title: Marvin 硬件进入错误状态，急停

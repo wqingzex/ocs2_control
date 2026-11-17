@@ -54,8 +54,7 @@ namespace robot_controller_core
             for (size_t i = 0; i < ctrl_interfaces_.joint_position_state_interface_.size() && 
                  i < hold_positions_.size(); ++i)
             {
-                auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
-                double current_pos = value.value_or(0.0);
+                double current_pos = ctrl_interfaces_.measuredJointPosition(i);
                 double diff = std::abs(current_pos - hold_positions_[i]);
 
                 if (diff > max_diff)
@@ -98,8 +97,7 @@ namespace robot_controller_core
                     hold_positions_.resize(num_joints);
                     for (size_t i = 0; i < num_joints; ++i)
                     {
-                        auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
-                        hold_positions_[i] = value.value_or(0.0);
+                        hold_positions_[i] = ctrl_interfaces_.measuredJointPosition(i);
                     }
                     first_threshold_check_passed_ = true;
                     RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
@@ -116,8 +114,7 @@ namespace robot_controller_core
                     hold_positions_.resize(num_joints);
                     for (size_t i = 0; i < num_joints; ++i)
                     {
-                        auto value = ctrl_interfaces_.joint_position_state_interface_[i].get().get_optional();
-                        hold_positions_[i] = value.value_or(0.0);
+                        hold_positions_[i] = ctrl_interfaces_.measuredJointPosition(i);
                     }
 
                     // Once a second while the difference persists. (The old version kept its timer in a function
@@ -143,10 +140,9 @@ namespace robot_controller_core
         if (ctrl_interfaces_.control_mode_ == ControlMode::MIX && gravity_compensation_)
         {
             std::vector<double> current_positions;
-            for (auto i : ctrl_interfaces_.joint_position_state_interface_)
+            for (size_t i = 0; i < ctrl_interfaces_.joint_position_state_interface_.size(); ++i)
             {
-                auto value = i.get().get_optional();
-                current_positions.push_back(value.value_or(0.0));
+                current_positions.push_back(ctrl_interfaces_.measuredJointPosition(i));
             }
 
             std::vector<double> static_torques = 

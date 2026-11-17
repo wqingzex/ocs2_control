@@ -169,10 +169,9 @@ namespace robot_controller_core
 
         // Get current joint positions as starting positions
         start_pos_.clear();
-        for (auto i : ctrl_interfaces_.joint_position_state_interface_)
+        for (size_t i = 0; i < ctrl_interfaces_.joint_position_state_interface_.size(); ++i)
         {
-            auto value = i.get().get_optional();
-            start_pos_.push_back(value.value_or(0.0));
+            start_pos_.push_back(ctrl_interfaces_.measuredJointPosition(i));
         }
 
         // Update parameters from node
@@ -330,10 +329,9 @@ namespace robot_controller_core
         {
             // Get interpolated joint positions
             std::vector<double> interpolated_positions;
-            for (auto i : ctrl_interfaces_.joint_position_command_interface_)
+            for (size_t i = 0; i < ctrl_interfaces_.joint_position_command_interface_.size(); ++i)
             {
-                auto value = i.get().get_optional();
-                interpolated_positions.push_back(value.value_or(0.0));
+                interpolated_positions.push_back(ctrl_interfaces_.commandedJointPosition(i));
             }
 
             // Calculate static torques

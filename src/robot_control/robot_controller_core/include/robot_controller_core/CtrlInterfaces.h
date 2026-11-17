@@ -3,8 +3,11 @@
 //
 #pragma once
 
+#include <atomic>
 #include <cmath>
 #include <mutex>
+#include <optional>
+#include <stdexcept>
 #include <vector>
 #include <string>
 #include <memory>
@@ -16,6 +19,21 @@
 
 namespace robot_controller_core
 {
+    /// A measured position that could not be read this cycle (get_optional() gave nullopt, e.g. the handle lock was
+    /// not obtained) is NOT a position of 0.0. Returns the reading, or the last reading that did succeed, and counts
+    /// the failure so the controller can report it.
+    inline double resolveMeasuredPosition(const std::optional<double>& reading, std::atomic<double>& last_good,
+                                          std::atomic<std::size_t>& failures)
+    {
+        if (reading)
+        {
+            last_good.store(*reading, std::memory_order_relaxed);
+            return *reading;
+        }
+        failures.fetch_add(1, std::memory_order_relaxed);
+        return last_good.load(std::memory_order_relaxed);
+    }
+
     // Control mode enum for automatic detection
     enum class ControlMode
     {
@@ -76,6 +94,12 @@ namespace robot_controller_core
         std::vector<double> pd_gains_;
 
         std::vector<double> last_sent_joint_positions_;
+
+        // Last successful reading per joint (see resolveMeasuredPosition) and the number of failed reads since the
+        // last takePositionReadFailures().
+        std::unique_ptr<std::atomic<double>[]> last_read_joint_positions_;
+        std::size_t last_read_joint_count_{0};
+        std::atomic<std::size_t> position_read_failures_{0};
 
         struct CommandMotionState
         {
@@ -147,6 +171,24 @@ namespace robot_controller_core
             return command_motion_;
         }
 
+        /// Measured position of joint i; the last good reading when this cycle's read fails (never 0.0).
+        /// Callable from the control thread and from the MPC thread.
+        double measuredJointPosition(size_t i)
+        {
+            if (i >= last_read_joint_count_)
+            {
+                throw std::logic_error("measuredJointPosition before initializeLastSentPositions, or index out of range");
+            }
+            return resolveMeasuredPosition(joint_position_state_interface_[i].get().get_optional(),
+                                           last_read_joint_positions_[i], position_read_failures_);
+        }
+
+        /// The position this controller last commanded (the command handle's value is only ever written by us).
+        double commandedJointPosition(size_t i) const { return last_sent_joint_positions_[i]; }
+
+        /// Failed measured-position reads since the previous call.
+        std::size_t takePositionReadFailures() { return position_read_failures_.exchange(0); }
+
         void setJointPositionCommand(size_t index, double value)
         {
             std::ignore = joint_position_command_interface_[index].get().set_value(value);
@@ -157,11 +199,21 @@ namespace robot_controller_core
         {
             last_sent_joint_positions_.clear();
             last_sent_joint_positions_.reserve(joint_position_state_interface_.size());
+            last_read_joint_positions_ = std::make_unique<std::atomic<double>[]>(joint_position_state_interface_.size());
+            last_read_joint_count_ = joint_position_state_interface_.size();
             for (size_t i = 0; i < joint_position_state_interface_.size(); ++i)
             {
-                auto value = joint_position_state_interface_[i].get().get_optional();
-                last_sent_joint_positions_.push_back(value.value_or(0.0));
+                const auto value = joint_position_state_interface_[i].get().get_optional();
+                if (!value)
+                {
+                    // No pose is a safe stand-in for the start position: refuse to activate instead of assuming 0.0.
+                    throw std::runtime_error("cannot read the measured position of joint #" + std::to_string(i) +
+                                             " at activation");
+                }
+                last_read_joint_positions_[i].store(*value, std::memory_order_relaxed);
+                last_sent_joint_positions_.push_back(*value);
             }
+            position_read_failures_.store(0, std::memory_order_relaxed);
             std::lock_guard<std::mutex> lock(command_motion_mutex_);
             command_motion_.positions = last_sent_joint_positions_;
             command_motion_.velocities.assign(last_sent_joint_positions_.size(), 0.0);
