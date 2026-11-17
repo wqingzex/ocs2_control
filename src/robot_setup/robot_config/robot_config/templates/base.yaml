@@ -3,32 +3,45 @@
 # 所有键都必须存在；程序不会替你补默认值。值写 null 表示"没设置"，由机器人描述包自己的默认值决定。
 #
 # 标记：[必改] 新机器上要确认或修改 | [自动写入] 由 setup.sh 或网页控制台写回，不用手填
+#
+# 新机器先看这 5 项：
+#   robot.entry   robot.hardware   robot.base.type   robot.end_effector.type   robot.end_effector.interface.bus
+#
+# 分组：1 机器 robot | 2 控制 control | 3 遥操作输入 xr、joystick | 4 感知 cameras | 5 运行时 log、record、navigation | 6 自动写入 setup
 # ======================================================================================================
 
-# ---- robot：机器。每个部件先写"是什么"（type），再写"怎么连"（interface）--------------------------------
+
+# ======================================================================================================
+# 1. 机器 robot：每个部件先写"是什么"（type），再写"怎么连"（interface）
+# ======================================================================================================
 robot:
+  # ---- 这是哪台机器 ----
   entry: whole_body              # [必改] 控制入口：whole_body（fa_w2 全身，WBC）| split_body（fa_w2 分体）| dual_arm（M6-CCS 双臂）
   hardware: real                 # [必改] 运行方式：real（真机）| mock_components（仿真）| isaac；各部件的 interface 只在真机生效
   variant: ""                    # 整机外观变体，空 = 机型默认
 
-  base:                          # 底盘（双臂入口没有底盘，留空）
+  # ---- 底盘（双臂入口没有底盘，留空）----
+  base:
     type: linkhou_s2             # [必改] linkhou_s2 | linkhou_s2_v2
     joints_movable: false        # 底盘关节是否可动
 
-  body:                          # 腰、头
+  # ---- 腰、头 ----
+  body:
     type: juxie                  # JX 电机，CAN FD 通信
     interface:
       can: can0                  # CAN FD 接口；改它之后重新运行 ./scripts/setup.sh host，让免密 sudo 规则用同一个名字
       stats_period_s: 0          # 真机上测总线速度和稳定性时设成 10：每 10 秒打印控制线程和 CAN 统计（0 = 只在停止时打印一次）
 
-  arm:                           # 臂
+  # ---- 臂 ----
+  arm:
     type: marvin                 # 臂驱动：marvin（天机，M6 等）。目前只有 marvin 有机器模型
     interface:
       ip: 192.168.1.190          # 臂控制器的以太网地址；接在臂末端 485 口的手也走这个地址
       firmware: null             # [自动写入] SDK 版本：338（38 版固件）| 343（43 版及以上），要和臂控制器固件一致，选错驱动会急停；
                                  #   null 时 ./scripts/setup.sh 会询问并写在这里（./scripts/setup.sh marvin 重新选择）
 
-  end_effector:                  # 末端执行器（手或夹爪）
+  # ---- 末端执行器（手或夹爪）----
+  end_effector:
     type: linkerhand_l6          # [必改] none | linkerhand_l6 | xhand1 | wuji_hand2 | jodell_rg75
     interface:
       bus: usb_rs485             # [必改] 手和电脑之间的总线，按末端选：
@@ -47,7 +60,10 @@ robot:
     # 跑完 ./scripts/setup.sh dyn（负载辨识）会自动写入这里
     dyn_param: {left: [], right: []}
 
-# ---- control：控制参数 ---------------------------------------------------------------------------------
+
+# ======================================================================================================
+# 2. 控制 control
+# ======================================================================================================
 control:
   arm_mode: position             # 臂控制模式：position | joint_impedance
   limits:
@@ -65,34 +81,73 @@ control:
   #       info_file_name: dual_arm_eef
   patch: {}
 
-# ---- setup：设备确认记录，由 setup.sh 和网页控制台写入，不用手填 -------------------------------------------
-setup: {}
 
-# ---- 遥操作与采集 -------------------------------------------------------------------------------------
+# ======================================================================================================
+# 3. 遥操作输入
+# ======================================================================================================
 xr:                              # XR 头显
   enable: true                   # 启动 xr_bridge_node（XRoboToolkit -> /teleop/*）
-  start_pc_service: true         # PC Service 没运行时自动启动
-  pc_service_script: /opt/apps/roboticsservice/runService.sh
-  frame_timeout_ms: 300          # 多久没有头显帧就停止发布，/teleop/connection_status=false
-  reconnect_interval_s: 3.0      # PC Service 断开这么久后重新初始化 SDK
+
+  # ---- 网络和配对 ----
   network_mode: ethernet         # ethernet（网线）| wifi（无线）
   network_interface: ""          # [自动写入] 配对时选的电脑网卡
   device_id: ""                  # [自动写入] 配对后记录的头显 ID
 
-cameras:                         # [自动写入] ./scripts/setup.sh cam 确认后写回序列号、USB 口、旋转
-  enable: true
-  fps: 30                        # 30 | 60（Gemini 305 上 60 Hz 是实验性的）
-  white_balance: 5600
-  ae_max_exposure: 120
-  wrist_exposure: 50             # 腕部相机用固定曝光和增益
-  wrist_gain: 16
-  head:        {enable: true, serial: "", usb_port: "", rotation: 0}   # Gemini 335Lg；rotation: 0 | 90 | 180 | 270
-  left_wrist:  {enable: true, serial: "", usb_port: "", rotation: 0}   # Gemini 305
-  right_wrist: {enable: true, serial: "", usb_port: "", rotation: 0}   # Gemini 305
+  # ---- PC Service ----
+  start_pc_service: true         # PC Service 没运行时自动启动
+  pc_service_script: /opt/apps/roboticsservice/runService.sh
+
+  # ---- 超时和重连 ----
+  frame_timeout_ms: 300          # 多久没有头显帧就停止发布，/teleop/connection_status=false
+  reconnect_interval_s: 3.0      # PC Service 断开这么久后重新初始化 SDK
 
 joystick:
   device: ""                     # 空 = 自动，或 /dev/input/jsN
 
+
+# ======================================================================================================
+# 4. 感知
+# ======================================================================================================
+cameras:                         # [自动写入] ./scripts/setup.sh cam 确认后写回序列号、USB 口、旋转
+  enable: true
+  fps: 30                        # 30 | 60（Gemini 305 上 60 Hz 是实验性的）
+
+  # 每台相机的成像参数（后四项）：
+  #   white_balance   固定白平衡（色温 K）
+  #   ae_max_exposure 自动曝光的上限
+  #   exposure, gain  -1 = 自动曝光（受 ae_max_exposure 限制）；两个都写数值 = 固定曝光和增益。两个必须同为 -1 或同为数值
+  head:                          # Gemini 335Lg，头部用自动曝光
+    enable: true
+    serial: ""
+    usb_port: ""
+    rotation: 0                  # 0 | 90 | 180 | 270
+    white_balance: 5600
+    ae_max_exposure: 120
+    exposure: -1
+    gain: -1
+  left_wrist:                    # Gemini 305，腕部用固定曝光和增益
+    enable: true
+    serial: ""
+    usb_port: ""
+    rotation: 0
+    white_balance: 5600
+    ae_max_exposure: 120
+    exposure: 50
+    gain: 16
+  right_wrist:                   # Gemini 305
+    enable: true
+    serial: ""
+    usb_port: ""
+    rotation: 0
+    white_balance: 5600
+    ae_max_exposure: 120
+    exposure: 50
+    gain: 16
+
+
+# ======================================================================================================
+# 5. 运行时
+# ======================================================================================================
 log:
   mode: normal                   # normal | debug：debug 把我们自己组件的日志降到 DEBUG；运行期间不能切换，改完重启
 
@@ -106,3 +161,9 @@ navigation:
   map_only: false                # true：只用静态地图，不处理点云
   map_config_package: ""         # 空 = 按标准顺序查找
   nav_config_package: ""
+
+
+# ======================================================================================================
+# 6. 自动写入 setup：设备确认记录，由 setup.sh 和网页控制台写入，不用手填
+# ======================================================================================================
+setup: {}

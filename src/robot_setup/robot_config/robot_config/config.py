@@ -143,6 +143,19 @@ def _check_control(control: Any) -> None:
     expect(control.get("patch") is None or isinstance(control["patch"], dict), "'control.patch' must be a mapping")
 
 
+def _check_imaging(name: str, cam: Dict[str, Any]) -> None:
+    """white_balance and ae_max_exposure are positive numbers; exposure and gain are both -1 (auto) or both fixed values."""
+    for key in ("white_balance", "ae_max_exposure"):
+        expect(_is_number(cam[key]) and cam[key] > 0, f"'cameras.{name}.{key}' must be a number > 0, got {cam[key]!r}")
+    for key, floor in (("exposure", 1), ("gain", 0)):
+        value = cam[key]
+        expect(value == -1 or (isinstance(value, int) and not isinstance(value, bool) and value >= floor),
+               f"'cameras.{name}.{key}' must be -1 (auto) or an integer >= {floor}, got {value!r}")
+    expect((cam["exposure"] == -1) == (cam["gain"] == -1),
+           f"'cameras.{name}.exposure' and 'gain' must both be -1 (auto exposure) or both be fixed values, "
+           f"got exposure={cam['exposure']!r}, gain={cam['gain']!r}")
+
+
 def _check_cameras(cams: Dict[str, Any]) -> None:
     expect(cams["fps"] in (30, 60), f"'cameras.fps' must be 30 or 60, got {cams['fps']!r}")
     for name in ROLES:
@@ -152,6 +165,7 @@ def _check_cameras(cams: Dict[str, Any]) -> None:
         for key in ("serial", "usb_port"):
             expect(bool(SERIAL_RE.match(cam[key])),
                    f"'cameras.{name}.{key}' has invalid characters: {cam[key]!r}")
+        _check_imaging(name, cam)
         if cams["enable"] and cam["enable"]:
             expect(cam["serial"] != "",
                    f"'cameras.{name}.serial' is empty: set it (ros2 run orbbec_camera list_devices_node) "

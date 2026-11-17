@@ -111,3 +111,28 @@ def test_validate_does_not_change_its_input():
     before = copy.deepcopy(cfg)
     validate(cfg)
     assert cfg == before
+
+
+@pytest.mark.parametrize("fields, expected", [
+    ({"white_balance": 0}, "cameras.head.white_balance"),
+    ({"ae_max_exposure": "120"}, "cameras.head.ae_max_exposure"),
+    ({"exposure": 0, "gain": 0}, "cameras.head.exposure"),
+    ({"exposure": 50, "gain": -2}, "cameras.head.gain"),
+    ({"exposure": 50.5, "gain": 16}, "cameras.head.exposure"),
+    ({"exposure": 50}, "both be -1"),   # head gain stays -1 (auto)
+    ({"gain": 16}, "both be -1"),       # head exposure stays -1 (auto)
+])
+def test_the_imaging_values_of_a_camera_are_checked(fields, expected):
+    cameras = {"enable": False, "head": fields}
+    with pytest.raises(ConfigError, match=expected):
+        validate(full_config(cameras=cameras))
+
+
+def test_exposure_and_gain_may_be_both_auto_or_both_fixed():
+    for fields in ({"exposure": -1, "gain": -1}, {"exposure": 50, "gain": 16}, {"exposure": 1, "gain": 0}):
+        validate(full_config(cameras={"enable": False, "head": fields}))
+
+
+def test_the_old_global_imaging_keys_are_unknown_fields():
+    with pytest.raises(ConfigError, match="unknown field 'cameras.wrist_exposure'"):
+        validate(full_config(cameras={"enable": False, "wrist_exposure": 50}))

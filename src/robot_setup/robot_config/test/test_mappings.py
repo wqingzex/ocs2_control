@@ -1,7 +1,8 @@
 """Which config fields make up a device mapping, and the fingerprints computed from them.
 
-The fingerprint values below were taken from the code before the field lists moved into this package. They must not
-change: a changed fingerprint makes every operator confirm the cameras / hands again."""
+The hand fingerprints below were taken from the code before the field lists moved into this package; the camera ones were
+renewed when white_balance, ae_max_exposure, exposure and gain moved into each camera (one confirmation of the cameras on
+every machine). They must not change otherwise: a changed fingerprint makes every operator confirm the cameras / hands again."""
 import subprocess
 import sys
 
@@ -11,19 +12,19 @@ from robot_config import config_edit, mappings
 
 # case -> (cameras fingerprint, hand fingerprint)
 GOLDEN = {
-    "defaults": ("61c00c23f851af9e188c7dd042ffd26751b9524e34443ece3962ed155ab2bebc",
+    "defaults": ("d6c2e06cfa3e40a3070e7c2a5b9a09e75d0e25683ff3bb741e08a316fd99a0d4",
                  "1928ab2a4fd5e64b537e42a4f44f80804983fc2fdc29c9839219f312491223f9"),
-    "usb_xhand": ("61c00c23f851af9e188c7dd042ffd26751b9524e34443ece3962ed155ab2bebc",
+    "usb_xhand": ("d6c2e06cfa3e40a3070e7c2a5b9a09e75d0e25683ff3bb741e08a316fd99a0d4",
                   "908a13c12b98ec893854b4131db710ea767d1ab464e35d20efde35f06db4d264"),
-    "usb_can": ("61c00c23f851af9e188c7dd042ffd26751b9524e34443ece3962ed155ab2bebc",
+    "usb_can": ("d6c2e06cfa3e40a3070e7c2a5b9a09e75d0e25683ff3bb741e08a316fd99a0d4",
                 "79d79d838d96cc514acf6082b2f9ef5125a61c919838bfd505beecf39a5819b7"),
-    "ethernet": ("61c00c23f851af9e188c7dd042ffd26751b9524e34443ece3962ed155ab2bebc",
+    "ethernet": ("d6c2e06cfa3e40a3070e7c2a5b9a09e75d0e25683ff3bb741e08a316fd99a0d4",
                  "ff9eb6adf2e4c9db39db31225491a85a8e54324e1911b0c6dd685b0251ffda70"),
-    "arm_rs485": ("61c00c23f851af9e188c7dd042ffd26751b9524e34443ece3962ed155ab2bebc",
+    "arm_rs485": ("d6c2e06cfa3e40a3070e7c2a5b9a09e75d0e25683ff3bb741e08a316fd99a0d4",
                   "01b1b3f08728216cef1ad49d6a67a8fd9ad2e3032d7f67171a58f819d8f29d18"),
-    "none": ("61c00c23f851af9e188c7dd042ffd26751b9524e34443ece3962ed155ab2bebc",
+    "none": ("d6c2e06cfa3e40a3070e7c2a5b9a09e75d0e25683ff3bb741e08a316fd99a0d4",
              "e4fa57b6493dadb55edefacfa2b00414cdbff223bd8367e9aa7326655e6b0eba"),
-    "cam_changed": ("ae0178959ca2efb91f8e577199bbcb966fcf9ea356fda34ed96cccbc046ce338",
+    "cam_changed": ("13a6144735d9c719cbd6fb451786b216645278ff68b9a1be5f1a1e84a1e72d7b",
                     "1928ab2a4fd5e64b537e42a4f44f80804983fc2fdc29c9839219f312491223f9"),
 }
 CASES = {

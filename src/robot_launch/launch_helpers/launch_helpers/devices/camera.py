@@ -54,10 +54,17 @@ def _wrist_yaml(eye: str, rotation: int, fps: int) -> Dict[str, Any]:
     }
 
 
-def _common_color_args(cams: Dict[str, Any]) -> Dict[str, str]:
+def _common_color_args(cam: Dict[str, Any]) -> Dict[str, str]:
+    """Imaging of one camera: fixed white balance; exposure -1 (with gain -1) = auto, otherwise fixed exposure and gain."""
+    auto = cam["exposure"] == -1
     return {
-        "color_white_balance": str(cams["white_balance"]),
-        "color_ae_max_exposure": str(cams["ae_max_exposure"]),
+        "color_white_balance": str(cam["white_balance"]),
+        "color_ae_max_exposure": str(cam["ae_max_exposure"]),
+        "enable_color_auto_exposure_priority": "false",
+        "enable_color_auto_white_balance": "false",
+        "enable_color_auto_exposure": "true" if auto else "false",
+        "color_exposure": str(cam["exposure"]),
+        "color_gain": str(cam["gain"]),
         "color_powerline_freq": "50hz",
         "color_anti_flicker": "true",
         "publish_tf": "false",
@@ -87,13 +94,8 @@ def camera_specs(cfg: Dict[str, Any]) -> List[CameraSpec]:
         name = f"camera_{side}_wrist"
         eye = wrist_eye(int(cam["rotation"]))
         args = _device_args(name, cam)
-        args.update(_common_color_args(cams))
+        args.update(_common_color_args(cam))
         args.update({
-            "enable_color_auto_exposure_priority": "false",
-            "enable_color_auto_white_balance": "false",
-            "enable_color_auto_exposure": "false",
-            "color_exposure": str(cams["wrist_exposure"]),
-            "color_gain": str(cams["wrist_gain"]),
             "ae_reference_stream": "color",
             "ae_strategy": "motion",
         })
@@ -113,7 +115,7 @@ def camera_specs(cfg: Dict[str, Any]) -> List[CameraSpec]:
     if head["enable"]:
         name = "camera_head"
         args = _device_args(name, head)
-        args.update(_common_color_args(cams))
+        args.update(_common_color_args(head))
         # Native 640x480 profile; the SDK rotates decoded frames, so the format must be YUYV (not MJPG).
         args.update({
             "enable_color": "true",
@@ -122,11 +124,6 @@ def camera_specs(cfg: Dict[str, Any]) -> List[CameraSpec]:
             "color_format": "YUYV",
             "color_rotation": str(head["rotation"]),
             "color_fps": str(fps),
-            "enable_color_auto_exposure_priority": "false",
-            "enable_color_auto_exposure": "true",
-            "enable_color_auto_white_balance": "false",
-            "color_exposure": "-1",
-            "color_gain": "-1",
             "color.image_raw.enable_pub_plugins": '["image_transport/compressed"]',
             "enable_depth": "false",
             "enable_left_ir": "false",

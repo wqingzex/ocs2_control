@@ -31,7 +31,7 @@
   另外有 `entry`（控制入口）、`hardware`（运行方式 `real` / `mock_components` / `isaac`，下面各部件的 `interface` 只在真机生效）、`variant`。
 - **`control`：控制参数**：`arm_mode`、`limits`（关节最大速度和加速度）、`patch`（对 ros2_control 控制器参数的覆盖，如 home 位姿、`info_file_name`，内容不检查键）。
 - **`setup`**：设备确认记录，由 `setup.sh` 和网页控制台写入，不用手填。
-- **`xr` / `cameras` / `joystick` / `log` / `record` / `navigation`**：遥操作与采集。
+- **`xr` / `joystick`**：遥操作输入设备。**`cameras`**：感知，每台相机（`head`、`left_wrist`、`right_wrist`）各有自己的 `white_balance`、`ae_max_exposure`、`exposure`、`gain`（`exposure` 和 `gain` 都写 `-1` 是自动曝光，都写数值是固定曝光；头部默认自动，腕部默认固定）。**`log` / `record` / `navigation`**：运行时。
 
 `robot` 和 `control` 里的值由 ROS 启动文件转成 xacro 参数（名字没变），各机型的参数见 [`fa_w2_description`](../src/robot_description/fa_w2_description/README.md) 和 [`m6_ccs_description`](../src/robot_description/component/m6_ccs_description/README.md)。旧布局的 `platform`、`hardware`、`defaults` 三段和 `robot.end_effector_bus` 等旧字段已删除，写了会报"未知字段"。
 
