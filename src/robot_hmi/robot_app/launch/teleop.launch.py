@@ -54,7 +54,7 @@ def launch_setup(context):
         actions.append(Node(
             package="xr_teleop",
             executable="xr_bridge_node",
-            name="xr_target_node",  # XrInputHandler::XR_NODE_NAME — XR is enabled only while it exists
+            name="xr_target_node",
             output="screen",
             parameters=[{
                 "frame_timeout_ms": int(xr["frame_timeout_ms"]),

@@ -1,4 +1,5 @@
 #include "xr_teleop/xr_bridge_node.hpp"
+#include "xr_teleop/trigger_hold.hpp"
 #include <robot_log/log_mode.hpp>
 #include <cstdio>
 
@@ -56,9 +57,7 @@ namespace xr_teleop
         pub_left_ = create_publisher<geometry_msgs::msg::Pose>("/teleop/left_ee_pose", depth);
         pub_right_ = create_publisher<geometry_msgs::msg::Pose>("/teleop/right_ee_pose", depth);
         pub_event_ = create_publisher<std_msgs::msg::Int32>("/teleop/controller_state", depth);
-        pub_thumbstick_ = create_publisher<geometry_msgs::msg::Twist>("/teleop/thumbstick_axes", depth);
         pub_trigger_ = create_publisher<geometry_msgs::msg::Twist>("/teleop/trigger_values", depth);
-        pub_grip_ = create_publisher<geometry_msgs::msg::Twist>("/teleop/grip_values", depth);
         pub_connection_ = create_publisher<std_msgs::msg::Bool>(
             "/teleop/connection_status", rclcpp::QoS(1).reliable().transient_local());
         pub_device_id_ = create_publisher<std_msgs::msg::String>(
@@ -195,32 +194,21 @@ namespace xr_teleop
         const TeleState tele = toTeleState(frame.left, frame.right);
         const EncodedControls controls = encoder_.update(tele);
 
-        pub_head_->publish(toMsg(poses.head));
-        pub_left_->publish(toMsg(poses.left));
-        pub_right_->publish(toMsg(poses.right));
+        // A device without a valid sample in this frame (controller not tracked, bad sample) publishes nothing: the last
+        // good pose or the reference fallback would look like a live measurement, and the teleop side would follow it.
+        // The teleop side then sees no new pose and does not start following from a stale base (xr_guard.stale_ms).
+        if (poses.head_updated) { pub_head_->publish(toMsg(poses.head)); }
+        if (poses.left_updated) { pub_left_->publish(toMsg(poses.left)); }
+        if (poses.right_updated) { pub_right_->publish(toMsg(poses.right)); }
 
         std_msgs::msg::Int32 event;
         event.data = controls.event;
         pub_event_->publish(event);
 
-        geometry_msgs::msg::Twist thumbstick;
-        thumbstick.linear.x = controls.thumbstick[0];
-        thumbstick.linear.y = controls.thumbstick[1];
-        thumbstick.linear.z = controls.thumbstick[2];
-        thumbstick.angular.x = controls.thumbstick[3];
-        thumbstick.angular.y = controls.thumbstick[4];
-        thumbstick.angular.z = controls.thumbstick[5];
-        pub_thumbstick_->publish(thumbstick);
-
         geometry_msgs::msg::Twist trigger;
-        trigger.linear.x = controls.left_trigger_pull;
-        trigger.angular.x = controls.right_trigger_pull;
+        trigger.linear.x = triggerOrHeld(frame.has_left, controls.left_trigger_pull, held_left_trigger_);
+        trigger.angular.x = triggerOrHeld(frame.has_right, controls.right_trigger_pull, held_right_trigger_);
         pub_trigger_->publish(trigger);
-
-        geometry_msgs::msg::Twist grip;
-        grip.linear.x = controls.left_grip_value;
-        grip.angular.x = controls.right_grip_value;
-        pub_grip_->publish(grip);
 
         if (controls.event != event::kNone)
         {

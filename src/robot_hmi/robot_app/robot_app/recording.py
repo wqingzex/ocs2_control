@@ -21,11 +21,11 @@ from .config import TOPIC_RE, ConfigError, load
 
 JOINT_TOPICS = ("/joint_states", "/fsm_state")
 XR_TOPICS = (
-    "/teleop/head_pose", "/teleop/left_ee_pose", "/teleop/right_ee_pose", "/teleop/controller_state", "/teleop/thumbstick_axes",
-    "/teleop/trigger_values", "/teleop/grip_values", "/teleop/connection_status",
+    "/teleop/head_pose", "/teleop/left_ee_pose", "/teleop/right_ee_pose", "/teleop/controller_state",
+    "/teleop/trigger_values", "/teleop/connection_status",
     "/left_target", "/right_target", "/left_current_pose", "/right_current_pose", "/fsm_state",
 )
-XR_REPLAY_TOPICS = XR_TOPICS[:7]  # what the controller needs from /xr_target_node
+XR_REPLAY_TOPICS = XR_TOPICS[:5]  # what the controller needs from /xr_target_node
 SET_NAMES = ("joint", "xr", "collect")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 MIN_FREE_BYTES = 2 * 1024 ** 3  # refuse to start a recording on a nearly full disk

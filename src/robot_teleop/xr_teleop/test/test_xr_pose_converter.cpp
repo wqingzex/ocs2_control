@@ -88,6 +88,28 @@ TEST(XrPoseConverter, invalidSampleKeepsPreviousPose)
     EXPECT_TRUE(converter.update(frame).head.translation().isApprox(first));
 }
 
+TEST(XrPoseConverter, onlyADeviceWithAValidSampleIsMarkedUpdated)
+{
+    XrPoseConverter converter;
+    XrFrame frame;
+    frame.has_head = true;
+    frame.head = {1.0, 0.0, 0.0, 0, 0, 0, 1};
+    frame.has_left = true;
+    frame.left.pose = {NAN, 0, 0, 0, 0, 0, 1};  // present but invalid
+    // has_right stays false: not tracked
+    const auto& poses = converter.update(frame);
+    EXPECT_TRUE(poses.head_updated);
+    EXPECT_FALSE(poses.left_updated);
+    EXPECT_FALSE(poses.right_updated);
+
+    frame.has_left = true;
+    frame.left.pose = {0.0, 0.5, -1.0, 0, 0, 0, 1};
+    frame.has_right = true;
+    frame.right.pose = {0.0, 0.5, -1.0, 0, 0, 0, 1};
+    const auto& next = converter.update(frame);
+    EXPECT_TRUE(next.left_updated && next.right_updated);
+}
+
 TEST(XrPoseConverter, missingDeviceKeepsInitialReferencePose)
 {
     XrPoseConverter converter;

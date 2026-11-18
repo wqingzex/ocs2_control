@@ -28,9 +28,6 @@ int main(int argc, char** argv)
     double linear_scale = node->declare_parameter("linear_scale", 0.005);
     double angular_scale = node->declare_parameter("angular_scale", 0.05);
     double xr_pose_scale = node->declare_parameter("xr_pose_scale", 1.0);
-    // XR/头显参考link（通常为机器人头部link），可在各机器人target_generator.yaml中配置
-    std::string reference_link = node->declare_parameter("reference_link", "head_link2");
-
     bool enable_xr = node->declare_parameter("enable_xr", true);
 
     // 获取 hand_controllers 参数（用于自动检测和验证）
@@ -89,9 +86,6 @@ int main(int argc, char** argv)
     {
         RCLCPP_INFO(node->get_logger(),
                     "XR pose scale: %.3f (xr_pose_scale in target_generator.yaml)", xr_pose_scale);
-        RCLCPP_INFO(node->get_logger(),
-                    "XR reference_link: %s (from target_generator.yaml, default=head_link2)",
-                    reference_link.c_str());
     }
 
     try
@@ -123,9 +117,7 @@ int main(int argc, char** argv)
         {
             xr_handler = std::make_unique<XrInputHandler>(
                 node, target_generator.get(), pub_left_target, pub_right_target, hand_controllers,
-                xr_pose_scale, reference_link);
-            // 头显 yaw 对齐（默认保持旧行为，见 XrInputHandler.h）
-            xr_handler->setAlignHeadYaw(node->declare_parameter("xr_align_head_yaw", false));
+                xr_pose_scale);
         }
 
         // 创建 control input 订阅器（用于增量控制）

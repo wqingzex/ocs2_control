@@ -46,7 +46,7 @@ def test_collect_needs_a_camera():
 
 def test_xr_set_keeps_the_former_topics():
     topics = recording.topics_for(make_cfg(), "xr")
-    assert len(topics) == 13 and "/teleop/left_ee_pose" in topics and "/left_target" in topics
+    assert len(topics) == 11 and "/teleop/left_ee_pose" in topics and "/left_target" in topics
 
 
 def test_custom_topic_list_is_validated_and_extra_topics_are_appended_once():
@@ -141,7 +141,7 @@ def test_play_command_options():
     assert recording.play_command("/b") == ("ros2", "bag", "play", "/b")
     assert recording.play_command("/b", rate=0.5, loop=True, paused=True, start=3.0) == (
         "ros2", "bag", "play", "/b", "--rate", "0.5", "--loop", "--start-paused", "--start-offset", "3.0")
-    assert recording.play_command("/b", xr=True)[-8:] == ("--topics", *recording.XR_REPLAY_TOPICS)
+    assert recording.play_command("/b", xr=True)[-6:] == ("--topics", *recording.XR_REPLAY_TOPICS)
     for kwargs in ({"rate": 0}, {"rate": -1}, {"start": -1}):
         with pytest.raises(RecordingError):
             recording.play_command("/b", **kwargs)

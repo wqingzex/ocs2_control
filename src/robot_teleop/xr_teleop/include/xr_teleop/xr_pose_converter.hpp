@@ -18,6 +18,11 @@ namespace xr_teleop
             Eigen::Isometry3d head;
             Eigen::Isometry3d left;
             Eigen::Isometry3d right;
+            /// This frame carried a valid sample for the device (the pose above is that sample). False: the pose is the
+            /// last good one, or the reference fallback before the first, and must not be published as a measurement.
+            bool head_updated = false;
+            bool left_updated = false;
+            bool right_updated = false;
         };
 
         XrPoseConverter();
@@ -32,7 +37,7 @@ namespace xr_teleop
         static Pose7 toPose7(const Eigen::Isometry3d& pose);
 
     private:
-        static void updateOne(const Pose7& sample, Eigen::Isometry3d& last);
+        static bool updateOne(const Pose7& sample, Eigen::Isometry3d& last);
 
         Poses poses_;
     };

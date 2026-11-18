@@ -101,9 +101,6 @@ install(
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
-  ament_add_gtest(test_xr_alignment test/test_xr_alignment.cpp)
-  target_include_directories(test_xr_alignment PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-  target_link_libraries(test_xr_alignment Eigen3::Eigen)
   ament_add_gtest(test_target_guard test/test_target_guard.cpp)
   target_include_directories(test_target_guard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(test_target_guard Eigen3::Eigen)

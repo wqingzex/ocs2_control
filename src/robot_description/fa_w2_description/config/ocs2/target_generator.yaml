@@ -12,9 +12,6 @@
     marker_fixed_frame: base_footprint
     # 是否启用XR输入处理
     enable_xr: true
-    # 头显 yaw 对齐：true 时以操作员面朝方向为机器人 +X，不受 Pico 房间原点/手柄倾角影响
-    # 真机首次开启时请降低 xr_pose_scale 并在 mock/Isaac 先验证方向
-    xr_align_head_yaw: false
     enable_head_control: false
     
     # 头部关节映射配置（可选）

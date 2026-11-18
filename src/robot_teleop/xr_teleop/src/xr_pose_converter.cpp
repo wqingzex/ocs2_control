@@ -63,14 +63,8 @@ namespace xr_teleop
         m.topLeftCorner<3, 3>() = q.toRotationMatrix();
         m.topRightCorner<3, 1>() << pose[0], pose[1], pose[2];
 
-        const Eigen::Matrix4d robot = robotFromOpenXr() * m * openXrFromRobot();
-        const double det = robot.determinant();
-        if (!std::isfinite(det) || std::abs(det) <= 1e-6)
-        {
-            return std::nullopt;
-        }
         Eigen::Isometry3d out = Eigen::Isometry3d::Identity();
-        out.matrix() = robot;
+        out.matrix() = robotFromOpenXr() * m * openXrFromRobot();
         return out;
     }
 
@@ -81,28 +75,21 @@ namespace xr_teleop
         return {p.x(), p.y(), p.z(), q.x(), q.y(), q.z(), q.w()};
     }
 
-    void XrPoseConverter::updateOne(const Pose7& sample, Eigen::Isometry3d& last)
+    bool XrPoseConverter::updateOne(const Pose7& sample, Eigen::Isometry3d& last)
     {
         if (auto converted = openXrToRobot(sample))
         {
             last = *converted;
+            return true;
         }
+        return false;
     }
 
     const XrPoseConverter::Poses& XrPoseConverter::update(const XrFrame& frame)
     {
-        if (frame.has_head)
-        {
-            updateOne(frame.head, poses_.head);
-        }
-        if (frame.has_left)
-        {
-            updateOne(frame.left.pose, poses_.left);
-        }
-        if (frame.has_right)
-        {
-            updateOne(frame.right.pose, poses_.right);
-        }
+        poses_.head_updated = frame.has_head && updateOne(frame.head, poses_.head);
+        poses_.left_updated = frame.has_left && updateOne(frame.left.pose, poses_.left);
+        poses_.right_updated = frame.has_right && updateOne(frame.right.pose, poses_.right);
         return poses_;
     }
 } // namespace xr_teleop

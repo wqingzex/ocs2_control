@@ -39,9 +39,7 @@ class XrStub(Node):
             "left": self.create_publisher(Pose, "/teleop/left_ee_pose", depth),
             "right": self.create_publisher(Pose, "/teleop/right_ee_pose", depth),
             "event": self.create_publisher(Int32, "/teleop/controller_state", depth),
-            "axes": self.create_publisher(Twist, "/teleop/thumbstick_axes", depth),
             "trigger": self.create_publisher(Twist, "/teleop/trigger_values", depth),
-            "grip": self.create_publisher(Twist, "/teleop/grip_values", depth),
             "status": self.create_publisher(Bool, "/teleop/connection_status", 1),
         }
         self.steps = sorted(steps, key=lambda s: s["at"])
@@ -66,15 +64,7 @@ class XrStub(Node):
         self.pub["left"].publish(make_pose([a + b for a, b in zip(LEFT, s["left_delta"])]))
         self.pub["right"].publish(make_pose([a + b for a, b in zip(RIGHT, s["right_delta"])]))
         self.pub["event"].publish(Int32(data=event))
-        axes = Twist()
-        axes.linear.z = 1.0 if s["left_grip"] else 0.0
-        axes.angular.z = 1.0 if s["right_grip"] else 0.0
-        self.pub["axes"].publish(axes)
         self.pub["trigger"].publish(Twist())
-        grip = Twist()
-        grip.linear.x = axes.linear.z
-        grip.angular.x = axes.angular.z
-        self.pub["grip"].publish(grip)
         self.pub["status"].publish(Bool(data=True))
 
 

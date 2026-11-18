@@ -26,10 +26,8 @@ ros2 launch robot_startup dual_arm.launch.py robot:=m6_ccs
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `enable_xr` | yaml 中 `false`，代码默认 `true` | 是否处理 XR 输入 |
-| `xr_align_head_yaw` | `false` | 按头显朝向对齐 XR 坐标 |
 | `xr_pose_scale` | `1.0` | 手柄位姿缩放，建议 0.75~1.5 |
 | `linear_scale` / `angular_scale` | `0.005` / `0.05` | 键盘手柄的缩放 |
-| `reference_link` | `head_link2` | 头部 marker 的参考连杆 |
 | `marker_fixed_frame` | `base_link` | marker 的固定坐标系 |
 
 ## 接口
@@ -40,4 +38,4 @@ ros2 launch robot_startup dual_arm.launch.py robot:=m6_ccs
 | 发布 | `/fsm_command` | XR 触发的状态机切换 |
 | 订阅 | `left_current_pose` `right_current_pose` | 当前位姿，用来更新 marker |
 | 订阅 | `/teleop/control_input` | 键盘手柄输入（`Inputs`） |
-| 订阅 | `/teleop/head_pose` `/teleop/left_ee_pose` `/teleop/right_ee_pose` `/teleop/controller_state` `/teleop/trigger_values` | 来自 `robot_app` 的 XR 桥接 |
+| 订阅 | `/teleop/left_ee_pose` `/teleop/right_ee_pose` `/teleop/controller_state` `/teleop/trigger_values` | 来自 `robot_app` 的 XR 桥接 |

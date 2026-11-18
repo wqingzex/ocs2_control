@@ -71,7 +71,7 @@ install(PROGRAMS scripts/xr_stub.py DESTINATION lib/${PROJECT_NAME} OPTIONAL)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
-  foreach(t test_button_event_encoder test_xr_pose_converter test_xr_state_json test_xr_device_selector)
+  foreach(t test_button_event_encoder test_xr_pose_converter test_xr_state_json test_xr_device_selector test_trigger_hold)
     ament_add_gtest(${t} test/${t}.cpp)
     target_link_libraries(${t} xr_teleop_core nlohmann_json::nlohmann_json)
     target_compile_definitions(${t} PRIVATE XR_TELEOP_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data")

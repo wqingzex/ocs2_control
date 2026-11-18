@@ -15,6 +15,8 @@
     xr_guard.max_target_distance: 0.3
     # 相邻两个通过守卫的目标之间的距离上限（m）
     xr_guard.max_target_step: 0.05
+    # 开始跟随时，手柄位姿必须是这么近（毫秒）内收到的，否则该臂不开始跟随并记 [TEL-003]。占位值，真机上调
+    xr_guard.stale_ms: 200
 
     # 是否启用XR输入处理
     enable_xr: false

@@ -2,9 +2,11 @@
 
 `target_generator_node` 里处理 XR 手柄的部分：把 `xr_teleop` 桥节点发来的手柄位姿、按键和扳机，变成状态机命令、双臂目标位姿和手的开合。按键表见 [`docs/使用手册.md`](../../../docs/使用手册.md) 第 6.1 节。
 
-## 启用
+## 输入和跟随
 
-只有图里存在名为 `/xr_target_node` 的节点时才处理 XR 输入（桥节点和 `xr_stub.py` 都用这个名字）。节点消失后自动停用并打 `[TEL-001]`。
+XR 输入来自 `/teleop/*` 话题（桥节点或 `xr_stub.py` 发布）。
+
+开始跟随前的"输入可信"检查（`XrInputHandler` 的每臂输入状态）：该手柄 `xr_guard.stale_ms`（默认 200 ms）内有新位姿、已收到机器人当前末端位姿，两项都满足才开始跟随，否则打 `[TEL-003]`。跟随中输入停了，手臂停在最后一个目标上，没有看门狗和定时器。单帧的位置突跳由守卫丢弃（`[TEL-002]`，参数见 `config/default.yaml` 的 `xr_guard.*`）。每个通过守卫的帧都发布，不按距离量化。
 
 ## 按键
 
@@ -27,7 +29,7 @@
 目标姿态 = (手柄基准姿态⁻¹ × 手柄当前姿态) × 机器人基准姿态
 ```
 
-位移坐标系默认是进入 UPDATE 时手柄的姿态；`xr_align_head_yaw: true` 时改用头显的水平朝向（操作员正前方 = 机器人 +X）。目标的位置变化超过 1 cm 或姿态变化超过 0.005 rad 才发布，避免刷屏。
+位移和转动都在进入 UPDATE 时手柄的姿态坐标系里算，所以往前推的方向取决于按键时手柄指向哪里；头显位姿不参与控制。每个通过守卫的帧都发布。
 
 ## 扳机
 
@@ -37,7 +39,7 @@
 
 | 方向 | 话题 | 说明 |
 |---|---|---|
-| 订阅 | `/teleop/left_ee_pose` `/teleop/right_ee_pose` `/teleop/head_pose` | 手柄和头显位姿 |
+| 订阅 | `/teleop/left_ee_pose` `/teleop/right_ee_pose` | 手柄位姿 |
 | 订阅 | `/teleop/controller_state` | 按键事件码 |
 | 订阅 | `/teleop/trigger_values` | 扳机按下深度 |
 | 发布 | `left_target` `right_target` | 跟随时的目标位姿 |
@@ -50,7 +52,6 @@
 |---|---|---|
 | `enable_xr` | `true`（`config/default.yaml` 里为 `false`） | 是否创建 XrInputHandler |
 | `xr_pose_scale` | `1.0` | 手柄位移缩放，建议 0.75~1.5 |
-| `xr_align_head_yaw` | `false` | 按头显朝向解释位移 |
 
 ## 测试
 
