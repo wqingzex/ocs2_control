@@ -23,7 +23,9 @@
 #include <Eigen/Geometry>
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/int32.hpp>
+#include <robot_control_msgs/msg/whole_body_current_state.hpp>
 #include "target_generator/TargetGenerator.h"
+#include "target_generator/head_follow.h"
 #include "target_generator/target_guard.h"
 #include <optional>
 #include "robot_controller_core/FSMCommandPublisher.h"
@@ -38,6 +40,10 @@ namespace target_generator
      * - 左X：FSM 后退（OCS2/MOVEJ→HOLD→HOME，HOME 下切换 REST）
      * - 右摇杆按下：UPDATE（双臂跟随手柄）↔ STORAGE（停止），仅 OCS2；离开 OCS2 自动回到 STORAGE
      * 扳机按比例控制手/夹爪开合（/teleop/trigger_values → <controller>/target_percent）。
+     * 头部：跟随中（UPDATE）且全身控制器的头部任务是 HEAD_TRACKING 时，头显的位移和转动叠加到机器人头当前位姿上，
+     * 发布到 head_target；不需要新的按键，头部任务由全身控制器的模式决定。
+     * 底盘遥控：左摇杆按下开 / 关；开着时摇杆变成底盘速度（/base_velocity_command）。只在 OCS2 且底盘锁定时能开，
+     * 条件不再满足或摇杆帧超时就发零速度并退出（见 [TEL-004]）。
      */
     class XrInputHandler
     {
@@ -88,6 +94,7 @@ namespace target_generator
         static constexpr int32_t kEventFsmForward = 1;   // 右A
         static constexpr int32_t kEventFsmBack = 2;      // 左X
         static constexpr int32_t kEventToggleFollow = 3; // 右摇杆按下
+        static constexpr int32_t kEventToggleChassisDrive = 4; // 左摇杆按下
 
         // FSM 状态 / /fsm_command 命令
         static constexpr int32_t kFsmHome = 1;
@@ -122,6 +129,31 @@ namespace target_generator
 
         /// 右摇杆按下：在 OCS2 中切换 UPDATE（记录基准，双臂跟随）/ STORAGE（停止）
         void toggleFollow();
+
+        /// 头显位姿（/teleop/head_pose）：满足头部跟随条件时算出头部目标并发布
+        void xrHeadCallback(geometry_msgs::msg::Pose::SharedPtr msg);
+        /// 机器人头当前位姿（head_current_pose，在模型的 base 坐标系里）
+        void robotHeadPoseCallback(geometry_msgs::msg::PoseStamped::SharedPtr msg);
+        /// 全身控制器的状态（只用头部任务 head_state）
+        void wholeBodyStateCallback(robot_control_msgs::msg::WholeBodyCurrentState::SharedPtr msg);
+        /// 头部目标 = 机器人头基准 + 头显自基准以来的位移和转动，过守卫后发布
+        void followHead(const Eigen::Vector3d& xrPos, const Eigen::Quaterniond& xrOri);
+
+        /// 摇杆轴值（/teleop/thumbstick_axes）：底盘遥控开着时变成底盘速度，每一帧都发（含 0）
+        void thumbstickCallback(geometry_msgs::msg::Twist::SharedPtr msg);
+        /// 左摇杆按下：开 / 关底盘遥控
+        void toggleChassisDrive();
+        /// 底盘遥控现在为什么不能继续（不在 OCS2、底盘状态未知或已解锁），空串表示可以
+        std::string whyChassisDriveBlocked() const;
+        /// 底盘遥控现在为什么不能开始：上面的原因，再加摇杆输入是否新鲜
+        std::string whyNoChassisDrive(std::int64_t now_ns) const;
+        /// 关掉底盘遥控并发一个零速度；forced = 不是操作员按键，而是条件不再满足（记 [TEL-004]）
+        void stopChassisDrive(const std::string& reason, bool forced);
+        void publishBaseVelocity(double forward, double sideways, double turn);
+        /// 底盘遥控开着时摇杆帧停了（头显断线、桥掉了）：不会再有零帧，这里按超时停底盘
+        void chassisWatchdog();
+        /// 头部不再跟随，基准和上一个目标都丢掉：再次满足条件时重新取基准
+        void stopHeadTracking();
 
         /// What one arm needs before its input can be trusted (checkpoint 1 of the XR path, see docs/使用手册.md).
         struct ArmInput
@@ -269,6 +301,34 @@ namespace target_generator
         // Checkpoint 1: per-arm input state, checked when the right stick starts following
         std::array<ArmInput, 2> arm_{};
         std::int64_t stale_ns_ = 200'000'000;    ///< xr_guard.stale_ms: no controller pose for longer = not trusted
+
+        // 头部跟随：条件见 followHead。head_target 和 head_current_pose 都在模型的 base 坐标系里，不做坐标系转换
+        rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pub_head_target_;
+        rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr sub_head_;
+        rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_robot_head_;
+        rclcpp::Subscription<robot_control_msgs::msg::WholeBodyCurrentState>::SharedPtr sub_whole_body_state_;
+        std::atomic<std::uint8_t> head_state_{0};   ///< WholeBodyCurrentState::head_state，0 = 未跟踪 / 还没收到
+        bool has_robot_head_pose_ = false;
+        Eigen::Vector3d robot_head_position_ = Eigen::Vector3d::Zero();
+        Eigen::Quaterniond robot_head_orientation_ = Eigen::Quaterniond::Identity();
+        bool head_following_ = false;               ///< 头部基准已取，正在发布头部目标
+        HeadFollowBase head_base_{Eigen::Vector3d::Zero(), Eigen::Quaterniond::Identity(),
+                                  Eigen::Vector3d::Zero(), Eigen::Quaterniond::Identity()};
+        std::optional<Eigen::Vector3d> last_accepted_head_;
+
+        // 底盘遥控：左摇杆前后 / 左右，右摇杆转向。只在 OCS2 且全身控制器把底盘锁定时可用（底盘未锁时全身控制器自己
+        // 往同一个话题发速度，两路会互相覆盖）；任何一条不满足、或摇杆帧超时，立刻停底盘并退出，要再按一次左摇杆
+        rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr base_velocity_publisher_;
+        rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_thumbstick_;
+        rclcpp::TimerBase::SharedPtr chassis_watchdog_timer_;
+        bool chassis_enabled_ = false;                     ///< xr_base，默认关：关着时没有速度发布者，左摇杆按键无效
+        std::atomic<bool> chassis_drive_{false};
+        std::atomic<bool> base_state_known_{false};  ///< 收到过全身控制器的状态；BASE_LOCKED 是 0，没收到不能当作锁定
+        std::atomic<std::uint8_t> base_state_{robot_control_msgs::msg::WholeBodyCurrentState::BASE_UNLOCKED};
+        std::atomic<std::int64_t> last_thumbstick_ns_{0};  ///< steady clock，上一帧摇杆什么时候到的
+        double chassis_linear_scale_ = 0.1;                ///< m/s，摇杆推满
+        double chassis_angular_scale_ = 0.2;               ///< rad/s，摇杆推满
+        std::int64_t chassis_stale_ns_ = 200'000'000;      ///< xr_chassis.stale_ms
 
         // 状态管理
         std::atomic<bool> is_update_mode_; // true = 更新模式（跟随）, false = 存储模式（停止）

@@ -46,7 +46,14 @@ def test_collect_needs_a_camera():
 
 def test_xr_set_keeps_the_former_topics():
     topics = recording.topics_for(make_cfg(), "xr")
-    assert len(topics) == 11 and "/teleop/left_ee_pose" in topics and "/left_target" in topics
+    assert len(topics) == 13 and "/teleop/left_ee_pose" in topics and "/left_target" in topics
+
+
+def test_the_sticks_are_recorded_but_never_replayed():
+    # A bag with the left stick key and the stick values, played back to a robot, would drive the base.
+    assert "/teleop/thumbstick_axes" in recording.XR_TOPICS and "/base_velocity_command" in recording.XR_TOPICS
+    assert "/teleop/thumbstick_axes" not in recording.XR_REPLAY_TOPICS
+    assert "/base_velocity_command" not in recording.XR_REPLAY_TOPICS
 
 
 def test_custom_topic_list_is_validated_and_extra_topics_are_appended_once():

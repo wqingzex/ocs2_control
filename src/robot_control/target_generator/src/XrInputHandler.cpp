@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <stdexcept>
 
 namespace target_generator
 {
@@ -94,6 +95,47 @@ namespace target_generator
         sub_fsm_state_ = node_->create_subscription<std_msgs::msg::Int32>(
             "/fsm_state", rclcpp::QoS(1).transient_local(),
             [this](std_msgs::msg::Int32::SharedPtr msg) { fsmStateCallback(msg); });
+
+        // 头部跟随：头显位姿、机器人头当前位姿、全身控制器的头部任务状态进，head_target 出（队列长度 1，只要最新的）
+        pub_head_target_ = node_->create_publisher<geometry_msgs::msg::Pose>("head_target", 1);
+        sub_head_ = node_->create_subscription<geometry_msgs::msg::Pose>(
+            "/teleop/head_pose", 10,
+            [this](geometry_msgs::msg::Pose::SharedPtr msg) { xrHeadCallback(msg); });
+        sub_robot_head_ = node_->create_subscription<geometry_msgs::msg::PoseStamped>(
+            "head_current_pose", 10,
+            [this](geometry_msgs::msg::PoseStamped::SharedPtr msg) { robotHeadPoseCallback(msg); });
+        sub_whole_body_state_ = node_->create_subscription<robot_control_msgs::msg::WholeBodyCurrentState>(
+            "/whole_body_controller/current_state", 10,
+            [this](robot_control_msgs::msg::WholeBodyCurrentState::SharedPtr msg) { wholeBodyStateCallback(msg); });
+
+        // 底盘遥控：摇杆轴值进，底盘速度出（和 joystick_teleop / 全身控制器是同一个话题）。默认关：不开就不创建
+        // 发布者、订阅和看门狗，不会往底盘速度话题发任何东西，误按左摇杆也不会让手臂停下
+        chassis_enabled_ = node_->declare_parameter("xr_base", chassis_enabled_);
+        chassis_linear_scale_ = node_->declare_parameter("xr_chassis.linear_scale", chassis_linear_scale_);
+        chassis_angular_scale_ = node_->declare_parameter("xr_chassis.angular_scale", chassis_angular_scale_);
+        chassis_stale_ns_ = node_->declare_parameter("xr_chassis.stale_ms",
+                                                     static_cast<std::int64_t>(chassis_stale_ns_ / 1'000'000)) *
+                            1'000'000;
+        if (!std::isfinite(chassis_linear_scale_) || chassis_linear_scale_ < 0.0 ||
+            !std::isfinite(chassis_angular_scale_) || chassis_angular_scale_ < 0.0 || chassis_stale_ns_ <= 0)
+        {
+            throw std::invalid_argument(
+                "xr_chassis.linear_scale and xr_chassis.angular_scale must be finite and >= 0, xr_chassis.stale_ms > 0");
+        }
+        if (chassis_enabled_)
+        {
+            base_velocity_publisher_ = node_->create_publisher<geometry_msgs::msg::Twist>("/base_velocity_command", 10);
+            sub_thumbstick_ = node_->create_subscription<geometry_msgs::msg::Twist>(
+                "/teleop/thumbstick_axes", 10,
+                [this](geometry_msgs::msg::Twist::SharedPtr msg) { thumbstickCallback(msg); });
+            chassis_watchdog_timer_ =
+                node_->create_wall_timer(std::chrono::milliseconds(50), [this]() { chassisWatchdog(); });
+            RCLCPP_WARN(node_->get_logger(), "🕹️ 底盘遥控已启用（xr_base = true）：左摇杆按下开 / 关");
+        }
+        else
+        {
+            RCLCPP_INFO(node_->get_logger(), "🕹️ 底盘遥控关闭（xr_base = false，默认）");
+        }
 
         RCLCPP_INFO(node_->get_logger(), "🕹️🕶️🕹️ XrInputHandler created");
         RCLCPP_INFO(node_->get_logger(),
@@ -480,6 +522,11 @@ namespace target_generator
                 toggleFollow();
                 break;
             }
+            case kEventToggleChassisDrive: // 左摇杆按下：底盘遥控 开 ↔ 关
+            {
+                toggleChassisDrive();
+                break;
+            }
             case kEventNone:
             default:
                 // 无事件或旧方案的事件码
@@ -489,6 +536,14 @@ namespace target_generator
 
     void XrInputHandler::toggleFollow()
     {
+        // 摇杆在开车时手臂不跟随：先按左摇杆退出底盘遥控
+        if (chassis_drive_.load())
+        {
+            RCLCPP_INFO_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
+                                 "🔘 [右摇杆按钮] 按下 - 功能: 切换跟随 - 操作: 忽略（底盘遥控开着，先按左摇杆退出）");
+            return;
+        }
+
         // 只在OCS2状态下执行；不在 OCS2 时按了没反应，用 INFO 提示（节流），方便排查
         if (current_fsm_state_.load() != kFsmOcs2)
         {
@@ -545,6 +600,231 @@ namespace target_generator
         }
     }
 
+    void XrInputHandler::stopHeadTracking()
+    {
+        head_following_ = false;
+        last_accepted_head_.reset();
+    }
+
+    void XrInputHandler::robotHeadPoseCallback(geometry_msgs::msg::PoseStamped::SharedPtr msg)
+    {
+        const auto& p = msg->pose.position;
+        const auto& q = msg->pose.orientation;
+        const Eigen::Vector3d position(p.x, p.y, p.z);
+        const Eigen::Quaterniond orientation(q.w, q.x, q.y, q.z);
+        if (!headPoseUsable(position, orientation))
+        {
+            // 没有可信的机器人头位姿就不能当基准，也不能拿它来判断目标是不是太远
+            has_robot_head_pose_ = false;
+            stopHeadTracking();
+            return;
+        }
+        robot_head_position_ = position;
+        robot_head_orientation_ = orientation.normalized();
+        has_robot_head_pose_ = true;
+    }
+
+    void XrInputHandler::wholeBodyStateCallback(robot_control_msgs::msg::WholeBodyCurrentState::SharedPtr msg)
+    {
+        head_state_.store(msg->head_state);
+        if (msg->head_state != robot_control_msgs::msg::WholeBodyCurrentState::HEAD_TRACKING)
+        {
+            stopHeadTracking();
+        }
+
+        base_state_.store(msg->base_state);
+        base_state_known_.store(true);
+        if (chassis_drive_.load() && msg->base_state != robot_control_msgs::msg::WholeBodyCurrentState::BASE_LOCKED)
+        {
+            stopChassisDrive("the base was unlocked: the whole body controller drives it now", true);
+        }
+    }
+
+    std::string XrInputHandler::whyChassisDriveBlocked() const
+    {
+        if (current_fsm_state_.load() != kFsmOcs2) { return "not in OCS2"; }
+        if (!base_state_known_.load())
+        {
+            return "no state from the whole body controller yet (is it running?)";
+        }
+        if (base_state_.load() != robot_control_msgs::msg::WholeBodyCurrentState::BASE_LOCKED)
+        {
+            return "the base is unlocked: the whole body controller drives it and publishes the same velocity topic";
+        }
+        return {};
+    }
+
+    std::string XrInputHandler::whyNoChassisDrive(std::int64_t now_ns) const
+    {
+        std::string why = whyChassisDriveBlocked();
+        if (!why.empty()) { return why; }
+        if (now_ns - last_thumbstick_ns_.load() > chassis_stale_ns_)
+        {
+            return "no fresh stick input from the headset";
+        }
+        return {};
+    }
+
+    void XrInputHandler::toggleChassisDrive()
+    {
+        if (!chassis_enabled_)
+        {
+            RCLCPP_INFO_THROTTLE(node_->get_logger(), *node_->get_clock(), 5000,
+                                 "🔘 [左摇杆按钮] 按下 - 忽略（底盘遥控关闭：xr_base = false）");
+            return;
+        }
+        if (chassis_drive_.load())
+        {
+            stopChassisDrive("the left stick key was pressed again", false);
+            return;
+        }
+        const std::string why = whyNoChassisDrive(steadyNowNs());
+        if (!why.empty())
+        {
+            RCLCPP_WARN(node_->get_logger(), "[TEL-004] chassis drive refused: %s", why.c_str());
+            return;
+        }
+        if (is_update_mode_.load())
+        {
+            stopFollowing();  // the arms wait: sticks drive the base now
+            RCLCPP_INFO(node_->get_logger(), "🕹️ 底盘遥控开启，手臂和头部停止跟随");
+        }
+        chassis_drive_.store(true);
+        RCLCPP_INFO(node_->get_logger(),
+                    "🔘 [左摇杆按钮] 按下 - 功能: 底盘遥控 - 操作: 开启（左摇杆前后 / 左右，右摇杆转向；满杆 %.2f m/s、%.2f rad/s）",
+                    chassis_linear_scale_, chassis_angular_scale_);
+    }
+
+    void XrInputHandler::stopChassisDrive(const std::string& reason, bool forced)
+    {
+        if (!chassis_drive_.exchange(false)) { return; }
+        publishBaseVelocity(0.0, 0.0, 0.0);
+        if (forced)
+        {
+            RCLCPP_WARN(node_->get_logger(), "[TEL-004] chassis drive stopped, base velocity set to zero: %s",
+                        reason.c_str());
+        }
+        else
+        {
+            RCLCPP_INFO(node_->get_logger(), "🔘 底盘遥控关闭（%s），底盘速度置零", reason.c_str());
+        }
+    }
+
+    void XrInputHandler::publishBaseVelocity(double forward, double sideways, double turn)
+    {
+        if (!base_velocity_publisher_) { return; }  // chassis drive is off (xr_base = false)
+        geometry_msgs::msg::Twist velocity;
+        velocity.linear.x = forward;
+        velocity.linear.y = sideways;
+        velocity.angular.z = turn;
+        base_velocity_publisher_->publish(velocity);
+    }
+
+    void XrInputHandler::thumbstickCallback(geometry_msgs::msg::Twist::SharedPtr msg)
+    {
+        last_thumbstick_ns_.store(steadyNowNs());
+        if (!chassis_drive_.load()) { return; }
+
+        const std::string blocked = whyChassisDriveBlocked();
+        if (!blocked.empty())
+        {
+            stopChassisDrive(blocked, true);
+            return;
+        }
+
+        // linear = 左摇杆 (x 右为正, y 前为负)，angular.x = 右摇杆 x（右为正）。机器人轴：x 前、y 左、绕 z 逆时针为正，
+        // 所以三个量都取负。一帧里有任何非有限值就整帧当 0：宁可停，不能带着 NaN 往底盘发
+        const double left_x = msg->linear.x, left_y = msg->linear.y, right_x = msg->angular.x;
+        if (!std::isfinite(left_x) || !std::isfinite(left_y) || !std::isfinite(right_x))
+        {
+            RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                 "[TEL-004] stick frame is not finite, base velocity set to zero");
+            publishBaseVelocity(0.0, 0.0, 0.0);
+            return;
+        }
+        const auto axis = [](double v) { return std::clamp(v, -1.0, 1.0); };
+        publishBaseVelocity(-axis(left_y) * chassis_linear_scale_,
+                            -axis(left_x) * chassis_linear_scale_,
+                            -axis(right_x) * chassis_angular_scale_);
+    }
+
+    void XrInputHandler::chassisWatchdog()
+    {
+        if (!chassis_drive_.load()) { return; }
+        const auto silent_ns = steadyNowNs() - last_thumbstick_ns_.load();
+        if (silent_ns > chassis_stale_ns_)
+        {
+            char reason[96];
+            std::snprintf(reason, sizeof(reason), "no stick input for %.0f ms (limit %.0f ms)", silent_ns * 1e-6,
+                          chassis_stale_ns_ * 1e-6);
+            stopChassisDrive(reason, true);
+        }
+    }
+
+    void XrInputHandler::xrHeadCallback(geometry_msgs::msg::Pose::SharedPtr msg)
+    {
+        // 头部只在这些条件同时满足时跟随：手臂在跟随（UPDATE，只会在 OCS2 里）、全身控制器的头部任务是
+        // HEAD_TRACKING、已收到机器人头当前位姿。任何一项不满足就停止，再满足时重新取基准，不会跳。
+        const bool ready = is_update_mode_.load() && current_fsm_state_.load() == kFsmOcs2 &&
+                           head_state_.load() == robot_control_msgs::msg::WholeBodyCurrentState::HEAD_TRACKING &&
+                           has_robot_head_pose_;
+        if (!ready)
+        {
+            stopHeadTracking();
+            return;
+        }
+
+        const Eigen::Vector3d position(msg->position.x, msg->position.y, msg->position.z);
+        const Eigen::Quaterniond orientation(msg->orientation.w, msg->orientation.x, msg->orientation.y,
+                                             msg->orientation.z);
+        if (!headPoseUsable(position, orientation))
+        {
+            RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                 "[TEL-002] head target dropped: the headset pose is not finite or has a zero quaternion");
+            return;
+        }
+        followHead(position, orientation.normalized());
+    }
+
+    void XrInputHandler::followHead(const Eigen::Vector3d& xrPos, const Eigen::Quaterniond& xrOri)
+    {
+        if (!head_following_)
+        {
+            head_base_ = {xrPos, xrOri, robot_head_position_, robot_head_orientation_};
+            last_accepted_head_.reset();
+            head_following_ = true;
+        }
+
+        const HeadTarget target = headTarget(head_base_, xrPos, xrOri);
+
+        // 守卫和手臂的一样：目标离机器人头太远、或和上一个目标差太多就丢弃这一帧，参考不更新
+        const auto verdict = checkTarget(guard_limits_, target.position, target.orientation, robot_head_position_,
+                                         last_accepted_head_);
+        if (verdict != TargetVerdict::Accept)
+        {
+            RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                 "[TEL-002] head target dropped (%s): target (%.3f, %.3f, %.3f), head (%.3f, %.3f, %.3f), "
+                                 "%.3f m from the head (limit %.3f), %.3f m from the previous target (limit %.3f)",
+                                 toString(verdict), target.position.x(), target.position.y(), target.position.z(),
+                                 robot_head_position_.x(), robot_head_position_.y(), robot_head_position_.z(),
+                                 (target.position - robot_head_position_).norm(), guard_limits_.max_distance,
+                                 last_accepted_head_ ? (target.position - *last_accepted_head_).norm() : 0.0,
+                                 guard_limits_.max_step);
+            return;
+        }
+        last_accepted_head_ = target.position;
+
+        geometry_msgs::msg::Pose pose;
+        pose.position.x = target.position.x();
+        pose.position.y = target.position.y();
+        pose.position.z = target.position.z();
+        pose.orientation.w = target.orientation.w();
+        pose.orientation.x = target.orientation.x();
+        pose.orientation.y = target.orientation.y();
+        pose.orientation.z = target.orientation.z();
+        pub_head_target_->publish(pose);
+    }
+
     void XrInputHandler::fsmStateCallback(std_msgs::msg::Int32::SharedPtr msg)
     {
         const int32_t state = msg->data;
@@ -554,6 +834,11 @@ namespace target_generator
         }
 
         const int32_t old_state = current_fsm_state_.exchange(state);
+        // 离开 OCS2 时底盘立刻停：再进 OCS2 要重新按左摇杆
+        if (state != kFsmOcs2 && chassis_drive_.load())
+        {
+            stopChassisDrive("the controller left OCS2", true);
+        }
         // 离开 OCS2 时自动切换到存储模式：再次进入 OCS2 后要重新按右摇杆才跟随，不会一进 OCS2 就跳
         if (state != old_state && state != kFsmOcs2 && is_update_mode_.load())
         {
@@ -583,6 +868,7 @@ namespace target_generator
         for (auto& arm : arm_) { arm.following = false; }
         last_accepted_left_.reset();
         last_accepted_right_.reset();
+        stopHeadTracking();
         is_update_mode_.store(false);
     }
 

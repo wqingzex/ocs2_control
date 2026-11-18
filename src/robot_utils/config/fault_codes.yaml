@@ -76,6 +76,14 @@
   escalation: stale_ms 是占位值，真机上调
   source: {file: src/robot_control/target_generator/src/XrInputHandler.cpp, match: "[TEL-003]"}
 
+- code: TEL-004
+  class: M
+  title: 底盘遥控被拒绝，或被迫退出（底盘速度已置零）
+  behavior: 底盘遥控默认关（xr_base 为 false），关着时按左摇杆只记一条 INFO，不记这个码。打开后，按左摇杆开底盘遥控时，不在 OCS2、没收到过全身控制器的状态、底盘已解锁（全身控制器自己往同一个速度话题发）、或摇杆输入超过 xr_chassis.stale_ms（默认 200 ms）没更新，记 WARN 并拒绝。开着时离开 OCS2、底盘被解锁、摇杆帧停了超过 stale_ms（头显断线或桥掉了），立刻发一个零速度并退出底盘遥控，要再按一次左摇杆；摇杆值含非有限值的那一帧只置零，不退出；操作员按键退出不记这个码
+  check: 日志里的原因；全身控制器的 base_state 是不是 BASE_LOCKED，/whole_body_controller/current_state 在不在发；头显和桥是否正常（XR-00x）、/teleop/thumbstick_axes 在不在发；底盘驱动是否订阅 /base_velocity_command（订阅方在仓库外）
+  escalation: 只置零并退出，不切 HOLD。xr_chassis.linear_scale（0.1 m/s）、angular_scale（0.2 rad/s）、stale_ms 是占位值，真机上调。节点自己挂掉时底盘会保持最后一个速度，要靠底盘驱动的指令超时（仓库外，没核实）
+  source: {file: src/robot_control/target_generator/src/XrInputHandler.cpp, match: "[TEL-004]"}
+
 - code: CTL-001
   class: M
   title: MPC 单次求解超过控制周期

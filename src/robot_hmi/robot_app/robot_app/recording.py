@@ -24,8 +24,11 @@ XR_TOPICS = (
     "/teleop/head_pose", "/teleop/left_ee_pose", "/teleop/right_ee_pose", "/teleop/controller_state",
     "/teleop/trigger_values", "/teleop/connection_status",
     "/left_target", "/right_target", "/left_current_pose", "/right_current_pose", "/fsm_state",
+    # Recorded to see why the base moved. Never replayed: a recorded left stick key and stick values played back to a
+    # robot would drive the base.
+    "/teleop/thumbstick_axes", "/base_velocity_command",
 )
-XR_REPLAY_TOPICS = XR_TOPICS[:5]  # what the controller needs from /xr_target_node
+XR_REPLAY_TOPICS = XR_TOPICS[:5]  # what the controller needs from /xr_target_node (the first five, no sticks)
 SET_NAMES = ("joint", "xr", "collect")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 MIN_FREE_BYTES = 2 * 1024 ** 3  # refuse to start a recording on a nearly full disk

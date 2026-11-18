@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -14,6 +15,7 @@
 #include <geometry_msgs/msg/twist.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float64.hpp>
+#include <robot_control_msgs/msg/whole_body_current_state.hpp>
 #include <std_msgs/msg/int32.hpp>
 
 #include "target_generator/XrInputHandler.h"
@@ -27,6 +29,10 @@ namespace
     constexpr int kFsmForward = 1;
     constexpr int kFsmBack = 2;
     constexpr int kToggleFollow = 3;
+    constexpr int kToggleChassisDrive = 4;
+    // Base drive scales the fixture sets (full stick = this speed).
+    constexpr double kLinearScale = 0.1;   // m/s
+    constexpr double kAngularScale = 0.2;  // rad/s
     // FSM states / commands on /fsm_command.
     constexpr int kHome = 1, kHold = 2, kOcs2 = 3, kMoveJ = 4, kRest = 100;
 
@@ -49,11 +55,20 @@ namespace
         }
         static void TearDownTestSuite() { rclcpp::shutdown(); }
 
+        /// Whether the handler under test is built with xr_base = true (the chassis tests need it).
+        virtual bool chassisDriveEnabled() const { return true; }
+
         void SetUp() override
         {
             // A longer stale limit than the 200 ms default: the tests publish a pose, then spin for 150 ms between steps.
             rclcpp::NodeOptions options;
-            options.parameter_overrides({rclcpp::Parameter("xr_guard.stale_ms", 500)});
+            std::vector<rclcpp::Parameter> parameters = {rclcpp::Parameter("xr_guard.stale_ms", 500),
+                                                         rclcpp::Parameter("xr_chassis.stale_ms", 500),
+                                                         rclcpp::Parameter("xr_chassis.linear_scale", kLinearScale),
+                                                         rclcpp::Parameter("xr_chassis.angular_scale", kAngularScale)};
+            // Chassis drive is off unless the parameter says so (the default), see XrInputHandlerChassisOffTest.
+            if (chassisDriveEnabled()) { parameters.emplace_back("xr_base", true); }
+            options.parameter_overrides(parameters);
             node_ = std::make_shared<rclcpp::Node>("target_generator_under_test", options);
             probe_ = std::make_shared<rclcpp::Node>("xr_input_handler_probe");
 
@@ -75,6 +90,16 @@ namespace
                 "left_target", 10, [this](Pose::SharedPtr m) { left_targets_.push_back(*m); });
             right_target_sub_ = probe_->create_subscription<Pose>(
                 "right_target", 10, [this](Pose::SharedPtr m) { right_targets_.push_back(*m); });
+            head_pose_pub_ = probe_->create_publisher<Pose>("/teleop/head_pose", 10);
+            robot_head_pub_ = probe_->create_publisher<geometry_msgs::msg::PoseStamped>("head_current_pose", 10);
+            whole_body_state_pub_ = probe_->create_publisher<robot_control_msgs::msg::WholeBodyCurrentState>(
+                "/whole_body_controller/current_state", 10);
+            head_target_sub_ = probe_->create_subscription<Pose>(
+                "head_target", 10, [this](Pose::SharedPtr m) { head_targets_.push_back(*m); });
+            thumbstick_pub_ = probe_->create_publisher<geometry_msgs::msg::Twist>("/teleop/thumbstick_axes", 10);
+            base_velocity_sub_ = probe_->create_subscription<geometry_msgs::msg::Twist>(
+                "/base_velocity_command", 10,
+                [this](geometry_msgs::msg::Twist::SharedPtr m) { base_velocities_.push_back(*m); });
             left_hand_sub_ = probe_->create_subscription<std_msgs::msg::Float64>(
                 "/left_hand_controller/target_percent", 10,
                 [this](std_msgs::msg::Float64::SharedPtr m) { left_hand_ = m->data; });
@@ -100,7 +125,10 @@ namespace
         {
             spinUntil([this]() {
                 return event_pub_->get_subscription_count() > 0 && left_pose_pub_->get_subscription_count() > 0 &&
-                       trigger_pub_->get_subscription_count() > 0;
+                       trigger_pub_->get_subscription_count() > 0 && head_pose_pub_->get_subscription_count() > 0 &&
+                       robot_head_pub_->get_subscription_count() > 0 &&
+                       whole_body_state_pub_->get_subscription_count() > 0 &&
+                       thumbstick_pub_->get_subscription_count() > 0;
             });
         }
 
@@ -166,6 +194,74 @@ namespace
             handler_->robotRightPoseCallback(m);
         }
 
+        /// The whole body controller reports its head task (WholeBodyCurrentState::HEAD_*).
+        void headTaskIs(std::uint8_t head_state)
+        {
+            robot_control_msgs::msg::WholeBodyCurrentState m;
+            m.head_state = head_state;
+            whole_body_state_pub_->publish(m);
+            spinFor(100ms);
+        }
+
+        void robotHeadAt(double x, double y, double z)
+        {
+            geometry_msgs::msg::PoseStamped m;
+            m.header.frame_id = "base_footprint";
+            m.pose = pose(x, y, z);
+            robot_head_pub_->publish(m);
+            spinFor(100ms);
+        }
+
+        void moveHead(const Pose& p)
+        {
+            head_pose_pub_->publish(p);
+            spinFor(150ms);
+        }
+
+        void moveHead(double x, double y, double z) { moveHead(pose(x, y, z)); }
+
+        /// The whole body controller reports its base: WholeBodyCurrentState::BASE_LOCKED / BASE_UNLOCKED.
+        void baseIs(std::uint8_t base_state)
+        {
+            robot_control_msgs::msg::WholeBodyCurrentState m;
+            m.base_state = base_state;
+            whole_body_state_pub_->publish(m);
+            spinFor(100ms);
+        }
+
+        /// One /teleop/thumbstick_axes frame as xr_teleop publishes it (forward = negative y).
+        void sticks(double left_x, double left_y, double right_x, double right_y)
+        {
+            geometry_msgs::msg::Twist t;
+            t.linear.x = left_x;
+            t.linear.y = left_y;
+            t.angular.x = right_x;
+            t.angular.y = right_y;
+            thumbstick_pub_->publish(t);
+            spinFor(100ms);
+        }
+
+        /// OCS2, base locked, fresh stick input, then the left stick key: the sticks now drive the base.
+        void startChassisDrive()
+        {
+            fsmIs(kOcs2);
+            baseIs(robot_control_msgs::msg::WholeBodyCurrentState::BASE_LOCKED);
+            sticks(0.0, 0.0, 0.0, 0.0);
+            press(kToggleChassisDrive);
+        }
+
+        /// The last base velocity that was published (all zero when there is none).
+        geometry_msgs::msg::Twist lastBaseVelocity() const
+        {
+            return base_velocities_.empty() ? geometry_msgs::msg::Twist{} : base_velocities_.back();
+        }
+
+        static bool isStopped(const geometry_msgs::msg::Twist& t)
+        {
+            return t.linear.x == 0.0 && t.linear.y == 0.0 && t.linear.z == 0.0 && t.angular.x == 0.0 &&
+                   t.angular.y == 0.0 && t.angular.z == 0.0;
+        }
+
         /// The first command sent after a key press (ignores the 0 reset after a REST pulse).
         std::optional<int> sentFsm() const
         {
@@ -184,7 +280,14 @@ namespace
         rclcpp::Subscription<Pose>::SharedPtr target_sub_;
         rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr left_hand_sub_, right_hand_sub_;
         std::vector<int> fsm_;
-        std::vector<Pose> left_targets_, right_targets_;
+        rclcpp::Publisher<Pose>::SharedPtr head_pose_pub_;
+        rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr robot_head_pub_;
+        rclcpp::Publisher<robot_control_msgs::msg::WholeBodyCurrentState>::SharedPtr whole_body_state_pub_;
+        rclcpp::Subscription<Pose>::SharedPtr head_target_sub_;
+        rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr thumbstick_pub_;
+        rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr base_velocity_sub_;
+        std::vector<geometry_msgs::msg::Twist> base_velocities_;
+        std::vector<Pose> left_targets_, right_targets_, head_targets_;
         std::optional<double> left_hand_, right_hand_;
     };
 } // namespace
@@ -231,7 +334,7 @@ TEST_F(XrInputHandlerTest, leftXStepsTheFsmBack)
 TEST_F(XrInputHandlerTest, codesOfTheFormerKeySchemesDoNothing)
 {
     fsmIs(kOcs2);
-    for (int old_code : {4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 20, 21, 29, 50, 51, 52, 53, 54})
+    for (int old_code : {5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 20, 21, 29, 50, 51, 52, 53, 54})
     {
         press(old_code);
     }
@@ -421,4 +524,379 @@ TEST_F(XrInputHandlerTest, noKeySwitchesTheTriggersAwayFromProportionalControl)
     trigger_pub_->publish(t);
     ASSERT_TRUE(spinUntil([this]() { return left_hand_.has_value(); }));
     EXPECT_NEAR(*left_hand_, 0.6, 1e-9);
+}
+
+// Head tracking: the head follows the headset only while the arms follow (OCS2, right stick), and only while the whole
+// body controller reports its head task as HEAD_TRACKING. The head target is in the robot's base frame, the same frame
+// as head_current_pose, so the headset's movement is added to the robot head as it is.
+namespace
+{
+    using WholeBodyState = robot_control_msgs::msg::WholeBodyCurrentState;
+}
+
+TEST_F(XrInputHandlerTest, theHeadFollowsWhileFollowingAndTheHeadTaskIsTracking)
+{
+    fsmIs(kOcs2);
+    headTaskIs(WholeBodyState::HEAD_TRACKING);
+    robotHeadAt(0.0, 0.0, 1.5);
+    moveHead(0.0, 0.0, 0.0);
+    EXPECT_TRUE(head_targets_.empty()) << "the head followed before the arms started following";
+
+    moveLeftController(0.0, 0.0, 0.0);  // a fresh controller pose (the steps above took longer than stale_ms)
+    press(kToggleFollow);
+    moveHead(0.0, 0.0, 0.0);  // the base of the head is taken here: the target is the robot head itself
+    ASSERT_FALSE(head_targets_.empty());
+    EXPECT_NEAR(head_targets_.back().position.x, 0.0, 1e-6);
+    EXPECT_NEAR(head_targets_.back().position.z, 1.5, 1e-6);
+
+    moveHead(0.02, 0.0, 0.01);
+    EXPECT_NEAR(head_targets_.back().position.x, 0.02, 1e-6);
+    EXPECT_NEAR(head_targets_.back().position.z, 1.51, 1e-6);
+}
+
+TEST_F(XrInputHandlerTest, theHeadsTurnIsAppliedToTheRobotHead)
+{
+    fsmIs(kOcs2);
+    headTaskIs(WholeBodyState::HEAD_TRACKING);
+    robotHeadAt(0.0, 0.0, 1.5);
+    press(kToggleFollow);
+    moveHead(0.0, 0.0, 0.0);
+    ASSERT_FALSE(head_targets_.empty());
+
+    Pose turned = pose(0.0, 0.0, 0.0);
+    turned.orientation.z = std::sin(0.25);  // 0.5 rad about +Z
+    turned.orientation.w = std::cos(0.25);
+    moveHead(turned);
+    const auto& q = head_targets_.back().orientation;
+    EXPECT_NEAR(q.z, std::sin(0.25), 1e-6);
+    EXPECT_NEAR(q.w, std::cos(0.25), 1e-6);
+}
+
+TEST_F(XrInputHandlerTest, theHeadDoesNotFollowUnlessTheHeadTaskIsTracking)
+{
+    fsmIs(kOcs2);
+    robotHeadAt(0.0, 0.0, 1.5);
+    press(kToggleFollow);
+    for (const auto state : {WholeBodyState::HEAD_DISABLED, WholeBodyState::HEAD_GAZE, WholeBodyState::HEAD_FORWARD})
+    {
+        headTaskIs(state);
+        moveHead(0.01, 0.0, 0.0);
+    }
+    EXPECT_TRUE(head_targets_.empty());
+}
+
+TEST_F(XrInputHandlerTest, theHeadDoesNotFollowWithoutACurrentHeadPoseFromTheRobot)
+{
+    fsmIs(kOcs2);
+    headTaskIs(WholeBodyState::HEAD_TRACKING);
+    press(kToggleFollow);  // head_current_pose never arrived: the base would be (0, 0, 0)
+    moveHead(0.0, 0.0, 0.0);
+    moveHead(0.01, 0.0, 0.0);
+    EXPECT_TRUE(head_targets_.empty());
+}
+
+TEST_F(XrInputHandlerTest, theHeadStopsWhenTheHeadTaskLeavesTrackingAndStartsOverWhenItIsBack)
+{
+    fsmIs(kOcs2);
+    headTaskIs(WholeBodyState::HEAD_TRACKING);
+    robotHeadAt(0.0, 0.0, 1.5);
+    press(kToggleFollow);
+    moveHead(0.0, 0.0, 0.0);
+    moveHead(0.02, 0.0, 0.0);
+    ASSERT_FALSE(head_targets_.empty());
+
+    headTaskIs(WholeBodyState::HEAD_FORWARD);
+    head_targets_.clear();
+    moveHead(0.04, 0.0, 0.0);
+    EXPECT_TRUE(head_targets_.empty());
+
+    // Back to tracking with the robot head somewhere else and the headset far from where it was: the old base is gone.
+    robotHeadAt(0.0, 0.0, 1.6);
+    headTaskIs(WholeBodyState::HEAD_TRACKING);
+    moveHead(0.5, 0.0, 0.0);
+    ASSERT_FALSE(head_targets_.empty());
+    EXPECT_NEAR(head_targets_.back().position.x, 0.0, 1e-6) << "the head used the base of the earlier session";
+    EXPECT_NEAR(head_targets_.back().position.z, 1.6, 1e-6);
+}
+
+TEST_F(XrInputHandlerTest, theHeadStopsWhenTheArmsStopFollowingAndWhenOcs2IsLeft)
+{
+    fsmIs(kOcs2);
+    headTaskIs(WholeBodyState::HEAD_TRACKING);
+    robotHeadAt(0.0, 0.0, 1.5);
+    press(kToggleFollow);
+    moveHead(0.0, 0.0, 0.0);
+    ASSERT_FALSE(head_targets_.empty());
+
+    press(kToggleFollow);  // STORAGE
+    head_targets_.clear();
+    moveHead(0.02, 0.0, 0.0);
+    EXPECT_TRUE(head_targets_.empty()) << "the head followed after the arms stopped";
+
+    moveLeftController(0.0, 0.0, 0.0);  // a fresh controller pose for the second start
+    press(kToggleFollow);
+    moveHead(0.0, 0.0, 0.0);
+    ASSERT_FALSE(head_targets_.empty());
+    fsmIs(kHold);
+    head_targets_.clear();
+    moveHead(0.02, 0.0, 0.0);
+    EXPECT_TRUE(head_targets_.empty()) << "the head followed outside OCS2";
+}
+
+TEST_F(XrInputHandlerTest, aHeadPoseThatIsNotFiniteIsDroppedAndTheNextGoodOneIsKept)
+{
+    fsmIs(kOcs2);
+    headTaskIs(WholeBodyState::HEAD_TRACKING);
+    robotHeadAt(0.0, 0.0, 1.5);
+    press(kToggleFollow);
+    moveHead(0.0, 0.0, 0.0);
+    const auto before = head_targets_.size();
+
+    moveHead(std::nan(""), 0.0, 0.0);
+    Pose zero_quaternion = pose(0.0, 0.0, 0.0);
+    zero_quaternion.orientation.w = 0.0;
+    moveHead(zero_quaternion);
+    EXPECT_EQ(head_targets_.size(), before);
+
+    moveHead(0.02, 0.0, 0.0);
+    ASSERT_GT(head_targets_.size(), before);
+    EXPECT_NEAR(head_targets_.back().position.x, 0.02, 1e-6);
+}
+
+// The same checks as for the arms: a big step from the previous head target is dropped, the next small one is kept.
+TEST_F(XrInputHandlerTest, aBigStepOfTheHeadIsDroppedAndTheNextSmallOneIsKept)
+{
+    fsmIs(kOcs2);
+    headTaskIs(WholeBodyState::HEAD_TRACKING);
+    robotHeadAt(0.0, 0.0, 1.5);
+    press(kToggleFollow);
+    moveHead(0.0, 0.0, 0.0);
+    ASSERT_FALSE(head_targets_.empty());
+
+    moveHead(0.2, 0.0, 0.0);  // 20 cm in one frame, within reach of the head but a jump
+    for (const auto& target : head_targets_)
+    {
+        EXPECT_LT(target.position.x, 0.1) << "a 20 cm step was sent";
+    }
+
+    moveHead(0.04, 0.0, 0.0);
+    EXPECT_NEAR(head_targets_.back().position.x, 0.04, 1e-6);
+}
+
+// Chassis drive: the left stick key makes the sticks drive the base (left stick: forward / sideways, right stick:
+// turn). Only in OCS2, only while the whole body controller keeps the base locked (it publishes the same velocity topic
+// itself when the base is unlocked), only with fresh stick input. Anything else that stops being true stops the base.
+namespace
+{
+    using WholeBodyState = robot_control_msgs::msg::WholeBodyCurrentState;
+}
+
+TEST_F(XrInputHandlerTest, theSticksDoNothingUntilChassisDriveIsOn)
+{
+    fsmIs(kOcs2);
+    baseIs(WholeBodyState::BASE_LOCKED);
+    sticks(0.0, -1.0, 1.0, 0.0);
+    EXPECT_TRUE(base_velocities_.empty());
+}
+
+TEST_F(XrInputHandlerTest, chassisDriveIsRefusedOutsideOcs2)
+{
+    fsmIs(kHold);
+    baseIs(WholeBodyState::BASE_LOCKED);
+    sticks(0.0, 0.0, 0.0, 0.0);
+    press(kToggleChassisDrive);
+    sticks(0.0, -1.0, 0.0, 0.0);
+    EXPECT_TRUE(base_velocities_.empty()) << "drove the base outside OCS2";
+}
+
+TEST_F(XrInputHandlerTest, chassisDriveIsRefusedUntilTheBaseStateIsKnown)
+{
+    fsmIs(kOcs2);  // no WholeBodyCurrentState yet: BASE_LOCKED is 0, an unknown state must not count as locked
+    sticks(0.0, 0.0, 0.0, 0.0);
+    press(kToggleChassisDrive);
+    sticks(0.0, -1.0, 0.0, 0.0);
+    EXPECT_TRUE(base_velocities_.empty());
+}
+
+TEST_F(XrInputHandlerTest, chassisDriveIsRefusedWhileTheBaseIsUnlocked)
+{
+    fsmIs(kOcs2);
+    baseIs(WholeBodyState::BASE_UNLOCKED);  // the whole body controller drives the base itself
+    sticks(0.0, 0.0, 0.0, 0.0);
+    press(kToggleChassisDrive);
+    sticks(0.0, -1.0, 0.0, 0.0);
+    EXPECT_TRUE(base_velocities_.empty()) << "two publishers on the base velocity topic";
+}
+
+TEST_F(XrInputHandlerTest, chassisDriveIsRefusedWithoutFreshStickInput)
+{
+    fsmIs(kOcs2);
+    baseIs(WholeBodyState::BASE_LOCKED);
+    spinFor(800ms);  // no stick frame for longer than xr_chassis.stale_ms
+    press(kToggleChassisDrive);
+    sticks(0.0, -1.0, 0.0, 0.0);
+    EXPECT_TRUE(base_velocities_.empty());
+}
+
+TEST_F(XrInputHandlerTest, theSticksDriveTheBaseInTheRobotsAxes)
+{
+    startChassisDrive();
+
+    sticks(0.0, -1.0, 0.0, 0.0);  // left stick forward (negative y): forward
+    EXPECT_NEAR(lastBaseVelocity().linear.x, kLinearScale, 1e-9);
+    EXPECT_NEAR(lastBaseVelocity().linear.y, 0.0, 1e-9);
+
+    sticks(1.0, 0.0, 0.0, 0.0);  // left stick right: the robot's right is negative y
+    EXPECT_NEAR(lastBaseVelocity().linear.x, 0.0, 1e-9);
+    EXPECT_NEAR(lastBaseVelocity().linear.y, -kLinearScale, 1e-9);
+
+    sticks(0.0, 0.0, 1.0, 0.0);  // right stick right: turn clockwise, negative about +Z
+    EXPECT_NEAR(lastBaseVelocity().angular.z, -kAngularScale, 1e-9);
+    EXPECT_NEAR(lastBaseVelocity().linear.x, 0.0, 1e-9);
+
+    sticks(0.0, 0.5, -0.5, 0.0);  // half way back, half way to the left
+    EXPECT_NEAR(lastBaseVelocity().linear.x, -0.5 * kLinearScale, 1e-9);
+    EXPECT_NEAR(lastBaseVelocity().angular.z, 0.5 * kAngularScale, 1e-9);
+}
+
+TEST_F(XrInputHandlerTest, centeredSticksSendZeroSoTheBaseDoesNotKeepMoving)
+{
+    startChassisDrive();
+    sticks(0.0, -1.0, 0.0, 0.0);
+    ASSERT_FALSE(isStopped(lastBaseVelocity()));
+    sticks(0.0, 0.0, 0.0, 0.0);
+    EXPECT_TRUE(isStopped(lastBaseVelocity()));
+}
+
+TEST_F(XrInputHandlerTest, stickValuesAreClampedAndNonFiniteValuesStopTheBase)
+{
+    startChassisDrive();
+    sticks(0.0, -5.0, 0.0, 0.0);
+    EXPECT_NEAR(lastBaseVelocity().linear.x, kLinearScale, 1e-9) << "a stick value above 1 went through";
+
+    sticks(std::nan(""), -1.0, 0.0, 0.0);
+    EXPECT_TRUE(isStopped(lastBaseVelocity())) << "a non-finite stick value moved the base";
+}
+
+TEST_F(XrInputHandlerTest, theLeftStickKeyAgainStopsTheBaseAndTheSticksAreIgnoredAfterwards)
+{
+    startChassisDrive();
+    sticks(0.0, -1.0, 0.0, 0.0);
+    ASSERT_FALSE(isStopped(lastBaseVelocity()));
+
+    press(kToggleChassisDrive);
+    EXPECT_TRUE(isStopped(lastBaseVelocity())) << "no zero velocity when leaving chassis drive";
+    const auto sent = base_velocities_.size();
+    sticks(0.0, -1.0, 0.0, 0.0);
+    EXPECT_EQ(base_velocities_.size(), sent);
+}
+
+TEST_F(XrInputHandlerTest, leavingOcs2StopsTheBase)
+{
+    startChassisDrive();
+    sticks(0.0, -1.0, 0.0, 0.0);
+    ASSERT_FALSE(isStopped(lastBaseVelocity()));
+
+    fsmIs(kHold);
+    EXPECT_TRUE(isStopped(lastBaseVelocity()));
+    const auto sent = base_velocities_.size();
+    sticks(0.0, -1.0, 0.0, 0.0);
+    EXPECT_EQ(base_velocities_.size(), sent) << "kept driving after OCS2 was left";
+
+    fsmIs(kOcs2);  // back in OCS2: the key has to be pressed again
+    sticks(0.0, -1.0, 0.0, 0.0);
+    EXPECT_EQ(base_velocities_.size(), sent);
+}
+
+TEST_F(XrInputHandlerTest, theBaseBeingUnlockedStopsTheDriveAtOnce)
+{
+    startChassisDrive();
+    sticks(0.0, -1.0, 0.0, 0.0);
+    ASSERT_FALSE(isStopped(lastBaseVelocity()));
+
+    baseIs(WholeBodyState::BASE_UNLOCKED);  // the whole body controller takes the base over
+    EXPECT_TRUE(isStopped(lastBaseVelocity()));
+    const auto sent = base_velocities_.size();
+    sticks(0.0, -1.0, 0.0, 0.0);
+    EXPECT_EQ(base_velocities_.size(), sent);
+
+    baseIs(WholeBodyState::BASE_LOCKED);  // locked again: still off until the key is pressed
+    sticks(0.0, -1.0, 0.0, 0.0);
+    EXPECT_EQ(base_velocities_.size(), sent);
+}
+
+// The headset drops out or the bridge dies: no more stick frames, so no zero frame either. The base must not keep the
+// last velocity.
+TEST_F(XrInputHandlerTest, noStickInputForTooLongStopsTheBase)
+{
+    startChassisDrive();
+    sticks(0.0, -1.0, 0.0, 0.0);
+    ASSERT_FALSE(isStopped(lastBaseVelocity()));
+
+    spinFor(900ms);
+    EXPECT_TRUE(isStopped(lastBaseVelocity())) << "the base kept the last velocity without stick input";
+    const auto sent = base_velocities_.size();
+    sticks(0.0, -1.0, 0.0, 0.0);  // input is back: chassis drive is off until the key is pressed again
+    EXPECT_EQ(base_velocities_.size(), sent);
+}
+
+TEST_F(XrInputHandlerTest, enteringChassisDriveStopsTheArmsFromFollowing)
+{
+    fsmIs(kOcs2);
+    baseIs(WholeBodyState::BASE_LOCKED);
+    moveLeftController(0.0, 0.0, 0.0);
+    press(kToggleFollow);
+    moveLeftController(0.03, 0.0, 0.0);
+    ASSERT_FALSE(left_targets_.empty());
+
+    sticks(0.0, 0.0, 0.0, 0.0);
+    press(kToggleChassisDrive);
+    left_targets_.clear();
+    moveLeftController(0.05, 0.0, 0.0);
+    EXPECT_TRUE(left_targets_.empty()) << "the arm followed while the sticks drive the base";
+}
+
+TEST_F(XrInputHandlerTest, theRightStickKeyDoesNotStartFollowingWhileDrivingTheBase)
+{
+    startChassisDrive();
+    moveLeftController(0.0, 0.0, 0.0);
+    press(kToggleFollow);
+    moveLeftController(0.03, 0.0, 0.0);
+    EXPECT_TRUE(left_targets_.empty()) << "arm following and base driving at the same time";
+}
+
+// Chassis drive is opt in: with xr_base left at its default (false) the handler has no publisher on the base
+// velocity topic at all, and the left stick key does nothing (an accidental click must not stop the arms or drive the base).
+namespace
+{
+    class XrInputHandlerChassisOffTest : public XrInputHandlerTest
+    {
+    protected:
+        bool chassisDriveEnabled() const override { return false; }
+    };
+}
+
+TEST_F(XrInputHandlerChassisOffTest, thereIsNoPublisherOnTheBaseVelocityTopic)
+{
+    spinFor(300ms);  // discovery
+    EXPECT_EQ(probe_->count_publishers("/base_velocity_command"), 0u);
+}
+
+TEST_F(XrInputHandlerChassisOffTest, theLeftStickKeyDoesNothingAndTheArmsKeepFollowing)
+{
+    fsmIs(kOcs2);
+    baseIs(WholeBodyState::BASE_LOCKED);  // every condition of chassis drive is met except the parameter
+    moveLeftController(0.0, 0.0, 0.0);
+    press(kToggleFollow);
+    moveLeftController(0.03, 0.0, 0.0);
+    ASSERT_FALSE(left_targets_.empty());
+
+    sticks(0.0, 0.0, 0.0, 0.0);
+    press(kToggleChassisDrive);
+    sticks(0.0, -1.0, 1.0, 0.0);
+    EXPECT_TRUE(base_velocities_.empty()) << "the base was driven with xr_base = false";
+
+    left_targets_.clear();
+    moveLeftController(0.05, 0.0, 0.0);
+    EXPECT_FALSE(left_targets_.empty()) << "the left stick key stopped the arms with chassis drive off";
 }
