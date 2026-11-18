@@ -28,44 +28,39 @@ def parse_task_info(task_file_path):
     control_base_frame = "world"
     marker_fixed_frame = None
 
-    if not os.path.exists(task_file_path):
-        print(f"[WARN] Task file not found: {task_file_path}")
-        return dual_arm_mode, control_base_frame, marker_fixed_frame
+    # A missing or unreadable file raises (FileNotFoundError / OSError): guessing single-arm here would leave the right
+    # arm without its current pose in target_generator, so the launch must stop instead.
+    with open(task_file_path, 'r') as file:
+        # `;` starts a comment in OCS2 .info files; a commented-out `; dualArmMode true` must not count.
+        content = "\n".join(line.split(';', 1)[0] for line in file.read().splitlines())
 
-    try:
-        with open(task_file_path, 'r') as file:
-            content = file.read()
+    # 检查是否有 dualArmMode 配置
+    dual_arm_match = re.search(r'dualArmMode\s+true', content)
+    if dual_arm_match:
+        dual_arm_mode = True
+        print(f"[INFO] Detected dual arm mode from task file")
 
-        # 检查是否有 dualArmMode 配置
-        dual_arm_match = re.search(r'dualArmMode\s+true', content)
-        if dual_arm_match:
-            dual_arm_mode = True
-            print(f"[INFO] Detected dual arm mode from task file")
+    # 检查是否有 eeFrame1（双臂机器人的第二个末端执行器）
+    ee_frame1_match = re.search(r'eeFrame1\s+"([^"]+)"', content)
+    if ee_frame1_match:
+        dual_arm_mode = True
+        print(f"[INFO] Detected dual arm mode from eeFrame1: {ee_frame1_match.group(1)}")
 
-        # 检查是否有 eeFrame1（双臂机器人的第二个末端执行器）
-        ee_frame1_match = re.search(r'eeFrame1\s+"([^"]+)"', content)
-        if ee_frame1_match:
-            dual_arm_mode = True
-            print(f"[INFO] Detected dual arm mode from eeFrame1: {ee_frame1_match.group(1)}")
+    # 提取 baseFrame
+    base_frame_match = re.search(r'baseFrame\s+"([^"]+)"', content)
+    if base_frame_match:
+        control_base_frame = base_frame_match.group(1)
+        print(f"[INFO] Detected base frame: {control_base_frame}")
 
-        # 提取 baseFrame
-        base_frame_match = re.search(r'baseFrame\s+"([^"]+)"', content)
-        if base_frame_match:
-            control_base_frame = base_frame_match.group(1)
-            print(f"[INFO] Detected base frame: {control_base_frame}")
+    # 轮式底盘模式（manipulatorModelType=1）下，OCS2目标和EE均在world坐标系下
+    # marker也必须锚定在world，否则底盘移动时marker跟着漂移
+    model_type_match = re.search(r'manipulatorModelType\s+(\d+)', content)
+    if model_type_match and int(model_type_match.group(1)) == 1:
+        control_base_frame = "world"
+        marker_fixed_frame = "world"
+        print(f"[INFO] Wheel-based mode detected, overriding control_base_frame and marker_fixed_frame to 'world'")
 
-        # 轮式底盘模式（manipulatorModelType=1）下，OCS2目标和EE均在world坐标系下
-        # marker也必须锚定在world，否则底盘移动时marker跟着漂移
-        model_type_match = re.search(r'manipulatorModelType\s+(\d+)', content)
-        if model_type_match and int(model_type_match.group(1)) == 1:
-            control_base_frame = "world"
-            marker_fixed_frame = "world"
-            print(f"[INFO] Wheel-based mode detected, overriding control_base_frame and marker_fixed_frame to 'world'")
-
-        print(f"[INFO] Parsed task file - dual_arm_mode: {dual_arm_mode}, control_base_frame: {control_base_frame}, marker_fixed_frame: {marker_fixed_frame}")
-
-    except Exception as e:
-        print(f"[ERROR] Failed to parse task file {task_file_path}: {e}")
+    print(f"[INFO] Parsed task file - dual_arm_mode: {dual_arm_mode}, control_base_frame: {control_base_frame}, marker_fixed_frame: {marker_fixed_frame}")
 
     return dual_arm_mode, control_base_frame, marker_fixed_frame
 
