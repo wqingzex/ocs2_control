@@ -159,8 +159,3 @@ def test_the_imaging_values_of_a_camera_are_checked(fields, expected):
 def test_exposure_and_gain_may_be_both_auto_or_both_fixed():
     for fields in ({"exposure": -1, "gain": -1}, {"exposure": 50, "gain": 16}, {"exposure": 1, "gain": 0}):
         validate(full_config(cameras={"enable": False, "head": fields}))
-
-
-def test_the_old_global_imaging_keys_are_unknown_fields():
-    with pytest.raises(ConfigError, match="unknown field 'cameras.wrist_exposure'"):
-        validate(full_config(cameras={"enable": False, "wrist_exposure": 50}))

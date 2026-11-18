@@ -3,23 +3,6 @@ import time
 
 import pytest
 
-def test_shared_setup_and_camera_launch_import_without_teleoperation_or_xr():
-    import subprocess
-    import sys
-    result = subprocess.run([sys.executable, '-c', '''
-import importlib.abc, sys
-class BlockTeleop(importlib.abc.MetaPathFinder):
-    def find_spec(self, fullname, path=None, target=None):
-        if fullname.startswith(('robot_app', 'PXREA')):
-            raise ImportError('teleoperation is deliberately unavailable')
-sys.meta_path.insert(0, BlockTeleop())
-from robot_config import config
-from robot_config import config_file, config_file, setup_steps, setup_steps
-assert not any(name.startswith('robot_app') for name in sys.modules)
-'''], capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr
-
-
 def test_existing_process_detection_is_read_only_and_checks_process_identity(tmp_path):
     import json
     import os

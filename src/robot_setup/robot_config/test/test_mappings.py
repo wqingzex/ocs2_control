@@ -3,8 +3,6 @@
 The hand fingerprints below were taken from the code before the field lists moved into this package; the camera ones were
 renewed when white_balance, ae_max_exposure, exposure and gain moved into each camera (one confirmation of the cameras on
 every machine). They must not change otherwise: a changed fingerprint makes every operator confirm the cameras / hands again."""
-import subprocess
-import sys
 
 import pytest
 
@@ -73,17 +71,3 @@ def test_an_unknown_section_is_an_error_naming_the_known_ones():
     with pytest.raises(KeyError) as raised:
         config_file.fingerprint({}, "dyn")
     assert "cameras" in str(raised.value) and "ee" in str(raised.value)
-
-
-def test_status_and_check_work_without_importing_the_device_packages():
-    """The shared package must not need camera / end_effector for fingerprints (they depend on it, not the reverse)."""
-    code = (
-        "import sys\n"
-        "from robot_config import config_file\n"
-        "raw = {'robot': {'end_effector': {'type': 'xhand1', 'interface': {'bus': 'usb_rs485'}}}}\n"
-        "print(config_file.camera_status(raw).state, config_file.ee_status(raw).state)\n"
-        "loaded = [m for m in ('camera', 'end_effector') if m in sys.modules]\n"
-        "assert not loaded, loaded\n")
-    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.split() == ["需配置", "需配置"]

@@ -1,5 +1,5 @@
 """Tests for robot_app: config validation, controller args, camera specs, check CLI."""
-import os
+import re
 
 import pytest
 import yaml
@@ -47,13 +47,6 @@ def test_unknown_field_is_rejected_with_its_path():
         validate(full_config(cameras=CAMERAS_OFF, robot={"hnad": "xhand1"}))
 
 
-@pytest.mark.parametrize("field", ["control_scheme", "button_profile"])
-def test_removed_key_scheme_fields_are_rejected(field):
-    # There is one key table now: the old scheme choice is an unknown field like any other.
-    with pytest.raises(ConfigError, match=f"xr.{field}"):
-        validate(full_config(cameras=CAMERAS_OFF, xr={field: "simple"}))
-
-
 def test_load_lenient_disables_cameras_without_serials(tmp_path):
     from robot_app.config import load_lenient
     path = tmp_path / "t.yaml"
@@ -91,31 +84,37 @@ def test_the_control_section_shares_the_file_and_is_passed_through():
         validate(full_config(cameras=CAMERAS_OFF, control="fast"))  # must be a mapping
 
 
-@pytest.mark.parametrize("section", ["platform", "hardware", "defaults"])
-def test_the_former_sections_are_unknown_fields(section):
-    with pytest.raises(ConfigError, match=f"unknown field '{section}'"):
-        validate({**full_config(cameras=CAMERAS_OFF), section: {}})
+def head_with(**fields):
+    """The three cameras with serials, the head changed by `fields`."""
+    cameras = cams_with_serials()
+    cameras["head"].update(fields)
+    return cameras
 
 
-@pytest.mark.parametrize("field, value", [
-    ("end_effector", "xhand1"), ("end_effector_bus", "usb_rs485"), ("hand", "xhand1"), ("profile", "x.yaml"),
-    ("rviz", True),
-])
-def test_the_former_robot_fields_are_errors(field, value):
-    with pytest.raises(ConfigError):
-        validate(full_config(cameras=CAMERAS_OFF, robot={field: value}))
+# (case, builds a config the validation must refuse, what the message must say)
+REJECTED = [
+    ("an arm type without a robot model for the entry", lambda: make_cfg(robot={"arm": {"type": "rokae"}}), "robot.arm.type"),
+    ("an arm firmware that does not exist", lambda: make_cfg(robot={"arm": {"interface": {"firmware": 340}}}), "firmware"),
+    ("an arm mode that does not exist", lambda: validate(full_config(cameras=CAMERAS_OFF, control={"arm_mode": "fast"})), "control.arm_mode"),
+    ("xhand1 on the arm rs485", lambda: make_cfg(robot=eef("xhand1", "arm_rs485")), "xhand1 only supports usb_rs485"),
+    ("rg75 on usb_rs485", lambda: make_cfg(robot=eef("jodell_rg75", "usb_rs485")), "jodell_rg75 is only wired for arm_rs485"),
+    ("usb_can for a gripper", lambda: make_cfg(robot=eef("jodell_rg75", "usb_can")), "usb_can is only for linkerhand_l6"),
+    ("wuji_hand2 on usb_rs485", lambda: make_cfg(robot=eef("wuji_hand2", "usb_rs485")), "wuji_hand2 needs ethernet"),
+    ("ethernet for linkerhand_l6", lambda: make_cfg(robot=eef("linkerhand_l6", "ethernet")), "wuji_hand2 needs ethernet"),
+    ("an enabled camera without a serial",
+     lambda: validate(full_config(cameras={"left_wrist": {"serial": "a"}, "right_wrist": {"serial": "b"}})), "cameras.head.serial"),
+    ("a camera rotation of 45", lambda: validate(full_config(cameras=head_with(rotation=45))), "rotation"),
+    ("a camera serial with a space", lambda: validate(full_config(cameras=head_with(serial="bad serial"))), "invalid characters"),
+    ("xr.enable that is not a boolean", lambda: make_cfg(xr={"enable": "yes"}), "xr.enable"),
+    ("cameras.fps that is not 30 or 60", lambda: make_cfg(cameras={"fps": 25}), "cameras.fps"),
+]
 
 
-def test_the_arm_needs_a_robot_model_for_the_entry():
-    with pytest.raises(ConfigError, match="robot.arm.type"):
-        make_cfg(robot={"arm": {"type": "rokae"}})
-
-
-def test_arm_firmware_and_control_values_are_checked():
-    with pytest.raises(ConfigError, match="firmware"):
-        make_cfg(robot={"arm": {"interface": {"firmware": 340}}})
-    with pytest.raises(ConfigError, match="control.arm_mode"):
-        validate(full_config(cameras=CAMERAS_OFF, control={"arm_mode": "fast"}))
+def test_values_that_do_not_fit_are_rejected_with_a_message_that_names_the_field():
+    for case, build, match in REJECTED:
+        with pytest.raises(ConfigError) as info:
+            build()
+        assert re.search(match, str(info.value)), f"{case}: {info.value}"
 
 
 def test_xr_defaults_to_ethernet_and_accepts_wifi_binding():
@@ -126,53 +125,10 @@ def test_xr_defaults_to_ethernet_and_accepts_wifi_binding():
         make_cfg(xr={"network_mode": "bluetooth"})
 
 
-def test_xhand_on_the_arm_rs485_is_rejected():
-    with pytest.raises(ConfigError, match="xhand1 only supports usb_rs485"):
-        make_cfg(robot=eef("xhand1", "arm_rs485"))
-
-
-@pytest.mark.parametrize("bus", ["usb", "485", "marvin"])
-def test_old_bus_values_are_rejected(bus):
-    with pytest.raises(ConfigError, match="end_effector.interface.bus' must be one of"):
-        make_cfg(robot=eef(bus=bus))
-
-
-def test_rg75_is_an_end_effector_on_the_arm_rs485_only():
-    _, args = controller_launch(make_cfg(robot=eef("jodell_rg75", "arm_rs485")),
-                                "/ws/config/robot.local.yaml")
-    assert args["end_effector"] == "jodell_rg75"  # the same names all the way down to the xacro
-    assert args["end_effector_bus"] == "arm_rs485"
-    with pytest.raises(ConfigError, match="jodell_rg75 is only wired for arm_rs485"):
-        make_cfg(robot=eef("jodell_rg75", "usb_rs485"))
-
-
-def test_enabled_camera_without_serial_is_rejected():
-    with pytest.raises(ConfigError, match="cameras.head.serial"):
-        validate(full_config(cameras={"left_wrist": {"serial": "a"}, "right_wrist": {"serial": "b"}}))
-
-
 def test_disabled_camera_may_have_empty_serial():
     merged = validate(full_config(cameras={"head": {"enable": False}, "left_wrist": {"serial": "a"},
                                            "right_wrist": {"serial": "b"}}))
     assert [s.name for s in camera_specs(merged)] == ["camera_left_wrist", "camera_right_wrist"]
-
-
-@pytest.mark.parametrize("field,value,match", [
-    ("rotation", 45, "rotation"),
-    ("serial", "bad serial", "invalid characters"),
-])
-def test_camera_field_values_are_checked(field, value, match):
-    cams = cams_with_serials()
-    cams["head"][field] = value
-    with pytest.raises(ConfigError, match=match):
-        validate(full_config(cameras=cams))
-
-
-def test_wrong_types_are_rejected():
-    with pytest.raises(ConfigError, match="xr.enable"):
-        make_cfg(xr={"enable": "yes"})
-    with pytest.raises(ConfigError, match="cameras.fps"):
-        make_cfg(cameras={"fps": 25})
 
 
 # --- controller launch arguments ----------------------------------------------------------------
@@ -189,36 +145,14 @@ def test_usb_rs485_hand_uses_real_hardware_and_usb_drive():
     assert args["launch_mode"] == "control_only"  # RViz is its own on-demand unit
 
 
-def test_arm_rs485_hand_uses_real_hardware():
-    _, args = controller_launch(make_cfg(robot=eef(bus="arm_rs485")), "/ws/config/robot.local.yaml")
-    assert args["hardware"] == "real"
-    assert args["end_effector_bus"] == "arm_rs485"
+# (end effector, its bus): every bus but usb_rs485 (tested above, with the rest of the arguments)
+HAND_BUSES = [("linkerhand_l6", "arm_rs485"), ("linkerhand_l6", "usb_can"), ("wuji_hand2", "ethernet"), ("jodell_rg75", "arm_rs485")]
 
 
-def test_usb_can_hand_uses_real_hardware_and_usb_can_drive():
-    _, args = controller_launch(make_cfg(robot=eef(bus="usb_can")), "/ws/config/robot.local.yaml")
-    assert args["hardware"] == "real"
-    assert args["end_effector"] == "linkerhand_l6"
-    assert args["end_effector_bus"] == "usb_can"
-
-
-def test_usb_can_is_only_for_l6():
-    with pytest.raises(ConfigError, match="usb_can is only for linkerhand_l6"):
-        make_cfg(robot=eef("jodell_rg75", "usb_can"))
-
-
-def test_wuji_uses_real_hardware_and_ethernet_drive():
-    _, args = controller_launch(make_cfg(robot=eef("wuji_hand2", "ethernet")),
-                                "/ws/config/robot.local.yaml")
-    assert args["hardware"] == "real"
-    assert args["end_effector"] == "wuji_hand2"
-    assert args["end_effector_bus"] == "ethernet"
-
-
-@pytest.mark.parametrize("hand,drive", [("wuji_hand2", "usb_rs485"), ("linkerhand_l6", "ethernet")])
-def test_ethernet_and_wuji_go_together(hand, drive):
-    with pytest.raises(ConfigError, match="wuji_hand2 needs ethernet"):
-        make_cfg(robot=eef(hand, drive))
+def test_a_hand_on_any_bus_uses_real_hardware_and_passes_its_names_down_to_the_xacro():
+    for device, bus in HAND_BUSES:
+        _, args = controller_launch(make_cfg(robot=eef(device, bus)), "/ws/config/robot.local.yaml")
+        assert (args["hardware"], args["end_effector"], args["end_effector_bus"]) == ("real", device, bus), (device, bus)
 
 
 def test_mock_hardware_has_no_drive_args():

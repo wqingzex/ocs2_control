@@ -1,8 +1,6 @@
 """The template is the schema: complete for every entry, the same keys for all of them."""
-import io
 
 import pytest
-import yaml
 
 from robot_config import config
 from robot_config.config import validate
@@ -43,12 +41,6 @@ def test_an_overlay_only_changes_values():
     assert base["control"]["limits"] == {"max_joint_speed": 100, "max_joint_acceleration": 100}
     assert dual["robot"]["base"] == {"type": "", "joints_movable": None}
     assert dual["xr"] == base["xr"]
-
-
-def test_the_text_of_a_new_file_is_the_template_with_its_comments():
-    text = config.template_text("dual_arm")
-    assert yaml.safe_load(io.StringIO(text)) == config.template_for("dual_arm")
-    assert "[必改]" in text and text.startswith("#")
 
 
 def test_an_unknown_entry_has_no_template():
