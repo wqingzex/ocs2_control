@@ -97,7 +97,7 @@ colcon test --packages-select end_effector_hardware
 ./scripts/start.sh bus_probe --cycle-hz 100 --io-mode sync      # 按 100 Hz 控制周期，sync 方式
 ```
 
-设备收到的就是运控启动时的那些帧（保持当前位置），不下发运动指令，开始前要输入 YES（`--yes` 跳过）。`--csv 文件` 写出每次往返的毫秒数。程序在 `bus_probe`（`ros2 run end_effector_hardware bus_probe --help`）。臂末端 485 口（`arm_rs485`）的总线只在臂驱动运行时才有，还不支持。
+设备收到的就是运控启动时的那些帧（保持当前位置），不下发运动指令，开始前要输入 YES（`--yes` 跳过）。XHand1（USB-RS485，3 Mbps）实测约 100 Hz、每次收发约 10 ms，`async` 和 `sync` 一样，两只手同时跑也一样，没有超时和断档（2026-11-18，真机）；手每次回复带 1920 字节触觉数据，传输占了大部分。`--csv 文件` 写出每次往返的毫秒数。程序在 `bus_probe`（`ros2 run end_effector_hardware bus_probe --help`）。臂末端 485 口（`arm_rs485`）的总线只在臂驱动运行时才有，还不支持。
 
 ## 编译与扩展
 
