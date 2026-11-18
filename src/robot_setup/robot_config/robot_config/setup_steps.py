@@ -104,6 +104,7 @@ def create_window(session):
             self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='w2_setup')
             self.future = None
             self.dirty = False
+            self.apply_again = False
             self.closing = False
             self.saved = False
             self.cards = {}
@@ -138,6 +139,7 @@ def create_window(session):
             self.swap_button.clicked.connect(self.swap)
             self.apply_button = Q.QPushButton(self.panel.apply_label)
             self.apply_button.clicked.connect(self.apply)
+            self.apply_button.setVisible(bool(self.panel.apply_label))  # a panel that applies by itself has no label
             self.save_button = Q.QPushButton('确认并保存')
             self.save_button.setDefault(True)
             self.save_button.clicked.connect(self.save)
@@ -179,7 +181,10 @@ def create_window(session):
             self.show_message('正在处理设备，请稍候…')
             self.refresh()
 
-        def apply(self):
+        def apply(self, *_):
+            if self.future or self.closing:
+                self.apply_again = True  # a change made while busy is applied once the current operation ends
+                return
             payload = self.panel.apply_payload()
             if payload is not None:  # None: the operator declined something the panel asked
                 self.submit(session.update, payload, 'applied')
@@ -221,6 +226,9 @@ def create_window(session):
             else:
                 self.state = session.state()
             self.refresh()
+            if self.apply_again and not self.future and not self.closing:
+                self.apply_again = False
+                self.apply()
 
         def refresh(self):
             busy = self.future is not None or self.closing

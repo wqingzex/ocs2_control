@@ -66,6 +66,16 @@ def test_camera_assignment_values_are_checked():
             validate_camera_assignments({"head": bad})
 
 
+def test_camera_assignment_exposure_and_gain_are_both_auto_or_both_fixed():
+    from robot_config.config import validate_camera_assignments
+    validate_camera_assignments({"head": {"exposure": -1, "gain": -1}, "left_wrist": {"exposure": 50, "gain": 0}})
+    for bad in ({"exposure": -1, "gain": 16}, {"exposure": 50, "gain": -1}, {"exposure": 0, "gain": 16},
+                {"exposure": 50, "gain": -2}, {"exposure": True, "gain": 16}, {"exposure": 1.5, "gain": 16},
+                {"exposure": 50}, {"gain": 16}):
+        with pytest.raises(ConfigError):
+            validate_camera_assignments({"head": bad})
+
+
 def test_joystick_and_navigation_defaults_and_validation():
     merged = validate(full_config(cameras=CAMERAS_OFF))
     assert merged["joystick"]["device"] == "" and merged["navigation"]["map_only"] is False

@@ -223,13 +223,17 @@ def _check_imaging(name: str, cam: Dict[str, Any]) -> None:
     """white_balance and ae_max_exposure are positive numbers; exposure and gain are both -1 (auto) or both fixed values."""
     for key in ("white_balance", "ae_max_exposure"):
         expect(_is_number(cam[key]) and cam[key] > 0, f"'cameras.{name}.{key}' must be a number > 0, got {cam[key]!r}")
-    for key, floor in (("exposure", 1), ("gain", 0)):
-        value = cam[key]
+    _check_imaging_pair(f"cameras.{name}", cam["exposure"], cam["gain"])
+
+
+def _check_imaging_pair(where: str, exposure: Any, gain: Any) -> None:
+    """exposure and gain are both -1 (auto exposure) or both fixed integers (exposure >= 1, gain >= 0)."""
+    for key, value, floor in (("exposure", exposure, 1), ("gain", gain, 0)):
         expect(value == -1 or (isinstance(value, int) and not isinstance(value, bool) and value >= floor),
-               f"'cameras.{name}.{key}' must be -1 (auto) or an integer >= {floor}, got {value!r}")
-    expect((cam["exposure"] == -1) == (cam["gain"] == -1),
-           f"'cameras.{name}.exposure' and 'gain' must both be -1 (auto exposure) or both be fixed values, "
-           f"got exposure={cam['exposure']!r}, gain={cam['gain']!r}")
+               f"'{where}.{key}' must be -1 (auto) or an integer >= {floor}, got {value!r}")
+    expect((exposure == -1) == (gain == -1),
+           f"'{where}.exposure' and 'gain' must both be -1 (auto exposure) or both be fixed values, "
+           f"got exposure={exposure!r}, gain={gain!r}")
 
 
 def _check_cameras(cams: Dict[str, Any]) -> None:
@@ -296,6 +300,10 @@ def validate_camera_assignments(assignments: Dict[str, Dict[str, Any]]) -> None:
             if key in values and values[key] is not None:
                 expect(isinstance(values[key], str) and bool(SERIAL_RE.match(values[key])),
                        f"'{where}.{key}' has invalid characters: {values[key]!r}")
+        if "exposure" in values or "gain" in values:
+            expect("exposure" in values and "gain" in values,
+                   f"'{where}.exposure' and 'gain' are written together")
+            _check_imaging_pair(where, values["exposure"], values["gain"])
 
 
 Edit = Callable[[Dict[str, Any]], Dict[str, Any]]  # changes the raw YAML mapping before it is validated
