@@ -5,6 +5,7 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <thread>
@@ -57,7 +58,9 @@ namespace ocs2::mpc_core
         std::atomic_bool mpc_running_{false};         // loop while true; beginExit sets false
         std::atomic_bool mpc_thread_finished_{true};  // set true when thread leaves loop
         std::atomic_bool mpc_update_requested_{false};
+        std::atomic<std::int64_t> last_solve_ok_ns_{0};  // steady clock, written by the MPC thread (see PolicyAge.h)
 
         bool collision_detected_{false};
+        bool policy_stale_{false};  // CTL-016: set once in run(), checkChange() then switches to HOLD
     };
 }

@@ -96,6 +96,17 @@ install(
     RUNTIME DESTINATION bin
 )
 
+if(BUILD_TESTING)
+    find_package(ament_cmake_gtest REQUIRED)
+    # Header only (PolicyAge.h, TargetPose.h): need the include path, not the library.
+    ament_add_gtest(test_policy_age test/test_policy_age.cpp)
+    target_include_directories(test_policy_age PRIVATE include)
+    ament_add_gtest(test_target_pose test/test_target_pose.cpp)
+    target_include_directories(test_target_pose PRIVATE include)
+    find_package(Eigen3 REQUIRED)
+    target_link_libraries(test_target_pose Eigen3::Eigen)
+endif()
+
 ament_export_dependencies(
     rclcpp
     rclcpp_lifecycle

@@ -376,8 +376,8 @@ private:
     /** False while this arm must keep the pose written by an internal reset. */
     [[nodiscard]] bool armExternalCommandAllowed(bool is_left) const;
     void warnBlockedArmExternalCommand(bool is_left) const;
-    /// Record-only (CTL-014): WARN when an external absolute target is far from the target the MPC is tracking now.
-    void logTargetJump(bool is_left, const vector_t& goal7) const;
+    /// False (and a throttled WARN) for a target with NaN / inf or a zero quaternion: it is dropped, the current target stays.
+    [[nodiscard]] bool targetUsable(const vector_t& goal7, const char* which) const;
 
     std::atomic<bool> accepting_targets_{true};
     std::function<bool(bool)> arm_external_command_predicate_;

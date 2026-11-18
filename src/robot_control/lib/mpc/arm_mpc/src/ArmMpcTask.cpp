@@ -308,7 +308,7 @@ namespace ocs2::arm_mpc
             vector_t static_torques = calculateStaticTorques();
             for (size_t i = 0; i < joint_names_.size() && i < static_cast<size_t>(static_torques.size()); ++i)
             {
-                std::ignore = ctrl_interfaces_.joint_force_command_interface_[i].get().set_value(static_torques(i));
+                ctrl_interfaces_.setJointForceCommand(i, static_torques(i));
             }
             for (size_t i = 0; i < joint_names_.size() && i < static_cast<size_t>(future_state.size()); ++i)
             {
@@ -316,8 +316,7 @@ namespace ocs2::arm_mpc
             }
             for (size_t i = 0; i < joint_names_.size() && i < static_cast<size_t>(future_input.size()); ++i)
             {
-                std::ignore = ctrl_interfaces_.joint_velocity_command_interface_[i].get().
-                    set_value(future_input(i));
+                ctrl_interfaces_.setJointVelocityCommand(i, future_input(i));
             }
         }
         else

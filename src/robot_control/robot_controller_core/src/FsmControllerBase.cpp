@@ -60,6 +60,14 @@ namespace robot_controller_core
                                  "(%llu since activation); using the last good reading",
                                  failed, static_cast<unsigned long long>(position_read_failures_total_));
         }
+        if (const auto rejected = ctrl_interfaces_.takeRejectedCommands(); rejected > 0)
+        {
+            rejected_commands_total_ += rejected;
+            RCLCPP_ERROR_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+                                  "[CTL-015] %zu joint command(s) refused in the last cycle (NaN/Inf or not "
+                                  "written, %llu since activation); the joint keeps its last command",
+                                  rejected, static_cast<unsigned long long>(rejected_commands_total_));
+        }
         if (current_state_) { recordCycleState(current_state_->state_name); }
 
         if (mode_ == FSMMode::NORMAL)

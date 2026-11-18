@@ -2,7 +2,9 @@
 #include <gtest/gtest.h>
 
 #include <hardware_interface/handle.hpp>
+#include <hardware_interface/loaned_command_interface.hpp>
 #include <hardware_interface/loaned_state_interface.hpp>
+#include <limits>
 #include <memory>
 #include <optional>
 
@@ -84,6 +86,96 @@ TEST(CtrlInterfacesPosition, reading_before_initialization_or_out_of_range_is_an
     EXPECT_THROW(f.interfaces.measuredJointPosition(0), std::logic_error);
     f.interfaces.initializeLastSentPositions();
     EXPECT_THROW(f.interfaces.measuredJointPosition(2), std::logic_error);
+}
+
+namespace
+{
+// The command side of the same two joints: the exit setJointPositionCommand writes into these handles.
+struct CommandFixture : Fixture
+{
+    std::shared_ptr<hardware_interface::CommandInterface> command[2];
+    std::unique_ptr<hardware_interface::LoanedCommandInterface> loaned_command[2];
+    std::shared_ptr<hardware_interface::CommandInterface> velocity, force;  // joint0 feed-forward of the MIX mode
+    std::unique_ptr<hardware_interface::LoanedCommandInterface> loaned_velocity, loaned_force;
+
+    static std::shared_ptr<hardware_interface::CommandInterface> make(const std::string& name)
+    {
+        hardware_interface::InterfaceInfo info;
+        info.name = name;
+        return std::make_shared<hardware_interface::CommandInterface>(
+            hardware_interface::InterfaceDescription("joint0", info));
+    }
+
+    CommandFixture()
+    {
+        velocity = make("velocity");
+        force = make("effort");
+        loaned_velocity = std::make_unique<hardware_interface::LoanedCommandInterface>(velocity, nullptr);
+        loaned_force = std::make_unique<hardware_interface::LoanedCommandInterface>(force, nullptr);
+        interfaces.joint_velocity_command_interface_.push_back(*loaned_velocity);
+        interfaces.joint_force_command_interface_.push_back(*loaned_force);
+        for (int i = 0; i < 2; ++i)
+        {
+            hardware_interface::InterfaceInfo info;
+            info.name = "position";
+            command[i] = std::make_shared<hardware_interface::CommandInterface>(
+                hardware_interface::InterfaceDescription("joint" + std::to_string(i), info));
+            loaned_command[i] = std::make_unique<hardware_interface::LoanedCommandInterface>(command[i], nullptr);
+            interfaces.joint_position_command_interface_.push_back(*loaned_command[i]);
+        }
+        interfaces.initializeLastSentPositions();
+    }
+};
+}  // namespace
+
+TEST(CtrlInterfacesCommand, a_finite_command_is_written_and_remembered)
+{
+    CommandFixture f;
+    f.interfaces.setJointPositionCommand(0, 0.75);
+
+    EXPECT_DOUBLE_EQ(f.interfaces.commandedJointPosition(0), 0.75);
+    EXPECT_DOUBLE_EQ(*f.loaned_command[0]->get_optional(), 0.75);
+    EXPECT_EQ(f.interfaces.takeRejectedCommands(), 0u);
+}
+
+TEST(CtrlInterfacesCommand, nan_and_inf_are_refused_and_the_joint_keeps_its_last_command)
+{
+    CommandFixture f;
+    f.interfaces.setJointPositionCommand(1, 0.4);
+
+    f.interfaces.setJointPositionCommand(1, std::numeric_limits<double>::quiet_NaN());
+    f.interfaces.setJointPositionCommand(1, std::numeric_limits<double>::infinity());
+
+    EXPECT_DOUBLE_EQ(f.interfaces.commandedJointPosition(1), 0.4);
+    EXPECT_DOUBLE_EQ(*f.loaned_command[1]->get_optional(), 0.4);
+    EXPECT_EQ(f.interfaces.takeRejectedCommands(), 2u);
+    EXPECT_EQ(f.interfaces.takeRejectedCommands(), 0u);  // taking resets the count
+}
+
+TEST(CtrlInterfacesCommand, a_good_command_after_a_refused_one_goes_through)
+{
+    CommandFixture f;
+    f.interfaces.setJointPositionCommand(0, std::numeric_limits<double>::quiet_NaN());
+    f.interfaces.setJointPositionCommand(0, -0.2);
+
+    EXPECT_DOUBLE_EQ(f.interfaces.commandedJointPosition(0), -0.2);
+    EXPECT_EQ(f.interfaces.takeRejectedCommands(), 1u);
+}
+
+TEST(CtrlInterfacesCommand, velocity_and_torque_feed_forward_go_through_the_same_check)
+{
+    CommandFixture f;
+    f.interfaces.setJointVelocityCommand(0, 0.5);
+    f.interfaces.setJointForceCommand(0, 3.0);
+    EXPECT_DOUBLE_EQ(*f.loaned_velocity->get_optional(), 0.5);
+    EXPECT_DOUBLE_EQ(*f.loaned_force->get_optional(), 3.0);
+    EXPECT_EQ(f.interfaces.takeRejectedCommands(), 0u);
+
+    f.interfaces.setJointVelocityCommand(0, std::numeric_limits<double>::quiet_NaN());
+    f.interfaces.setJointForceCommand(0, std::numeric_limits<double>::infinity());
+    EXPECT_DOUBLE_EQ(*f.loaned_velocity->get_optional(), 0.5) << "the drive keeps the last velocity";
+    EXPECT_DOUBLE_EQ(*f.loaned_force->get_optional(), 3.0) << "the drive keeps the last torque";
+    EXPECT_EQ(f.interfaces.takeRejectedCommands(), 2u);
 }
 
 int main(int argc, char** argv)

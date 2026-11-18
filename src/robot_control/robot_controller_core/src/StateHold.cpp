@@ -151,7 +151,7 @@ namespace robot_controller_core
             for (size_t i = 0; i < ctrl_interfaces_.joint_force_command_interface_.size() && 
                  i < static_torques.size(); ++i)
             {
-                std::ignore = ctrl_interfaces_.joint_force_command_interface_[i].get().set_value(static_torques[i]);
+                ctrl_interfaces_.setJointForceCommand(i, static_torques[i]);
             }
             if (ctrl_interfaces_.default_gains_.size() >= 2)
             {

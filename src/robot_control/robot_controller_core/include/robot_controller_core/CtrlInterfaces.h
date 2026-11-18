@@ -100,6 +100,20 @@ namespace robot_controller_core
         std::unique_ptr<std::atomic<double>[]> last_read_joint_positions_;
         std::size_t last_read_joint_count_{0};
         std::atomic<std::size_t> position_read_failures_{0};
+        std::atomic<std::size_t> rejected_commands_{0};  // see setJointPositionCommand
+
+        /// False, counted as rejected, when the value is not finite or the handle did not take it.
+        template <class Handle>
+        bool writeFinite(Handle& handle, double value)
+        {
+            if (!std::isfinite(value) || !handle.set_value(value))
+            {
+                // A handle that refused the value (lock not obtained) still holds the old command.
+                rejected_commands_.fetch_add(1, std::memory_order_relaxed);
+                return false;
+            }
+            return true;
+        }
 
         struct CommandMotionState
         {
@@ -189,11 +203,30 @@ namespace robot_controller_core
         /// Failed measured-position reads since the previous call.
         std::size_t takePositionReadFailures() { return position_read_failures_.exchange(0); }
 
+        /// The one exit every position command passes (all states, arm and whole-body). A command that is NaN or
+        /// infinite is never sent: the joint keeps its last command and the rejection is counted, so the hardware
+        /// never receives it and the MPC observation (built from last_sent_joint_positions_) stays finite.
         void setJointPositionCommand(size_t index, double value)
         {
-            std::ignore = joint_position_command_interface_[index].get().set_value(value);
-            last_sent_joint_positions_[index] = value;
+            if (writeFinite(joint_position_command_interface_[index].get(), value))
+            {
+                last_sent_joint_positions_[index] = value;
+            }
         }
+
+        /// Same exit for the velocity and torque feed-forward of the MIX mode: the drive never gets a NaN either.
+        void setJointVelocityCommand(size_t index, double value)
+        {
+            writeFinite(joint_velocity_command_interface_[index].get(), value);
+        }
+
+        void setJointForceCommand(size_t index, double value)
+        {
+            writeFinite(joint_force_command_interface_[index].get(), value);
+        }
+
+        /// Commands refused (non-finite, or not written) since the previous call.
+        std::size_t takeRejectedCommands() { return rejected_commands_.exchange(0); }
 
         void initializeLastSentPositions()
         {

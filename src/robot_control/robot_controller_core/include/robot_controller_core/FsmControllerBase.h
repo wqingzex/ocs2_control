@@ -113,6 +113,7 @@ namespace robot_controller_core
         std::atomic<std::uint64_t> fsm_command_seq_{0};
         std::uint64_t fsm_command_seq_seen_{0};
         std::uint64_t position_read_failures_total_{0};  ///< measured-position reads that failed since activation (CTL-012)
+        std::uint64_t rejected_commands_total_{0};       ///< position commands refused since activation (CTL-015)
         std::uint64_t late_period_ns_{0};
         double health_window_s_{10.0};
         rclcpp::TimerBase::SharedPtr health_timer_;

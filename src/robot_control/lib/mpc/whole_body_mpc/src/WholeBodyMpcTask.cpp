@@ -779,7 +779,7 @@ void WholeBodyMpcTask::applyArmTransitionHoldToCommands() {
             // normal output path above.
             ctrl_interfaces_.setJointPositionCommand(hardwareIndex, hold.heldCommandPositions[local]);
             if (isMix && hardwareIndex < ctrl_interfaces_.joint_velocity_command_interface_.size()) {
-                std::ignore = ctrl_interfaces_.joint_velocity_command_interface_[hardwareIndex].get().set_value(0.0);
+                ctrl_interfaces_.setJointVelocityCommand(hardwareIndex, 0.0);
             }
             const size_t stateIndex = stateOffset + hardwareIndex;
             if (stateIndex < static_cast<size_t>(cached_last_action_.size())) {
@@ -1284,13 +1284,13 @@ void WholeBodyMpcTask::evaluatePolicy(const rclcpp::Time& time) {
     } else if (ctrl_interfaces_.control_mode_ == robot_controller_core::ControlMode::MIX) {
         vector_t static_torques = calculateStaticTorques();
         for (size_t i = 0; i < joint_names_.size() && (state_joint_offset + i) < static_cast<size_t>(static_torques.size()); ++i) {
-            std::ignore = ctrl_interfaces_.joint_force_command_interface_[i].get().set_value(static_torques(state_joint_offset + i));
+            ctrl_interfaces_.setJointForceCommand(i, static_torques(state_joint_offset + i));
         }
         for (size_t i = 0; i < joint_names_.size() && (state_joint_offset + i) < static_cast<size_t>(future_state.size()); ++i) {
             ctrl_interfaces_.setJointPositionCommand(i, future_state(state_joint_offset + i));
         }
         for (size_t i = 0; i < joint_names_.size() && (input_joint_offset + i) < static_cast<size_t>(future_input.size()); ++i) {
-            std::ignore = ctrl_interfaces_.joint_velocity_command_interface_[i].get().set_value(future_input(input_joint_offset + i));
+            ctrl_interfaces_.setJointVelocityCommand(i, future_input(input_joint_offset + i));
         }
     } else {
         RCLCPP_ERROR(node_->get_logger(), "Unknown control output mode");

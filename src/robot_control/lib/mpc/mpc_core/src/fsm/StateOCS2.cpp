@@ -5,10 +5,20 @@
 
 #include <mpc_core/mpc/MpcExecutionParams.hpp>
 #include <mpc_core/mpc/MpcHealth.h>
+#include <mpc_core/mpc/PolicyAge.h>
 
 namespace ocs2::mpc_core
 {
     using robot_controller_core::ControlMode;
+
+    namespace
+    {
+        std::int64_t steadyNowNs()
+        {
+            return std::chrono::duration_cast<std::chrono::nanoseconds>(
+                       std::chrono::steady_clock::now().time_since_epoch()).count();
+        }
+    }  // namespace
 
     StateOCS2::StateOCS2(CtrlInterfaces& ctrl_interfaces,
                          const std::shared_ptr<rclcpp_lifecycle::LifecycleNode>& node,
@@ -78,7 +88,9 @@ namespace ocs2::mpc_core
 
         ctrl_comp_->resetMpc();
         collision_detected_ = false;
+        policy_stale_ = false;
         last_mpc_time_ = node_->now();
+        last_solve_ok_ns_.store(steadyNowNs(), std::memory_order_relaxed);  // the first solve gets the full timeout
 
         // Kick viz snapshot after reset (viz thread owned by controller activate lifetime).
         ctrl_comp_->requestVisualizationUpdate();
@@ -112,6 +124,22 @@ namespace ocs2::mpc_core
         {
             mpc_update_requested_ = true;
             last_mpc_time_ = time;
+        }
+
+        if (policy_stale_ || policyIsStale(steadyNowNs(), last_solve_ok_ns_.load(std::memory_order_relaxed)))
+        {
+            // The MPC thread has not produced a policy for too long (stuck or failing every solve). The old policy is
+            // never extrapolated; the command stays where it was until checkChange() has moved the state machine to
+            // HOLD. It does not resume by itself: the operator enters OCS2 and starts teleoperation again.
+            if (!policy_stale_)
+            {
+                policy_stale_ = true;
+                RCLCPP_ERROR(node_->get_logger(),
+                             "[CTL-016] no successful MPC solve for more than %.2f s: holding the last command and "
+                             "switching to HOLD", static_cast<double>(kPolicyStaleTimeoutNs) * 1e-9);
+            }
+            ctrl_comp_->holdLastSentPositions();
+            return;
         }
 
         ctrl_comp_->evaluatePolicy(time);
@@ -177,6 +205,7 @@ namespace ocs2::mpc_core
                     // Only advanceMpc here. Never call getPolicy()/updatePolicy() on this
                     // thread — MRT active policy is not thread-safe (see MRT_BASE.h).
                     ctrl_comp_->advanceMpc();
+                    last_solve_ok_ns_.store(steadyNowNs(), std::memory_order_relaxed);
                     health.recordSolve(std::chrono::duration<double>(Health::Clock::now() - begin).count());
                 }
                 catch (const std::exception& e)
@@ -220,6 +249,12 @@ namespace ocs2::mpc_core
 
     robot_controller_core::FSMStateName StateOCS2::checkChange()
     {
+        if (policy_stale_)
+        {
+            ctrl_comp_->publishFsmCommand(2);
+            return robot_controller_core::FSMStateName::HOLD;
+        }
+
         if (collision_detected_)
         {
             ctrl_comp_->publishFsmCommand(2);
