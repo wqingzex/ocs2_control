@@ -51,6 +51,7 @@ namespace xr_teleop
         rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pub_left_;
         rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pub_right_;
         rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_event_;
+        rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_thumbstick_;  ///< chassis drive: both sticks
         rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_trigger_;
         rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr pub_connection_;
         rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_device_id_;
@@ -80,8 +81,6 @@ namespace xr_teleop
         // Timer-thread state
         XrSdkClient sdk_;
         XrPoseConverter pose_converter_;
-        double held_left_trigger_ = 0.0;   ///< last trigger of a controller that is not tracked now (see trigger_hold.hpp)
-        double held_right_trigger_ = 0.0;
         ButtonEventEncoder encoder_;
         int64_t last_timestamp_ns_ = 0;
         bool connected_ = false;

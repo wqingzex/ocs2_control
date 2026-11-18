@@ -47,15 +47,18 @@ namespace xr_teleop
         const bool a_pressed = s.right_a && !prev_a_;
         const bool x_pressed = s.left_x && !prev_x_;
         const bool right_stick_pressed = s.right_stick_click && !prev_right_stick_;
+        const bool left_stick_pressed = s.left_stick_click && !prev_left_stick_;
         prev_a_ = s.right_a;
         prev_x_ = s.left_x;
         prev_right_stick_ = s.right_stick_click;
+        prev_left_stick_ = s.left_stick_click;
 
         EncodedControls out;
         // One Int32 per frame: keys pressed in the same frame are rare; the first one listed wins.
         if (a_pressed) { out.event = event::kFsmForward; }
         else if (x_pressed) { out.event = event::kFsmBack; }
         else if (right_stick_pressed) { out.event = event::kToggleFollow; }
+        else if (left_stick_pressed) { out.event = event::kToggleChassisDrive; }
 
         out.thumbstick = {deadzone(s.left_axis_x), deadzone(s.left_axis_y), s.left_grip ? 1.0 : 0.0,
                           deadzone(s.right_axis_x), deadzone(s.right_axis_y), s.right_grip ? 1.0 : 0.0};

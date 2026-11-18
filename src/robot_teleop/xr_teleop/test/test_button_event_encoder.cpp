@@ -72,6 +72,7 @@ TEST(ButtonEventEncoder, eventCodesStartAtOneAfterNoEvent)
     EXPECT_EQ(ev::kFsmForward, 1);
     EXPECT_EQ(ev::kFsmBack, 2);
     EXPECT_EQ(ev::kToggleFollow, 3);
+    EXPECT_EQ(ev::kToggleChassisDrive, 4);
 }
 
 TEST(ButtonEventEncoder, rightAIsFsmForwardOnPressOnly)
@@ -99,13 +100,33 @@ TEST(ButtonEventEncoder, rightStickClickTogglesFollowOnPressNotOnRelease)
     EXPECT_EQ(tick(enc, {}), ev::kNone);
 }
 
+TEST(ButtonEventEncoder, leftStickClickTogglesChassisDriveOnPressNotOnRelease)
+{
+    ButtonEventEncoder enc;
+    EXPECT_EQ(tick(enc, {.lstick = true}), ev::kToggleChassisDrive);
+    EXPECT_EQ(tick(enc, {.lstick = true}), ev::kNone);  // held: no repeat
+    EXPECT_EQ(tick(enc, {}), ev::kNone);                // release: nothing
+    EXPECT_EQ(tick(enc, {.lstick = true}), ev::kToggleChassisDrive);
+}
+
+TEST(ButtonEventEncoder, theLeftStickClickIsAKeyOnItsOwnNotAChord)
+{
+    // Pressing both sticks does not mean a third thing: one event per frame, the right stick first.
+    ButtonEventEncoder enc;
+    EXPECT_EQ(tick(enc, {.lstick = true, .rstick = true}), ev::kToggleFollow);
+    EXPECT_EQ(tick(enc, {.lstick = true, .rstick = true}), ev::kNone);
+    EXPECT_EQ(tick(enc, {}), ev::kNone);
+    // A held grip or trigger does not change it either.
+    EXPECT_EQ(tick(enc, {.lstick = true, .lgrip = true, .rtrig = 1.0}), ev::kToggleChassisDrive);
+}
+
 TEST(ButtonEventEncoder, everyOtherInputProducesNoEvent)
 {
     ButtonEventEncoder enc;
     const std::vector<Keys> others = {
-        {.b = true}, {.y = true}, {.lstick = true}, {.lgrip = true}, {.rgrip = true},
+        {.b = true}, {.y = true}, {.lgrip = true}, {.rgrip = true},
         {.ltrig = 1.0}, {.rtrig = 1.0}, {.lax = 1.0}, {.ray = -1.0},
-        {.b = true, .y = true, .lstick = true, .lgrip = true, .rgrip = true, .ltrig = 1.0, .rtrig = 1.0},
+        {.b = true, .y = true, .lgrip = true, .rgrip = true, .ltrig = 1.0, .rtrig = 1.0},
     };
     for (const auto& keys : others)
     {

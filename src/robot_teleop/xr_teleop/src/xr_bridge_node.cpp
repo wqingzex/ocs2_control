@@ -1,5 +1,4 @@
 #include "xr_teleop/xr_bridge_node.hpp"
-#include "xr_teleop/trigger_hold.hpp"
 #include <robot_log/log_mode.hpp>
 #include <cstdio>
 
@@ -57,6 +56,7 @@ namespace xr_teleop
         pub_left_ = create_publisher<geometry_msgs::msg::Pose>("/teleop/left_ee_pose", depth);
         pub_right_ = create_publisher<geometry_msgs::msg::Pose>("/teleop/right_ee_pose", depth);
         pub_event_ = create_publisher<std_msgs::msg::Int32>("/teleop/controller_state", depth);
+        pub_thumbstick_ = create_publisher<geometry_msgs::msg::Twist>("/teleop/thumbstick_axes", depth);
         pub_trigger_ = create_publisher<geometry_msgs::msg::Twist>("/teleop/trigger_values", depth);
         pub_connection_ = create_publisher<std_msgs::msg::Bool>(
             "/teleop/connection_status", rclcpp::QoS(1).reliable().transient_local());
@@ -205,9 +205,24 @@ namespace xr_teleop
         event.data = controls.event;
         pub_event_->publish(event);
 
+        // Every frame, zeros included: a controller missing from the frame has all-zero sticks (frames are built fresh).
+        // When frames stop altogether nothing is published; the consumer stops the base on its own timeout.
+        // linear = left stick (x, y) and left grip in z, angular = right stick and right grip (the former contract).
+        geometry_msgs::msg::Twist thumbstick;
+        thumbstick.linear.x = controls.thumbstick[0];
+        thumbstick.linear.y = controls.thumbstick[1];
+        thumbstick.linear.z = controls.thumbstick[2];
+        thumbstick.angular.x = controls.thumbstick[3];
+        thumbstick.angular.y = controls.thumbstick[4];
+        thumbstick.angular.z = controls.thumbstick[5];
+        pub_thumbstick_->publish(thumbstick);
+
+        // The trigger is published as the controller reports it. A controller that is switched off, out of battery or
+        // missing from the frame reads 0, which downstream means "hand / gripper fully open": the hand lets go. This is
+        // intended (decided 2026-11-18): there is no "keep the last trigger" logic.
         geometry_msgs::msg::Twist trigger;
-        trigger.linear.x = triggerOrHeld(frame.has_left, controls.left_trigger_pull, held_left_trigger_);
-        trigger.angular.x = triggerOrHeld(frame.has_right, controls.right_trigger_pull, held_right_trigger_);
+        trigger.linear.x = controls.left_trigger_pull;
+        trigger.angular.x = controls.right_trigger_pull;
         pub_trigger_->publish(trigger);
 
         if (controls.event != event::kNone)

@@ -25,6 +25,7 @@ namespace xr_teleop
         constexpr int kFsmForward = 1;   ///< right A: HOME -> HOLD -> OCS2
         constexpr int kFsmBack = 2;      ///< left X: OCS2 / MOVEJ -> HOLD -> HOME, HOME <-> REST
         constexpr int kToggleFollow = 3; ///< right stick click: UPDATE (arms follow) <-> STORAGE
+        constexpr int kToggleChassisDrive = 4; ///< left stick click: the sticks drive the base (only OCS2, base locked)
     } // namespace event
 
     /// The front keys are commands, each on its own key and fired when pressed; grips, triggers and
@@ -43,5 +44,6 @@ namespace xr_teleop
         bool prev_a_ = false;
         bool prev_x_ = false;
         bool prev_right_stick_ = false;
+        bool prev_left_stick_ = false;
     };
 } // namespace xr_teleop
