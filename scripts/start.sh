@@ -26,6 +26,8 @@ robot_control_suite 命令行入口（面向专业人员）
   ./scripts/start.sh bags [--delete 名称 --yes]                        列出 / 删除录包
 其他
   ./scripts/start.sh check | build
+  ./scripts/start.sh bus_probe [--side left|right] [--duration S] [--cycle-hz N] [--io-mode async|sync]
+                                          按配置里的末端测它的 USB 总线：往返时延、丢帧、请求频率（要先停运控；--help 看全部选项）
 
 选项（命令前后都可以）
   -c 配置文件        --set 字段=值（本次运行有效，可重复，如 --set robot.hardware=isaac）
@@ -311,6 +313,13 @@ recording() {
     ${SET_ARGS[@]+"${SET_ARGS[@]}"} "$@"
 }
 
+# 总线测量：通过配置里的末端测它的总线，逻辑在 robot_app.bus_probe；选项原样交给 end_effector_hardware 的 bus_probe。
+cmd_bus_probe() {
+  source_ros --workspace
+  exec python3 -m robot_app.bus_probe --config "$(resolve_config "${CONFIG_ARG}")" \
+    ${SET_ARGS[@]+"${SET_ARGS[@]}"} "$@"
+}
+
 # 全局选项可以写在命令前后：-c 配置、--set 字段=值、--entry/--end-effector/--end-effector-bus、--rviz。
 parse_options() {
   REST=()
@@ -342,6 +351,7 @@ case "${1:-}" in
   record|play|bags) recording "$@" ;;
   nav) shift; cmd_nav "$@" ;;
   dyn-identify) shift; cmd_dyn_identify "$@" ;;
+  bus_probe) shift; cmd_bus_probe "$@" ;;
   sim) SET_ARGS+=(--set robot.hardware=mock_components); cmd_start ;;
   isaac) SET_ARGS+=(--set robot.hardware=isaac); cmd_start ;;
   viz) units viz ;;

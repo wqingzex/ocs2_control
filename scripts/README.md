@@ -26,6 +26,7 @@
 ./scripts/start.sh up|down|restart|status|logs [模块]   # 按模块管理，status --hz 看话题频率；up control 等控制器全部激活（失败会报错）并默认带 RViz（--no-rviz 不带）；up xr 等头显发来数据，没连上给警告
 ./scripts/start.sh nav [--list] [--map ID] [--map-only]  # 导航
 ./scripts/start.sh dyn-identify    # 机械臂负载辨识向导，需要终端
+./scripts/start.sh bus_probe [--side left|right] [--duration S] [--cycle-hz N]   # 测末端 USB 总线的往返时延、丢帧、请求频率；先停运控
 ./scripts/start.sh console         # Web 控制台，前台运行（Ctrl+C 停止）
 ./scripts/start.sh console start|stop|restart|status [--port N]   # 后台启动 / 停止 / 重启 / 查看，默认端口 8765
 ./scripts/start.sh console --open  # 后台启动并用浏览器打开（双击 robot_control_suite控制台 用的就是它）

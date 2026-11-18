@@ -310,25 +310,6 @@ if(EXISTS "${ASYNC_RAW_SDK_ONLY_SRC}")
     message(STATUS "marvin_hardware: building and installing async_raw_485_test_sdk_only (SDK only)")
 endif()
 
-# Measurements of the arm's flange RS485 (latency, load, both ports, SDK threading): SDK only, real arm.
-set(ARM_RS485_BENCH_SRC "${CMAKE_CURRENT_SOURCE_DIR}/examples/arm_rs485_bench.cpp")
-if(EXISTS "${ARM_RS485_BENCH_SRC}")
-    add_executable(arm_rs485_bench "${ARM_RS485_BENCH_SRC}")
-    add_dependencies(arm_rs485_bench build_marvin_sdk)
-    target_include_directories(arm_rs485_bench PRIVATE ${HEADER_CONTROL_DIR})
-    target_link_directories(arm_rs485_bench PRIVATE ${LIB_CONTROL_DIR})
-    set_target_properties(arm_rs485_bench PROPERTIES
-        BUILD_RPATH "${LIB_KINE_DIR};${LIB_CONTROL_DIR}"
-        INSTALL_RPATH "$ORIGIN;$ORIGIN/../lib"
-        INSTALL_RPATH_USE_LINK_PATH TRUE
-    )
-    target_link_libraries(arm_rs485_bench MarvinSDK pthread)
-    install(TARGETS arm_rs485_bench
-        RUNTIME DESTINATION lib/${PROJECT_NAME}
-    )
-    message(STATUS "marvin_hardware: building and installing arm_rs485_bench (SDK only)")
-endif()
-
 install(
         DIRECTORY include/ 
         DESTINATION include/${PROJECT_NAME}

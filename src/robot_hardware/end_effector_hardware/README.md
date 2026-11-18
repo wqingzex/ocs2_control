@@ -86,7 +86,18 @@ LinkerHand CAN 驱动的总线读写在单独的线程里，`read()` / `write()`
 colcon test --packages-select end_effector_hardware
 ```
 
-`test_jodell_gripper`；`test_linkerhand_can_protocol`（帧的构造和解析、单位换算）；`test_linkerhand_can_hardware`（驱动跑在 `MockCanBus` 上：参数检查、反馈、指令、限幅、总线错误）。
+`test_jodell_gripper`；`test_linkerhand_can_protocol`（帧的构造和解析、单位换算）；`test_linkerhand_can_hardware`（驱动跑在 `MockCanBus` 上：参数检查、反馈、指令、限幅、总线错误）；`test_bus_probe`（总线测量跑在 `MockBus` 上：往返时延、限速、设备不应答）。
+
+## 总线测量
+
+`./scripts/start.sh bus_probe` 按 `robot.local.yaml` 里的末端（`linkerhand_l6`、`xhand1`，USB-RS485）让设备自己的状态机在总线上跑，量往返时延、丢帧、请求频率和断档。**要先停运控**（串口只能一个进程用）。
+
+```bash
+./scripts/start.sh bus_probe --side left --duration 10          # 不限速：看这条总线能到多快
+./scripts/start.sh bus_probe --cycle-hz 100 --io-mode sync      # 按 100 Hz 控制周期，sync 方式
+```
+
+设备收到的就是运控启动时的那些帧（保持当前位置），不下发运动指令，开始前要输入 YES（`--yes` 跳过）。`--csv 文件` 写出每次往返的毫秒数。程序在 `bus_probe`（`ros2 run end_effector_hardware bus_probe --help`）。臂末端 485 口（`arm_rs485`）的总线只在臂驱动运行时才有，还不支持。
 
 ## 编译与扩展
 

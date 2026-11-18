@@ -65,6 +65,7 @@ add_library(${PROJECT_NAME} SHARED
         src/bus/xhand1.cpp
         src/bus/end_effector_hardware.cpp
         src/bus/kwr75_sensor.cpp
+        src/bus/bus_probe.cpp
         # sensors
         src/sensors/kwr75/kwr75_serial_client.cpp
         src/sensors/kwr75/kwr75_force_torque_sensor.cpp
@@ -86,6 +87,11 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 )
 
 pluginlib_export_plugin_description_file(hardware_interface end_effector_hardware.xml)
+
+# Bus measurement through the end effector that uses the bus (started by `start.sh bus_probe`).
+add_executable(bus_probe tools/bus_probe.cpp)
+target_link_libraries(bus_probe ${PROJECT_NAME})
+install(TARGETS bus_probe RUNTIME DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME})
 install(
@@ -114,6 +120,10 @@ if(BUILD_TESTING)
   ament_add_gtest(test_kwr75_sensor test/test_kwr75_sensor.cpp)
   target_link_libraries(test_kwr75_sensor ${PROJECT_NAME})
   ament_target_dependencies(test_kwr75_sensor hardware_interface rclcpp rclcpp_lifecycle)
+
+  # The bus measurement on a MockBus with simulated devices: round trips, loss, gaps, failed devices.
+  ament_add_gtest(test_bus_probe test/test_bus_probe.cpp)
+  target_link_libraries(test_bus_probe ${PROJECT_NAME})
 
   ament_add_gtest(test_jodell_gripper test/test_jodell_gripper.cpp)
   target_link_libraries(test_jodell_gripper ${PROJECT_NAME})
