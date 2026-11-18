@@ -316,7 +316,7 @@ class ImageProbe:
         self.node = rclpy.create_node(name, context=self.context)
         self.executor = SingleThreadedExecutor(context=self.context)
         self.executor.add_node(self.node)
-        self.images, self.subscriptions, self.arrivals = {}, {}, {}
+        self.images, self.subscriptions, self.arrivals, self.clients = {}, {}, {}, {}
         self.lock, self.stopped = threading.Lock(), threading.Event()
         self.thread = threading.Thread(target=self.spin, daemon=True)
         self.thread.start()
@@ -344,6 +344,28 @@ class ImageProbe:
     def latest_image(self, topic):
         with self.lock:
             return self.images.get(topic)
+
+    def set_value(self, service, kind, value, timeout=2.0):
+        """Call one driver setting service (kind 'int': orbbec_camera_msgs SetInt32, 'bool': std_srvs SetBool) and wait
+        for its answer. Returns (ok, message); never raises for a driver that is absent or refuses."""
+        from orbbec_camera_msgs.srv import SetInt32
+        from std_srvs.srv import SetBool
+        service_type = SetBool if kind == 'bool' else SetInt32
+        with self.lock:
+            client = self.clients.get(service)
+            if client is None:
+                client = self.clients[service] = self.node.create_client(service_type, service)
+        if not client.wait_for_service(timeout_sec=timeout):
+            return False, '相机驱动没有响应'
+        answered = threading.Event()
+        request = service_type.Request()
+        request.data = value
+        future = client.call_async(request)
+        future.add_done_callback(lambda _: answered.set())
+        if not answered.wait(timeout):
+            return False, '相机驱动没有应答'
+        response = future.result()
+        return bool(response.success), response.message
 
     def rate(self, topic):
         """Frames per second over the last RATE_WINDOW_S seconds (0.0 when none arrived in that time)."""

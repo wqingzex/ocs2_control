@@ -36,6 +36,9 @@ class FakePreviews:
     def frame(self, serial):
         return (time.monotonic(), 'jpeg', b'frame') if serial in self.fresh else None
 
+    def set_imaging(self, device, exposure, gain):
+        self.imaging = getattr(self, 'imaging', []) + [(device.serial, exposure, gain)]
+
     def status(self, serial):
         return {'fresh': serial in self.fresh, 'running': True, 'error': '', 'generation': str(len(self.configured))}
 

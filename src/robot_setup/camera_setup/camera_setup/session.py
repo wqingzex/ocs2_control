@@ -7,6 +7,7 @@ import copy
 import os
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from dataclasses import asdict
@@ -27,20 +28,26 @@ from . import discovery
 from .discovery import camera_error, find_camera_processes, stop_camera_processes
 
 TITLES = {'head': '头部', 'left_wrist': '左腕', 'right_wrist': '右腕'}
+MAX_EXPOSURE, MAX_GAIN = 100000, 1000  # generous bounds of the input boxes; the driver answers if it refuses a value
+MANUAL_EXPOSURE, MANUAL_GAIN = 50, 16  # what the boxes show while auto exposure is on (the wrist template values)
+IMAGING_DEBOUNCE_MS = 300
 
 
 class CameraPreviews:
     """Owned drivers have private names, config files and process records."""
     def __init__(self, ws_root, raw):
-        from .camera import ImageProbe
+        from .discovery import ImageProbe
         self.ws_root, self.raw = ws_root, raw
         self.probe = ImageProbe('camera_setup_' + uuid.uuid4().hex[:8])
         self.directory = tempfile.TemporaryDirectory(prefix='camera_setup_')
         self.prefix = 'setup_' + uuid.uuid4().hex[:8] + '_'
         self.supervisor = OwnedDrivers(os.path.join(ws_root, 'logs', 'setup', self.prefix))
-        self.entries = {}
+        self.entries, self.imaging_errors = {}, {}
 
-    def configure(self, device, rotation):
+    def configure(self, device, rotation=0):
+        """Start the preview driver of one camera. The driver always publishes upright (rotation 0): the window
+        rotates what it shows, so choosing an angle never restarts a driver (a restarted Gemini 305 can hang)."""
+        rotation = 0
         old = self.entries.get(device.serial)
         if (old and old['rotation'] == rotation and self.supervisor.is_running(old['unit'])
                 and (self.frame(device.serial) or not self.supervisor.status(old['unit']).last_error)):
@@ -50,11 +57,15 @@ class CameraPreviews:
         index = list(self.entries).index(device.serial) if old else len(self.entries)
         role = 'left_wrist' if '305' in device.model else 'head'
         cfg = copy.deepcopy(self.raw)
-        cfg['cameras'] = {**section_defaults('cameras'), **copy.deepcopy(self.raw.get('cameras') or {})}
+        defaults = section_defaults('cameras')
+        cfg['cameras'] = {**defaults, **copy.deepcopy(self.raw.get('cameras') or {})}
         cfg['cameras']['enable'] = True
         for name in ROLES:
-            cfg['cameras'][name] = {'enable': name == role, 'serial': device.serial if name == role else '',
-                                    'usb_port': device.usb_port if name == role else '', 'rotation': rotation}
+            # Keep the imaging fields (white balance, exposure, gain): the loader refuses an incomplete entry.
+            entry = {**(defaults.get(name) or {}), **(cfg['cameras'].get(name) or {})}
+            entry.update({'enable': name == role, 'serial': device.serial if name == role else '',
+                          'usb_port': device.usb_port if name == role else '', 'rotation': rotation})
+            cfg['cameras'][name] = entry
         path = Path(self.directory.name) / f'camera_{index}.yaml'
         path.write_text(yaml.safe_dump(cfg, sort_keys=False))
         name = f'camera_preview_{index}'
@@ -64,6 +75,7 @@ class CameraPreviews:
         self.supervisor.configure(name,
             ('ros2', 'launch', 'robot_startup', 'cameras.launch.py', f'config:={path}', f'name_prefix:={prefix}'))
         self.entries[device.serial] = {'unit': name, 'topic': topic, 'rotation': rotation,
+                                      'stream': 'color' if role == 'head' else 'right_color',
                                       'since': time.monotonic(), 'generation': uuid.uuid4().hex}
         # Return once this driver has initialized the device: the drivers share one lock, so a camera started
         # while another is initializing would give up.
@@ -75,6 +87,28 @@ class CameraPreviews:
         if frame and frame[0] > entry['since'] and time.monotonic() - frame[0] < 2:
             return frame
         return None
+
+    def send_imaging(self, device, exposure, gain):
+        """Set the exposure of one preview driver; returns the errors (an empty list when every call was accepted).
+        Auto exposure only switches auto on; a fixed exposure switches it off first, then sets exposure and gain."""
+        entry = self.entries.get(device.serial)
+        if not entry:
+            return ['预览驱动还没有启动']
+        base = f"/{entry['topic'].split('/')[1]}/set_{entry['stream']}_"
+        calls = [('auto_exposure', 'bool', True)] if exposure == -1 else [
+            ('auto_exposure', 'bool', False), ('exposure', 'int', exposure), ('gain', 'int', gain)]
+        for name, kind, value in calls:
+            ok, message = self.probe.set_value(base + name, kind, value)
+            if not ok:
+                return [f'{base + name}：{message}']
+        return []
+
+    def set_imaging(self, device, exposure, gain):
+        """Apply the exposure in the background: the window must not wait for the driver."""
+        def work():
+            errors = self.send_imaging(device, exposure, gain)
+            self.imaging_errors[device.serial] = '；'.join(errors)
+        threading.Thread(target=work, daemon=True, name='camera_imaging').start()
 
     def fps(self, serial):
         entry = self.entries.get(serial)
@@ -90,7 +124,8 @@ class CameraPreviews:
         if not status.running and not error:
             error = '预览进程已退出，请检查设备占用和连接'
         return {'fresh': fresh, 'running': status.running, 'error': error,
-                'generation': entry['generation'], 'fps': self.fps(serial)}
+                'generation': entry['generation'], 'fps': self.fps(serial),
+                'imaging_error': getattr(self, 'imaging_errors', {}).get(serial, '')}
 
     def close(self):
         if getattr(self, 'closed', False):
@@ -122,6 +157,13 @@ class CameraSetup(SetupSession):
             raise ValueError('没有发现相机；检查连接与容器 USB 映射')
         self.preview_factory, self.previews, self.errors = preview_factory, None, {}
         self.mapping = {d.serial: {'role': '', 'rotation': 0} for d in found}
+        defaults, cameras = section_defaults('cameras'), (self.raw.get('cameras') or {})
+        self.imaging_lock = threading.Lock()  # a window change must not wait for a slow update
+        self.imaging = {}
+        for device in found:  # what the preview driver starts with: the entry of the role its model is previewed as
+            entry = {**defaults['left_wrist' if '305' in device.model else 'head'],
+                     **(cameras.get('left_wrist' if '305' in device.model else 'head') or {})}
+            self.imaging[device.serial] = {'exposure': entry['exposure'], 'gain': entry['gain']}
         suggestions = discovery.suggest_roles(found, config_file.camera_serials(config_path))
         for role, device in suggestions.items():
             if device:
@@ -131,7 +173,7 @@ class CameraSetup(SetupSession):
     def state(self):
         with self.lock:
             return {**self.base_state(), 'devices': [
-                {**asdict(device), **self.mapping[device.serial], 'index': index,
+                {**asdict(device), **self.mapping[device.serial], **self.imaging[device.serial], 'index': index,
                  **(self.previews.status(device.serial) if self.previews else {'fresh': False, 'generation': '', 'fps': 0.0}),
                  'error': self.errors.get(device.serial, '') or
                           (self.previews.status(device.serial)['error'] if self.previews else '')}
@@ -180,6 +222,22 @@ class CameraSetup(SetupSession):
                     self.errors[device.serial] = str(exc)
             return self.state()
 
+    def set_imaging(self, request):
+        """Set the exposure and gain of one camera at once. What the operator confirmed (position, direction) does
+        not change, so this neither starts a driver nor invalidates the confirmation."""
+        serial, exposure, gain = request.get('serial'), request.get('exposure'), request.get('gain')
+        if serial not in self.by_serial:
+            raise ValueError('未知相机')
+        def valid(value, floor):
+            return type(value) is int and (value == -1 or value >= floor)
+        if not (valid(exposure, 1) and valid(gain, 0) and (exposure == -1) == (gain == -1)):
+            raise ValueError('曝光和增益必须同为 -1（自动曝光）或同为固定整数（曝光 ≥ 1，增益 ≥ 0）')
+        self.active()
+        with self.imaging_lock:
+            self.imaging[serial] = {'exposure': exposure, 'gain': gain}
+        if self.previews:
+            self.previews.set_imaging(self.by_serial[serial], exposure, gain)
+
     def image(self, index):
         if not 0 <= index < len(self.devices):
             raise ValueError('未知相机')
@@ -201,7 +259,8 @@ class CameraSetup(SetupSession):
             assignments = {role: {'enable': False} for role in ROLES}
             for role, serial in selected.items():
                 assignments[role] = {'enable': True, 'serial': serial,
-                    'usb_port': self.by_serial[serial].usb_port, 'rotation': self.mapping[serial]['rotation']}
+                    'usb_port': self.by_serial[serial].usb_port, 'rotation': self.mapping[serial]['rotation'],
+                    **self.imaging[serial]}
             validate_camera_assignments(assignments)
             config_file.save_setup(self.config_path, self.kind, {'cameras': {'enable': True, **assignments}}, self.original)
             self.saved = True
@@ -218,8 +277,8 @@ class CameraSetup(SetupSession):
 
 class CameraPanel:
     """The cards of the camera window: one per camera with its preview, position and rotation."""
-    title, size, swap_label, apply_label = 'W2 相机配置', (1160, 730), '交换左右腕', '应用配置并预览'
-    hint = '根据实时画面选择头部、左腕、右腕。依次遮挡左右腕镜头核对位置，并确认画面方向。'
+    title, size, swap_label, apply_label = 'W2 相机配置', (1160, 730), '交换左右腕', ''  # every change applies itself
+    hint = '根据实时画面选择头部、左腕、右腕。依次遮挡左右腕镜头核对位置，并确认画面方向；曝光和增益改动立即生效。'
 
     def __init__(self, window):
         self.window = window
@@ -247,12 +306,53 @@ class CameraPanel:
             rotation = window.combo([(value, f'{value}°') for value in ROTATIONS], device['rotation'])
             form.addRow('位置', role)
             form.addRow('画面旋转', rotation)
+            for combo in (role, rotation):  # the preview follows at once; no driver is restarted
+                combo.currentIndexChanged.connect(window.apply)
+            imaging = self.imaging_controls(box, form, device)
             body.addLayout(form)
             check = Q.QCheckBox('我已核对该画面的位置和方向')
             body.addWidget(check)
             window.cards[device['serial']] = {'box': box, 'image': image, 'feedback': feedback,
-                                              'role': role, 'rotation': rotation, 'check': check, 'stamp': None}
+                                              'role': role, 'rotation': rotation, 'check': check, 'stamp': None,
+                                              **imaging}
             grid.addWidget(box, 0, device['index'])
+
+    def imaging_controls(self, parent, form, device):
+        """Auto exposure, exposure and gain of one card. A change is sent to the driver 300 ms after the last edit."""
+        from PyQt5 import QtCore, QtWidgets as Q
+        auto, exposure, gain = Q.QCheckBox('自动曝光'), Q.QSpinBox(), Q.QSpinBox()
+        exposure.setRange(1, MAX_EXPOSURE)
+        gain.setRange(0, MAX_GAIN)
+        auto.setChecked(device['exposure'] == -1)
+        exposure.setValue(device['exposure'] if device['exposure'] != -1 else MANUAL_EXPOSURE)
+        gain.setValue(device['gain'] if device['gain'] != -1 else MANUAL_GAIN)
+        exposure.setEnabled(not auto.isChecked())
+        gain.setEnabled(not auto.isChecked())
+        form.addRow('曝光', auto)
+        form.addRow('曝光值', exposure)
+        form.addRow('增益', gain)
+        timer = QtCore.QTimer(parent)
+        timer.setSingleShot(True)
+        timer.setInterval(IMAGING_DEBOUNCE_MS)
+        serial = device['serial']
+        timer.timeout.connect(lambda: self.send_imaging(serial))
+
+        def changed(*_):
+            exposure.setEnabled(not auto.isChecked())
+            gain.setEnabled(not auto.isChecked())
+            timer.start()
+        for control, signal in ((auto, auto.toggled), (exposure, exposure.valueChanged), (gain, gain.valueChanged)):
+            signal.connect(changed)
+        return {'auto': auto, 'exposure': exposure, 'gain': gain, 'timer': timer}
+
+    def send_imaging(self, serial):
+        card = self.window.cards[serial]
+        auto = card['auto'].isChecked()
+        try:
+            self.window.session.set_imaging({'serial': serial, 'exposure': -1 if auto else card['exposure'].value(),
+                                             'gain': -1 if auto else card['gain'].value()})
+        except (ValueError, RuntimeError, OSError) as exc:
+            self.window.show_message(str(exc), True)
 
     def mapping(self):
         return {serial: {'role': card['role'].currentData(), 'rotation': card['rotation'].currentData()}
@@ -271,7 +371,7 @@ class CameraPanel:
                 '\n\n是否停止这些相机采集进程，并自动重启当前相机预览？只处理上述相机进程，不停止运控。',
                 Q.QMessageBox.Yes | Q.QMessageBox.No, Q.QMessageBox.No)
             if answer != Q.QMessageBox.Yes:
-                window.show_message('未停止旧相机进程。请释放设备后点击“应用配置并预览”。', True)
+                window.show_message('未停止旧相机进程。请释放设备后，再改一次位置或旋转即可重试。', True)
                 return None
             payload['stop_old_processes'] = conflicts
         return payload
@@ -280,7 +380,11 @@ class CameraPanel:
         for card in self.window.cards.values():
             value = card['role'].currentData()
             value = {'left_wrist': 'right_wrist', 'right_wrist': 'left_wrist'}.get(value, value)
+            card['role'].blockSignals(True)  # both roles change before one apply: halfway they would be a duplicate
             card['role'].setCurrentIndex(card['role'].findData(value))
+            card['role'].blockSignals(False)
+            card['check'].setChecked(False)
+        self.window.dirty = True
         return True
 
     def confirmed(self):
@@ -293,8 +397,12 @@ class CameraPanel:
             card = window.cards[device['serial']]
             card['role'].setEnabled(not busy)
             card['rotation'].setEnabled(not busy)
-            card['feedback'].setText(device.get('error') or (
+            card['auto'].setEnabled(not busy)
+            card['exposure'].setEnabled(not busy and not card['auto'].isChecked())
+            card['gain'].setEnabled(not busy and not card['auto'].isChecked())
+            card['feedback'].setText((device.get('error') or (
                 f"画面正常，{device.get('fps', 0.0):.1f} fps" if device['fresh'] else '等待最新画面；检查设备连接或占用'))
+                + (f"\n曝光设置失败：{device['imaging_error']}" if device.get('imaging_error') else ''))
             fresh = device['fresh'] and not device.get('error')
             card['check'].setEnabled(not busy and not window.dirty and bool(device['role']) and fresh)
             if not fresh:
@@ -311,6 +419,9 @@ class CameraPanel:
                         card['check'].setChecked(False)
                         card['feedback'].setText('画面解码失败，请检查驱动输出')
                     else:
+                        angle = card['rotation'].currentData() or 0
+                        if angle:  # clockwise, like the driver's rotation
+                            image = image.transformed(QtGui.QTransform().rotate(angle))
                         card['image'].setPixmap(QtGui.QPixmap.fromImage(image).scaled(
                             card['image'].size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
 
