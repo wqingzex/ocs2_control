@@ -37,7 +37,7 @@ bool param_bool(rclcpp::Node * node, const char * name, bool default_value)
 JoystickTeleop::JoystickTeleop() : Node("joystick_teleop_node") {
     publisher_ = create_publisher<robot_control_msgs::msg::Inputs>("/teleop/control_input", 10);
     fsm_command_publisher_ = create_publisher<std_msgs::msg::Int32>("/fsm_command", 10);
-    base_publisher_ = create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+    base_publisher_ = create_publisher<geometry_msgs::msg::Twist>("/base_velocity_command", 10);
     subscription_ = create_subscription<
         sensor_msgs::msg::Joy>("joy", 10, std::bind(&JoystickTeleop::joy_callback, this, _1));
     waist_lifting_publisher_ = create_publisher<std_msgs::msg::Float64>("/body_joint_controller/waist_lifting_command", 10);

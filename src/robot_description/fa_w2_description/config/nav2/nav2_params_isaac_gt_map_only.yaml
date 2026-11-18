@@ -305,14 +305,14 @@ velocity_smoother:
     enable_stamped_cmd_vel: false
 
 # 无点云：collision_monitor 须至少声明一个 polygon + 一个 source（空数组会导致节点异常退出）
-# 以下占位全部 enabled: false，等价直通 cmd_vel；仍由 Nav2 代价地图做规划避障
+# 以下占位全部 enabled: false，等价直通 base_velocity_command；仍由 Nav2 代价地图做规划避障
 collision_monitor:
   ros__parameters:
     use_sim_time: True
     base_frame_id: "base_footprint"
     odom_frame_id: "odom"
     cmd_vel_in_topic: "cmd_vel_smoothed"
-    cmd_vel_out_topic: "cmd_vel"
+    cmd_vel_out_topic: "base_velocity_command"
     enable_stamped_cmd_vel: false
     state_topic: "collision_monitor_state"
     transform_tolerance: 0.2

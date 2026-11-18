@@ -378,7 +378,7 @@ public:
     void beginMobileBaseTfProbe();
     /** Model has mobile base AND external world TF was confirmed in the startup probe window. */
     [[nodiscard]] bool isMobileBasePlanningEnabled() const;
-    /** Publish zero cmd_vel once to stop the base (only if mobile planning/TF is active).
+    /** Publish zero base_velocity_command once to stop the base (only if mobile planning/TF is active).
      *  Called on OCS2 exit and on unlocked→locked mode transitions (BASE_LOCK / lock presets). */
     void stopBase();
 
@@ -394,7 +394,7 @@ private:
     void refreshCoupledRightMarkerFromMeasurement();
     void setupInterface(const std::string& task_file, const std::string& lib_folder, const std::string& urdf_file,
                         const FrameOverrides& frame_overrides = FrameOverrides{});
-    /** Load cmd_vel hard clamps from task.info jointVelocityLimits.*.base.<modelType>. */
+    /** Load base_velocity_command hard clamps from task.info jointVelocityLimits.*.base.<modelType>. */
     void loadBaseCmdVelocityLimits(const std::string& task_file);
     void setupPublisher();
     void setupHumanoidModeSubscription(const std::string& topic);
@@ -458,7 +458,7 @@ private:
     bool isHumanoidModeSupported(size_t mode) const;
 
     rclcpp::Publisher<ocs2_msgs::msg::MpcObservation>::SharedPtr mpc_observation_publisher_;
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr base_velocity_publisher_;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr humanoid_mode_sub_;
     rclcpp::Publisher<robot_control_msgs::msg::WholeBodyCapability>::SharedPtr capability_pub_;
     mutable bool capabilities_info_logged_{false};
@@ -476,7 +476,7 @@ private:
 
     /** Mobile-base input size: 2 (diff v,omega) or 3 (omni vx,vy,omega); 0 if fixed base. */
     size_t base_input_dim_{0};
-    /** Hard clamps for published cmd_vel (from task.info jointVelocityLimits base bounds). */
+    /** Hard clamps for published base_velocity_command (from task.info jointVelocityLimits base bounds). */
     vector_t base_cmd_lower_;
     vector_t base_cmd_upper_;
     bool bodyTrackingEeEnabled_{false};

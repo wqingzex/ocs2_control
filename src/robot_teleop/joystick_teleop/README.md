@@ -1,6 +1,6 @@
 # joystick_teleop
 
-手柄遥操作：把手柄输入转成 `/teleop/control_input`（机械臂位姿增量）、`/cmd_vel`（底盘）、腰的命令和 `/fsm_command`。
+手柄遥操作：把手柄输入转成 `/teleop/control_input`（机械臂位姿增量）、`/base_velocity_command`（底盘）、腰的命令和 `/fsm_command`。
 
 ## 作用
 
@@ -29,7 +29,7 @@ ros2 run joy joy_enumerate_devices                                 # 列出手�
 | 方向 | 话题 | 类型 |
 |---|---|---|
 | 发布 | `/teleop/control_input` | `robot_control_msgs/Inputs` |
-| 发布 | `/cmd_vel` | `geometry_msgs/Twist` |
+| 发布 | `/base_velocity_command` | `geometry_msgs/Twist` |
 | 发布 | `/body_joint_controller/waist_lifting_command` `waist_turning_command` | `Float64` |
 | 发布 | `/fsm_command` | `Int32` |
 | 订阅 | `joy` | `sensor_msgs/Joy` |

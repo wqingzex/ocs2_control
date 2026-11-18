@@ -1,6 +1,6 @@
 # keyboard_teleop
 
-键盘遥操作：把按键转成 `/teleop/control_input`（机械臂位姿增量）、`/cmd_vel`（底盘）和腰的命令。不发 `/fsm_command`。
+键盘遥操作：把按键转成 `/teleop/control_input`（机械臂位姿增量）、`/base_velocity_command`（底盘）和腰的命令。不发 `/fsm_command`。
 
 ## 作用
 
@@ -16,7 +16,7 @@ ros2 run keyboard_teleop keyboard_teleop
 
 | 按键 | 动作 |
 |---|---|
-| `WASD` | 平移（机械臂模式发 `Inputs` 的 x/y，底盘模式发 `cmd_vel` 线速度） |
+| `WASD` | 平移（机械臂模式发 `Inputs` 的 x/y，底盘模式发 `base_velocity_command` 线速度） |
 | `I` `K` | z（仅机械臂） |
 | `J` `L` | yaw / 偏航角速度 |
 | 方向键 | roll / pitch（仅机械臂） |
@@ -33,5 +33,5 @@ ros2 run keyboard_teleop keyboard_teleop
 | 方向 | 话题 | 类型 |
 |---|---|---|
 | 发布 | `/teleop/control_input` | `robot_control_msgs/Inputs` |
-| 发布 | `/cmd_vel` | `geometry_msgs/Twist` |
+| 发布 | `/base_velocity_command` | `geometry_msgs/Twist` |
 | 发布 | `/body_joint_controller/waist_lifting_command` `waist_turning_command` | `Float64`（恒发 0） |

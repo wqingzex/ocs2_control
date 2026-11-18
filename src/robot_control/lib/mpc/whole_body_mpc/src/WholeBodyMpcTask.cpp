@@ -922,7 +922,7 @@ void WholeBodyMpcTask::applyPendingHumanoidModeIfAny() {
             // clobbering it with a dual-arm reset built from measured state below.
             const bool arm_hold_handled_reset = leftChanges || rightChanges;
 
-            // Brake once on unlocked→locked: cmd_vel publish stops when baseLocked, but
+            // Brake once on unlocked→locked: base_velocity_command publish stops when baseLocked, but
             // many sims/HW latch the last non-zero Twist until a zero is sent. BASE_LOCK
             // and presets that lock the base all go through this path. StateOCS2 exit
             // still calls stopBase() separately.
@@ -1097,21 +1097,21 @@ void WholeBodyMpcTask::loadBaseCmdVelocityLimits(const std::string& task_file) {
         base_cmd_upper_ = upper;
         if (dim == 3) {
             RCLCPP_INFO(node_->get_logger(),
-                        "cmd_vel clamp from task.info %s: vx[%.3f,%.3f] vy[%.3f,%.3f] w[%.3f,%.3f]",
+                        "base_velocity_command clamp from task.info %s: vx[%.3f,%.3f] vy[%.3f,%.3f] w[%.3f,%.3f]",
                         model_key.c_str(),
                         base_cmd_lower_(0), base_cmd_upper_(0),
                         base_cmd_lower_(1), base_cmd_upper_(1),
                         base_cmd_lower_(2), base_cmd_upper_(2));
         } else {
             RCLCPP_INFO(node_->get_logger(),
-                        "cmd_vel clamp from task.info %s: v[%.3f,%.3f] w[%.3f,%.3f]",
+                        "base_velocity_command clamp from task.info %s: v[%.3f,%.3f] w[%.3f,%.3f]",
                         model_key.c_str(),
                         base_cmd_lower_(0), base_cmd_upper_(0),
                         base_cmd_lower_(1), base_cmd_upper_(1));
         }
     } catch (const std::exception& ex) {
         RCLCPP_WARN(node_->get_logger(),
-                    "Failed to load %s / %s (%s); falling back to ±1.0 cmd_vel clamp",
+                    "Failed to load %s / %s (%s); falling back to ±1.0 base_velocity_command clamp",
                     lower_key.c_str(), upper_key.c_str(), ex.what());
     }
 }
@@ -1119,7 +1119,7 @@ void WholeBodyMpcTask::loadBaseCmdVelocityLimits(const std::string& task_file) {
 void WholeBodyMpcTask::setupPublisher() {
     mpc_observation_publisher_ =
         node_->create_publisher<ocs2_msgs::msg::MpcObservation>(robot_name_ + "_mpc_observation", 1);
-    // Relative → /<ns>/fsm_command, /<ns>/cmd_vel
+    // Relative → /<ns>/fsm_command, /<ns>/base_velocity_command
     // Relative with controller name → /<ns>/<controller>/whole_body_capabilities|current_state
     const std::string controller_name = std::string(node_->get_name());
     fsm_command_publisher_ = node_->create_publisher<std_msgs::msg::Int32>("fsm_command", 10);
@@ -1127,7 +1127,7 @@ void WholeBodyMpcTask::setupPublisher() {
         controller_name + "/whole_body_capabilities", rclcpp::QoS(1).transient_local());
     current_state_pub_ = node_->create_publisher<robot_control_msgs::msg::WholeBodyCurrentState>(
         controller_name + "/current_state", rclcpp::QoS(1).transient_local());
-    cmd_vel_publisher_ = node_->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
+    base_velocity_publisher_ = node_->create_publisher<geometry_msgs::msg::Twist>("base_velocity_command", 10);
 }
 
 void WholeBodyMpcTask::updateObservation(const rclcpp::Time& time) {
@@ -1252,27 +1252,27 @@ void WholeBodyMpcTask::evaluatePolicy(const rclcpp::Time& time) {
     const size_t input_joint_offset = interface_->hasMobileBase() ? base_input_dim_ : 0;
 
     auto cmd_scope = rt_timing_.scope(&rt_timing_.eval_cmd_us);
-    if (cmd_vel_publisher_ && isMobileBasePlanningEnabled() &&
+    if (base_velocity_publisher_ && isMobileBasePlanningEnabled() &&
         !HumanoidMode::decode(planned_mode).baseLocked &&
         future_input.size() >= static_cast<Eigen::Index>(base_input_dim_) &&
         base_input_dim_ >= 2 && publish_dds)
     {
-        geometry_msgs::msg::Twist cmd_vel_msg;
+        geometry_msgs::msg::Twist base_velocity_msg;
         if (base_input_dim_ == 3 && base_cmd_lower_.size() >= 3 && base_cmd_upper_.size() >= 3) {
-            cmd_vel_msg.linear.x = std::clamp(future_input(0), base_cmd_lower_(0), base_cmd_upper_(0));
-            cmd_vel_msg.linear.y = std::clamp(future_input(1), base_cmd_lower_(1), base_cmd_upper_(1));
-            cmd_vel_msg.angular.z = std::clamp(future_input(2), base_cmd_lower_(2), base_cmd_upper_(2));
+            base_velocity_msg.linear.x = std::clamp(future_input(0), base_cmd_lower_(0), base_cmd_upper_(0));
+            base_velocity_msg.linear.y = std::clamp(future_input(1), base_cmd_lower_(1), base_cmd_upper_(1));
+            base_velocity_msg.angular.z = std::clamp(future_input(2), base_cmd_lower_(2), base_cmd_upper_(2));
         } else if (base_cmd_lower_.size() >= 2 && base_cmd_upper_.size() >= 2) {
-            cmd_vel_msg.linear.x = std::clamp(future_input(0), base_cmd_lower_(0), base_cmd_upper_(0));
-            cmd_vel_msg.angular.z = std::clamp(future_input(1), base_cmd_lower_(1), base_cmd_upper_(1));
+            base_velocity_msg.linear.x = std::clamp(future_input(0), base_cmd_lower_(0), base_cmd_upper_(0));
+            base_velocity_msg.angular.z = std::clamp(future_input(1), base_cmd_lower_(1), base_cmd_upper_(1));
         } else {
-            cmd_vel_msg.linear.x = future_input(0);
-            cmd_vel_msg.angular.z = future_input(base_input_dim_ == 3 ? 2 : 1);
+            base_velocity_msg.linear.x = future_input(0);
+            base_velocity_msg.angular.z = future_input(base_input_dim_ == 3 ? 2 : 1);
             if (base_input_dim_ == 3) {
-                cmd_vel_msg.linear.y = future_input(1);
+                base_velocity_msg.linear.y = future_input(1);
             }
         }
-        cmd_vel_publisher_->publish(cmd_vel_msg);
+        base_velocity_publisher_->publish(base_velocity_msg);
     }
 
     if (ctrl_interfaces_.control_mode_ == robot_controller_core::ControlMode::POSITION) {
@@ -1584,10 +1584,10 @@ bool WholeBodyMpcTask::handleHomeJointReferenceCommand(const std::string& cmd, s
 }
 
 void WholeBodyMpcTask::stopBase() {
-    // 仅在曾允许底盘规划时发一次零速刹停；无 TF 时本就不发 cmd_vel，避免刷零。
-    if (cmd_vel_publisher_ && isMobileBasePlanningEnabled()) {
+    // 仅在曾允许底盘规划时发一次零速刹停；无 TF 时本就不发 base_velocity_command，避免刷零。
+    if (base_velocity_publisher_ && isMobileBasePlanningEnabled()) {
         geometry_msgs::msg::Twist zero;
-        cmd_vel_publisher_->publish(zero);
+        base_velocity_publisher_->publish(zero);
     }
 }
 

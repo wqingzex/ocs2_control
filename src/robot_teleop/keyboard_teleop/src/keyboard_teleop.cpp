@@ -54,7 +54,7 @@ void signalHandler(int signum)
 KeyboardTeleop::KeyboardTeleop() : Node("keyboard_teleop_node")
 {
     inputs_pub_ = create_publisher<robot_control_msgs::msg::Inputs>("/teleop/control_input", 10);
-    base_pub_ = create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+    base_pub_ = create_publisher<geometry_msgs::msg::Twist>("/base_velocity_command", 10);
     waist_lift_pub_ =
         create_publisher<std_msgs::msg::Float64>("/body_joint_controller/waist_lifting_command", 10);
     waist_turn_pub_ =
