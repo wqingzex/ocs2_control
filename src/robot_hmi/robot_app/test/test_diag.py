@@ -12,8 +12,8 @@ from robot_app import diag, events
 
 @pytest.fixture(autouse=True)
 def no_live_rings(tmp_path, monkeypatch):
-    """A bundle holds the flight recorder rings of the machine it runs on; tests must not pick up real ones."""
-    monkeypatch.setenv("ROBOT_FLIGHT_DIR", str(tmp_path / "no_rings"))
+    """A bundle holds the blackbox rings of the machine it runs on; tests must not pick up real ones."""
+    monkeypatch.setenv("ROBOT_BLACKBOX_DIR", str(tmp_path / "no_rings"))
 
 
 def make_workspace(tmp_path):
@@ -59,12 +59,12 @@ def test_the_rings_as_they_are_now_are_in_the_bundle(tmp_path, monkeypatch):
     helpers = Path(__file__).resolve().parents[3] / "robot_utils" / "test"
     assert helpers.is_dir(), f"the ring helpers of the robot_utils tests are not at {helpers}"
     sys.path.insert(0, str(helpers))
-    from test_flight_decoder import make_ring
+    from test_blackbox_decoder import make_ring
     ws, config = make_workspace(tmp_path)
     rings = tmp_path / "rings"
     rings.mkdir()
     make_ring(rings / "arm_controller.ring", [(302, 2, [0.0])] * 30, capacity=64, module="arm_controller")
-    monkeypatch.setenv("ROBOT_FLIGHT_DIR", str(rings))
+    monkeypatch.setenv("ROBOT_BLACKBOX_DIR", str(rings))
     path = diag.make_bundle(str(ws), str(config), ros=lambda: "", machine=lambda: "")
     with tarfile.open(path) as tar:
         names = [m.name.split("/", 1)[1] for m in tar.getmembers()]

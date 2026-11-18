@@ -192,7 +192,7 @@ def test_a_requested_stop_is_not_reported_as_an_exit(make_supervisor, tmp_path):
 
 
 def test_only_the_newest_logs_of_a_unit_are_kept(make_supervisor, tmp_path):
-    from robot_runtime.events import KEEP_UNIT_LOGS
+    from robot_runtime.supervisor import KEEP_UNIT_LOGS
     unit_dir = tmp_path / "logs" / "a"
     unit_dir.mkdir(parents=True)
     old = [f"2020010{i // 10}_0000{i % 10:02d}.log" for i in range(KEEP_UNIT_LOGS + 5)]
@@ -207,13 +207,12 @@ def test_only_the_newest_logs_of_a_unit_are_kept(make_supervisor, tmp_path):
 
 
 def test_the_event_log_rolls_over_and_survives_an_unwritable_directory(tmp_path):
-    from robot_log_tools import events
-    from robot_log_tools.events import MAX_BYTES
-    log = events.EventLog(str(tmp_path))
+    from robot_runtime.supervisor import MAX_BYTES, EventLog
+    log = EventLog(str(tmp_path))
     (tmp_path / "events.log").write_text("x" * (MAX_BYTES + 1))
     log.record("start", "a")
     assert (tmp_path / "events.log.1").exists() and len((tmp_path / "events.log").read_text().splitlines()) == 1
-    events.EventLog(str(tmp_path / "missing" / "dir")).record("start", "a")  # must not raise
+    EventLog(str(tmp_path / "missing" / "dir")).record("start", "a")  # must not raise
 
 
 def test_polls_from_several_threads_record_one_exit(make_supervisor, tmp_path):

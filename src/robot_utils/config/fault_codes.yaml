@@ -1,7 +1,7 @@
 # 故障码注册表：真机上会遇到的、需要靠日志定位的故障，一条一个编码。
 #
-# 这个文件是唯一的来源：docs/故障码.md 由它生成（python3 -m robot_log_tools.fault_codes --markdown），
-# test_fault_codes.py 检查每一条的 source.match 还能在代码里找到，改了日志文案却没改这里会让测试失败。
+# 这个文件是唯一的来源：docs/故障码.md 由它生成（python3 -m robot_log_tools.error_code --markdown），
+# test_error_code.py 检查每一条的 source.match 还能在代码里找到，改了日志文案却没改这里会让测试失败。
 #
 # 字段
 #   code        链路分段 + 序号：XR 头显和 PC Service，TEL 遥操作指令，CTL 控制器，HW 硬件，SYS 系统

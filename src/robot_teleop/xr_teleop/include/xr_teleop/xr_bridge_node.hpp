@@ -13,8 +13,8 @@
 #include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/string.hpp>
 
-#include <robot_log/flight.hpp>
-#include <robot_log/flight_types.hpp>
+#include <robot_log/blackbox.hpp>
+#include <robot_log/blackbox_types.hpp>
 #include <robot_log/health.hpp>
 
 #include "xr_teleop/button_event_encoder.hpp"
@@ -71,7 +71,7 @@ namespace xr_teleop
         void reportHealth();
         void recordFrameIn(const XrFrame& frame);
         // What came in and went out, kept in shared memory for the incident recorder (nullptr: no ring, no recording).
-        std::shared_ptr<robot_log::FlightRecorder> flight_;
+        std::shared_ptr<robot_log::BlackboxRecorder> blackbox_;
         robot_log::RateStats received_stats_;
         robot_log::RateStats published_stats_;
         uint64_t last_reported_parse_errors_ = 0;

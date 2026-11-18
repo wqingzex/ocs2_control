@@ -1,21 +1,22 @@
 """Start / stop / inspect units as process groups; state in <state_dir>/<unit>.json survives restarts.
 
-Logs: <log_dir>/<unit>/<YYYYmmdd_HHMMSS>.log + latest.log. Stop: SIGINT to the group, then SIGTERM, SIGKILL."""
+Logs: <log_dir>/<unit>/<YYYYmmdd_HHMMSS>.log + latest.log (the newest few runs are kept per unit), and
+<log_dir>/events.log: one JSON line per event (unit start / stop / exit, mode changes) so the per-unit logs can be
+lined up in time. Stop: SIGINT to the group, then SIGTERM, SIGKILL."""
 from __future__ import annotations
 
+import json
 import os
+import re
 import signal
 import subprocess
 import threading
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Callable, Dict, List, Optional
-
-from robot_log_tools.events import EventLog
+from typing import Any, Callable, Dict, List, Optional
 
 from . import processes as run_state
-from .events import prune_unit_logs
 from .units import Unit, UnitSet
 
 # Lines that look like errors but are expected on shutdown (exit code -2 = stopped by SIGINT).
@@ -25,6 +26,58 @@ _NOISE = ("pal_statistics", "exit code -2")
 # Defaults only: a value already in the environment or set by the unit wins.
 LOG_ENV = {"RCUTILS_CONSOLE_OUTPUT_FORMAT": "[{severity}] [{date_time_with_ms}] [{name}]: {message}",
            "RCUTILS_COLORIZED_OUTPUT": "0", "PYTHONUNBUFFERED": "1"}
+
+
+# ---- logs/events.log ----------------------------------------------------------------------
+# Events are rare, so every write opens, appends and closes: nothing stays open or buffered, and a full disk or a
+# read-only log directory never stops teleoperation.
+MAX_BYTES = 5 * 1024 * 1024  # events.log rolls over to events.log.1
+
+
+class EventLog:
+    def __init__(self, log_dir: str):
+        self.path = os.path.join(log_dir, "events.log")
+
+    def record(self, kind: str, unit: Optional[str] = None, **fields: Any) -> None:
+        event: Dict[str, Any] = {"time": datetime.now().isoformat(timespec="milliseconds"), "kind": kind}
+        if unit:
+            event["unit"] = unit
+        event.update({key: value for key, value in fields.items() if value is not None})
+        try:
+            if os.path.getsize(self.path) > MAX_BYTES:
+                os.replace(self.path, self.path + ".1")
+        except OSError:
+            pass  # no file yet
+        try:
+            with open(self.path, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
+        except OSError:
+            pass
+
+    def tail(self, count: int = 200) -> List[str]:
+        try:
+            with open(self.path, encoding="utf-8", errors="replace") as handle:
+                return handle.read().splitlines()[-count:]
+        except OSError:
+            return []
+
+
+# ---- logs/<unit>/: per-unit log housekeeping ---------------------------------------------
+KEEP_UNIT_LOGS = 20          # newest <stamp>.log files kept per unit
+_STAMPED = re.compile(r"^\d{8}_\d{6}\.log$")
+
+
+def prune_unit_logs(unit_dir: str, keep: int = KEEP_UNIT_LOGS) -> None:
+    """Delete the oldest <stamp>.log files of one unit beyond `keep` (latest.log is a link and stays)."""
+    try:
+        stamped = sorted(name for name in os.listdir(unit_dir) if _STAMPED.match(name))
+    except OSError:
+        return
+    for name in stamped[:-keep] if keep > 0 else stamped:
+        try:
+            os.remove(os.path.join(unit_dir, name))
+        except OSError:
+            pass
 
 
 class UnitError(RuntimeError):

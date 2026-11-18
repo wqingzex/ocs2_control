@@ -70,9 +70,9 @@ namespace robot_controller_core
             {
                 mode_ = FSMMode::CHANGE;
                 next_state_ = getNextState(next_state_name_);
-                if (flight_)
+                if (blackbox_)
                 {
-                    flight_->record(robot_log::flight::kCtlFsm,
+                    blackbox_->record(robot_log::blackbox::kCtlFsm,
                                     {static_cast<double>(current_state_->state_name), static_cast<double>(next_state_name_),
                                      static_cast<double>(ctrl_interfaces_.fsm_command_)});
                 }
@@ -156,28 +156,28 @@ namespace robot_controller_core
 
     void FsmControllerBase::recordCycleState(const FSMStateName state)
     {
-        if (!flight_) { return; }
-        double positions[robot_log::kFlightMaxValues];
+        if (!blackbox_) { return; }
+        double positions[robot_log::kBlackboxMaxValues];
         std::size_t n = 0;
         for (auto& interface : ctrl_interfaces_.joint_position_state_interface_)
         {
-            if (n == robot_log::kFlightMaxValues) { break; }   // a record holds 28 values: the first 28 joints
+            if (n == robot_log::kBlackboxMaxValues) { break; }   // a record holds 28 values: the first 28 joints
             positions[n++] = interface.get().get_optional().value_or(std::nan(""));
         }
-        flight_->record(robot_log::flight::kCtlState, positions, n, static_cast<std::uint32_t>(state));
+        blackbox_->record(robot_log::blackbox::kCtlState, positions, n, static_cast<std::uint32_t>(state));
     }
 
     void FsmControllerBase::recordCycleCommand(const FSMStateName state)
     {
-        if (!flight_) { return; }
+        if (!blackbox_) { return; }
         const auto& sent = ctrl_interfaces_.last_sent_joint_positions_;
-        flight_->record(robot_log::flight::kCtlCommand, sent.data(), sent.size(), static_cast<std::uint32_t>(state));
+        blackbox_->record(robot_log::blackbox::kCtlCommand, sent.data(), sent.size(), static_cast<std::uint32_t>(state));
     }
 
     void FsmControllerBase::startHealthReport()
     {
-        if (!flight_) { flight_ = robot_log::FlightRecorder::create(get_node()->get_name()); }
-        ctrl_interfaces_.flight = flight_;
+        if (!blackbox_) { blackbox_ = robot_log::BlackboxRecorder::create(get_node()->get_name()); }
+        ctrl_interfaces_.blackbox = blackbox_;
         // A cycle is late when it starts more than 1.5 periods after the previous one.
         late_period_ns_ = ctrl_interfaces_.frequency_ > 0.0
             ? static_cast<std::uint64_t>(1.5e9 / ctrl_interfaces_.frequency_)

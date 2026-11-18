@@ -37,7 +37,7 @@ namespace target_generator
         const std::string& reference_link)
         : node_(std::move(node))
           , target_generator_(targetGenerator)
-          , flight_(robot_log::FlightRecorder::create("target_generator"))
+          , blackbox_(robot_log::BlackboxRecorder::create("target_generator"))
           , pub_left_target_(std::move(pub_left_target))
           , pub_right_target_(std::move(pub_right_target))
           , enabled_(false)
@@ -306,9 +306,9 @@ namespace target_generator
     void XrInputHandler::xrLeftCallback(const geometry_msgs::msg::Pose::SharedPtr msg)
     {
         xr_input_stats_.record();
-        if (flight_)
+        if (blackbox_)
         {
-            flight_->record(robot_log::flight::kTelXrIn,
+            blackbox_->record(robot_log::blackbox::kTelXrIn,
                             {msg->position.x, msg->position.y, msg->position.z, msg->orientation.w, msg->orientation.x,
                              msg->orientation.y, msg->orientation.z},
                             0);
@@ -348,9 +348,9 @@ namespace target_generator
     void XrInputHandler::xrRightCallback(const geometry_msgs::msg::Pose::SharedPtr msg)
     {
         xr_input_stats_.record();
-        if (flight_)
+        if (blackbox_)
         {
-            flight_->record(robot_log::flight::kTelXrIn,
+            blackbox_->record(robot_log::blackbox::kTelXrIn,
                             {msg->position.x, msg->position.y, msg->position.z, msg->orientation.w, msg->orientation.x,
                              msg->orientation.y, msg->orientation.z},
                             1);
@@ -418,8 +418,8 @@ namespace target_generator
 
     void XrInputHandler::recordTarget(std::uint32_t side, const geometry_msgs::msg::Pose& pose)
     {
-        if (!flight_) { return; }
-        flight_->record(robot_log::flight::kTelTargetOut,
+        if (!blackbox_) { return; }
+        blackbox_->record(robot_log::blackbox::kTelTargetOut,
                         {pose.position.x, pose.position.y, pose.position.z, pose.orientation.w, pose.orientation.x,
                          pose.orientation.y, pose.orientation.z},
                         side);

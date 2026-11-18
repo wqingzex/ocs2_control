@@ -55,7 +55,7 @@ hardware_interface::CallbackReturn JxHardware::on_init(
     control_period_ms_ = std::stof(get_param("control_period_ms", "1")); // 默认1ms=1000Hz
     // Debug mode (the whole run): everything at DEBUG, and the control loop statistics on by default (every 10 s).
     const bool debug_mode = robot_log::applyLogMode();
-    flight_ = robot_log::FlightRecorder::create("juxie_hardware");
+    blackbox_ = robot_log::BlackboxRecorder::create("juxie_hardware");
     // A cycle is late when it starts more than 1.5 periods after the previous one; the period is the component's
     // rw_rate (0 = the rate of the controller manager, which this plugin does not see: then no cycle is called late,
     // the maxima are still reported).
@@ -267,9 +267,9 @@ hardware_interface::return_type JxHardware::read(
         RCLCPP_ERROR(get_node()->get_logger(), "[HW-006] motor error ,return");
         return hardware_interface::return_type::ERROR;
     }
-    if (flight_)
+    if (blackbox_)
     {
-        flight_->record(robot_log::flight::kHwRead, joint_positions_.data(), joint_positions_.size());
+        blackbox_->record(robot_log::blackbox::kHwRead, joint_positions_.data(), joint_positions_.size());
     }
     return hardware_interface::return_type::OK;
 }
@@ -284,9 +284,9 @@ hardware_interface::return_type JxHardware::write(
         double angle_deg = joint_position_commands_[i] * 180.0 / M_PI;
         target_raw_position_commands_[i] = protocol::angleToRaw(angle_deg);
     }
-    if (flight_)
+    if (blackbox_)
     {
-        flight_->record(robot_log::flight::kHwWrite, joint_position_commands_.data(), joint_position_commands_.size());
+        blackbox_->record(robot_log::blackbox::kHwWrite, joint_position_commands_.data(), joint_position_commands_.size());
     }
 
     return hardware_interface::return_type::OK;

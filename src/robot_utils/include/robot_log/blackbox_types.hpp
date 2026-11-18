@@ -1,11 +1,11 @@
 #pragma once
 
-// The record types of the flight recorder. Keep in step with config/flight_types.yaml (a test compares them): that file
+// The record types of the blackbox. Keep in step with config/blackbox_types.yaml (a test compares them): that file
 // says what each value of a record is.
 
 #include <cstdint>
 
-namespace robot_log::flight
+namespace robot_log::blackbox
 {
     // 1xx: XR bridge
     inline constexpr std::uint16_t kXrFrameIn = 101;      // an accepted headset frame
@@ -21,4 +21,4 @@ namespace robot_log::flight
     // 4xx: hardware (the plugin that talks to the motors)
     inline constexpr std::uint16_t kHwRead = 401;         // the joint positions read from the hardware in a cycle
     inline constexpr std::uint16_t kHwWrite = 402;        // the joint positions written to the hardware in a cycle
-} // namespace robot_log::flight
+} // namespace robot_log::blackbox

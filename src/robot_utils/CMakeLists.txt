@@ -23,7 +23,7 @@ target_link_libraries(${PROJECT_NAME} INTERFACE
         rcutils::rcutils
         ${std_msgs_TARGETS})
 
-# Python, no ROS needed to use it: robot_log_tools (fault code registry, flight recorder decoder, diagnostics) and
+# Python, no ROS needed to use it: robot_log_tools (fault code registry, blackbox decoder, diagnostics) and
 # robot_runtime (process management: units, supervisor, run-state files).
 ament_python_install_package(robot_log_tools PACKAGE_DIR python/robot_log_tools)
 ament_python_install_package(robot_runtime PACKAGE_DIR python/robot_runtime)
@@ -38,11 +38,11 @@ if (BUILD_TESTING)
     target_link_libraries(test_log_mode ${PROJECT_NAME})
     ament_add_gtest(test_health test/test_health.cpp)
     target_link_libraries(test_health ${PROJECT_NAME})
-    ament_add_gtest(test_flight test/test_flight.cpp)
-    target_link_libraries(test_flight ${PROJECT_NAME} pthread)
+    ament_add_gtest(test_blackbox test/test_blackbox.cpp)
+    target_link_libraries(test_blackbox ${PROJECT_NAME} pthread)
 
     find_package(ament_cmake_pytest REQUIRED)
-    foreach(t test_fault_codes test_flight_decoder test_analyze test_log test_evidence test_processes test_supervisor)
+    foreach(t test_error_code test_blackbox_decoder test_diagnose test_logger test_processes test_supervisor test_boundaries)
         ament_add_pytest_test(${t} test/${t}.py
             PYTHON_EXECUTABLE python3
             APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/python)

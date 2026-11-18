@@ -64,8 +64,8 @@ namespace xr_teleop
         pub_device_id_ = create_publisher<std_msgs::msg::String>(
             "/teleop/device_id", rclcpp::QoS(1).reliable().transient_local());
 
-        flight_ = robot_log::FlightRecorder::create("xr_bridge");
-        if (!flight_) { RCLCPP_WARN(get_logger(), "无法创建飞行记录环，本模块不记录"); }
+        blackbox_ = robot_log::BlackboxRecorder::create("xr_bridge");
+        if (!blackbox_) { RCLCPP_WARN(get_logger(), "无法创建黑匣子环，本模块不记录"); }
 
         startSdk();
         disconnected_since_ = std::chrono::steady_clock::now();
@@ -132,7 +132,7 @@ namespace xr_teleop
 
     void XrBridgeNode::recordFrameIn(const XrFrame& frame)
     {
-        if (!flight_) { return; }
+        if (!blackbox_) { return; }
         double v[26];
         int n = 0;
         for (const Pose7* pose : {&frame.head, &frame.left.pose, &frame.right.pose})
@@ -145,7 +145,7 @@ namespace xr_teleop
         v[n++] = frame.right.grip;
         v[n++] = static_cast<double>(frame.timestamp_ns) * 1e-9;
         const std::uint32_t has = (frame.has_head ? 1u : 0u) | (frame.has_left ? 2u : 0u) | (frame.has_right ? 4u : 0u);
-        flight_->record(robot_log::flight::kXrFrameIn, v, static_cast<std::size_t>(n), has);
+        blackbox_->record(robot_log::blackbox::kXrFrameIn, v, static_cast<std::size_t>(n), has);
     }
 
     void XrBridgeNode::onSdkEvent(XrSdkClient::Event event, const std::string& detail)
@@ -228,14 +228,14 @@ namespace xr_teleop
         }
         ++published_frames_;
         published_stats_.record();
-        if (flight_)
+        if (blackbox_)
         {
             double age_ms = 0.0;
             {
                 std::lock_guard<std::mutex> lock(frame_mutex_);
                 age_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - last_frame_time_).count();
             }
-            flight_->record(robot_log::flight::kXrPublish, {age_ms, static_cast<double>(controls.event)});
+            blackbox_->record(robot_log::blackbox::kXrPublish, {age_ms, static_cast<double>(controls.event)});
         }
     }
 

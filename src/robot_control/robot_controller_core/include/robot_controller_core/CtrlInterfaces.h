@@ -11,8 +11,8 @@
 #include <vector>
 #include <string>
 #include <memory>
-#include <robot_log/flight.hpp>
-#include <robot_log/flight_types.hpp>
+#include <robot_log/blackbox.hpp>
+#include <robot_log/blackbox_types.hpp>
 #include <hardware_interface/loaned_command_interface.hpp>
 #include <hardware_interface/loaned_state_interface.hpp>
 #include <std_msgs/msg/int32.hpp>
@@ -69,13 +69,13 @@ namespace robot_controller_core
         std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface>> 
         joint_force_state_interface_;
 
-        // The controller's flight recorder ring (set by FsmControllerBase; nullptr = no recording).
-        std::shared_ptr<robot_log::FlightRecorder> flight;
+        // The controller's blackbox ring (set by FsmControllerBase; nullptr = no recording).
+        std::shared_ptr<robot_log::BlackboxRecorder> blackbox;
 
         /// A joint target that was asked of the controller (aux: 0 all joints, 1 left, 2 right, 3 body, 4 head).
         void recordTarget(const std::vector<double>& target, std::uint32_t aux = 0) const
         {
-            if (flight) flight->record(robot_log::flight::kCtlTargetIn, target.data(), target.size(), aux);
+            if (blackbox) blackbox->record(robot_log::blackbox::kCtlTargetIn, target.data(), target.size(), aux);
         }
 
         // FSM command (dedicated topic for state transitions)

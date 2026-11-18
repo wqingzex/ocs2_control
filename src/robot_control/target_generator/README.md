@@ -2,7 +2,7 @@
 
 给机械臂、头、腰设置**末端目标**的节点：RViz 里拖交互 marker，或用 XR 头显手柄、键盘手柄输入，输出目标位姿给控制器。
 
-**原名 `teleop_command`**（原在 `robot_hmi/`）。改名后变了的地方：节点名 `/teleop_command` → `/target_generator`（RViz 里 `Interactive Markers Namespace` 要改成 `/target_generator`），机型旁边的 `teleop_command.yaml` → `target_generator.yaml`，启动参数 `enable_teleop_command` → `enable_target_generator`，飞行记录和健康日志里的模块名同步改了。话题 `left_target`、`right_target`、`/fsm_command`、`/teleop/*` 没变。
+**原名 `teleop_command`**（原在 `robot_hmi/`）。改名后变了的地方：节点名 `/teleop_command` → `/target_generator`（RViz 里 `Interactive Markers Namespace` 要改成 `/target_generator`），机型旁边的 `teleop_command.yaml` → `target_generator.yaml`，启动参数 `enable_teleop_command` → `enable_target_generator`，黑匣子和健康日志里的模块名同步改了。话题 `left_target`、`right_target`、`/fsm_command`、`/teleop/*` 没变。
 
 ## 作用
 

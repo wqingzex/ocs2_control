@@ -1,7 +1,7 @@
 """Fault code registry: loading, checking and rendering config/fault_codes.yaml.
 
-    python3 -m robot_log_tools.fault_codes --markdown > docs/故障码.md      (the document is generated, not written)
-    python3 -m robot_log_tools.fault_codes --check [--repo-root DIR]        (exit 1 and list the problems)
+    python3 -m robot_log_tools.error_code --markdown > docs/故障码.md      (the document is generated, not written)
+    python3 -m robot_log_tools.error_code --check [--repo-root DIR]        (exit 1 and list the problems)
 
 The registry says, for every fault worth finding in the logs, which class it is (stop or keep monitoring), what the
 system does today and what to check first. Each entry points at the log text in the source that produces it, so a
@@ -131,7 +131,7 @@ def render_markdown(faults: List[Fault]) -> str:
     lines = [
         "# 故障码",
         "",
-        "<!-- 由 config/fault_codes.yaml 生成：python3 -m robot_log_tools.fault_codes --markdown > docs/故障码.md。"
+        "<!-- 由 config/fault_codes.yaml 生成：python3 -m robot_log_tools.error_code --markdown > docs/故障码.md。"
         "不要直接改这个文件。 -->",
         "",
         "真机上遇到异常时，先用日志里的原文找到对应的故障码，再看“先查什么”。故障分两类：",

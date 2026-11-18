@@ -1,8 +1,8 @@
-"""Reads the rings of the flight recorder (robot_log/flight.hpp) and turns them into something a person can look at.
+"""Reads the rings of the blackbox (robot_log/blackbox.hpp) and turns them into something a person can look at.
 
-    python3 -m robot_log_tools.flight list [--dir D]                      the rings and how much each holds
-    python3 -m robot_log_tools.flight csv RING.ring [-o OUT.csv]          one ring as CSV
-    python3 -m robot_log_tools.flight snapshot DEST [--dir D]             copy every ring (and .prev) to DEST
+    python3 -m robot_log_tools.blackbox list [--dir D]                      the rings and how much each holds
+    python3 -m robot_log_tools.blackbox csv RING.ring [-o OUT.csv]          one ring as CSV
+    python3 -m robot_log_tools.blackbox snapshot DEST [--dir D]             copy every ring (and .prev) to DEST
 
 A ring is a file in shared memory that every module writes to as it receives and sends data. It outlives a crashed
 module, so after an incident the files can be copied and read even if the process that wrote them is gone.
@@ -23,8 +23,8 @@ import yaml
 
 from robot_log_tools import config_path
 
-DEFAULT_DIR = "/dev/shm/robot_flight"
-MAGIC = b"RFLT0001"
+DEFAULT_DIR = "/dev/shm/robot_blackbox"
+MAGIC = b"RBBX0001"
 # magic, version, record_size, capacity, header_size, module, start_wall_ns, start_steady_ns, pid, reserved
 HEADER = struct.Struct("<8sIIII32sQQII")
 WRITE_INDEX_OFFSET = 80
@@ -34,7 +34,7 @@ SLOT = struct.Struct("<QQQHHI28d")            # seq, steady_ns, wall_ns, type, c
 SKIP_OLDEST = 64                              # a copy taken while a writer runs can mix bytes in the oldest slots
 
 
-class FlightError(ValueError):
+class BlackboxError(ValueError):
     """The file is not a ring (or not one this reader understands)."""
 
 
@@ -60,7 +60,7 @@ class Ring:
 
 
 def ring_dir() -> str:
-    return os.environ.get("ROBOT_FLIGHT_DIR") or DEFAULT_DIR
+    return os.environ.get("ROBOT_BLACKBOX_DIR") or DEFAULT_DIR
 
 
 def read_ring(path: str, skip_oldest: int = SKIP_OLDEST) -> Ring:
@@ -69,12 +69,12 @@ def read_ring(path: str, skip_oldest: int = SKIP_OLDEST) -> Ring:
     with open(path, "rb") as handle:
         data = handle.read()
     if len(data) < HEADER_SIZE:
-        raise FlightError(f"{path}: too short to be a ring")
+        raise BlackboxError(f"{path}: too short to be a ring")
     magic, version, record_size, capacity, header_size, module, wall, steady, pid, _ = HEADER.unpack_from(data, 0)
     if magic != MAGIC or version != 1 or record_size != RECORD_SIZE or header_size != HEADER_SIZE or capacity < 2:
-        raise FlightError(f"{path}: not a flight recorder ring (magic {magic!r}, version {version})")
+        raise BlackboxError(f"{path}: not a blackbox ring (magic {magic!r}, version {version})")
     if len(data) < HEADER_SIZE + capacity * RECORD_SIZE:
-        raise FlightError(f"{path}: the file is shorter than its header says")
+        raise BlackboxError(f"{path}: the file is shorter than its header says")
     (written,) = struct.unpack_from("<Q", data, WRITE_INDEX_OFFSET)
     first = max(0, written - capacity)
     if written > capacity:
@@ -90,8 +90,8 @@ def read_ring(path: str, skip_oldest: int = SKIP_OLDEST) -> Ring:
 
 
 def default_types_path() -> str:
-    """config/flight_types.yaml of robot_log."""
-    return config_path("flight_types.yaml")
+    """config/blackbox_types.yaml of robot_log."""
+    return config_path("blackbox_types.yaml")
 
 
 def load_types(path: Optional[str] = None) -> Dict[int, dict]:
@@ -100,9 +100,9 @@ def load_types(path: Optional[str] = None) -> Dict[int, dict]:
     types: Dict[int, dict] = {}
     for entry in entries:
         if entry["id"] in types:
-            raise FlightError(f"duplicate record type id {entry['id']}")
+            raise BlackboxError(f"duplicate record type id {entry['id']}")
         if ("fields" in entry) == ("array" in entry):
-            raise FlightError(f"record type {entry['id']}: give either fields or array")
+            raise BlackboxError(f"record type {entry['id']}: give either fields or array")
         types[entry["id"]] = entry
     return types
 
@@ -161,7 +161,7 @@ def snapshot(directory: str, dest: str) -> List[str]:
 def _describe(path: str) -> str:
     try:
         ring = read_ring(path)
-    except (OSError, FlightError) as exc:
+    except (OSError, BlackboxError) as exc:
         return f"{os.path.basename(path)}: unreadable ({exc})"
     if ring.records:
         span = (ring.records[-1].steady_ns - ring.records[0].steady_ns) / 1e9
@@ -199,7 +199,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         else:
             copied = snapshot(args.dir or ring_dir(), args.dest)
             print(f"{len(copied)} ring file(s) copied to {args.dest}")
-    except (OSError, FlightError, yaml.YAMLError) as exc:
+    except (OSError, BlackboxError, yaml.YAMLError) as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
     return 0

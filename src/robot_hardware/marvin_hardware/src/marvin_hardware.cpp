@@ -376,7 +376,7 @@ namespace marvin_hardware
         declare_node_parameters();
         // Debug mode (the whole run): everything at DEBUG, and the tool channel prints its frame-level log.
         const bool debug_mode = robot_log::applyLogMode();
-        flight_ = robot_log::FlightRecorder::create("marvin_hardware");
+        blackbox_ = robot_log::BlackboxRecorder::create("marvin_hardware");
         tool_debug_log_.store(get_node_param("tool_debug_log", false) || debug_mode);
 
         // Health of the read / write cycles: one line per window each. A cycle is late when it starts more than 1.5
@@ -3033,9 +3033,9 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
             return hardware_interface::return_type::ERROR;
         }
         for (auto& buses : arm_buses_) buses->pull();
-        if (flight_)
+        if (blackbox_)
         {
-            flight_->record(robot_log::flight::kHwRead, hw_position_states_.data(), hw_position_states_.size());
+            blackbox_->record(robot_log::blackbox::kHwRead, hw_position_states_.data(), hw_position_states_.size());
         }
 
         // COM1 tools + COM2 KWR75: 100Hz，每侧每周期最多读一帧。
@@ -3077,9 +3077,9 @@ void MarvinHardware::applyRobotConfiguration(int mode, int drag_mode, int cart_t
         }
 
 
-        if (flight_)
+        if (blackbox_)
         {
-            flight_->record(robot_log::flight::kHwWrite, hw_position_commands_.data(), hw_position_commands_.size());
+            blackbox_->record(robot_log::blackbox::kHwWrite, hw_position_commands_.data(), hw_position_commands_.size());
         }
 
         if (!writeToHardware(hw_commands_deg_buffer_))

@@ -3,8 +3,8 @@
 
 #include <memory>
 #include <string>
-#include <robot_log/flight.hpp>
-#include <robot_log/flight_types.hpp>
+#include <robot_log/blackbox.hpp>
+#include <robot_log/blackbox_types.hpp>
 #include <robot_log/health.hpp>
 #include <vector>
 #include <unordered_map>
@@ -360,7 +360,7 @@ private:
 
         // Health of the read / write cycles (src/robot_utils/README.md): filled by read() and write(), reported by health_timer_.
         // What was read from and written to the motors in each cycle, for the diagnosis (src/robot_utils/README.md).
-        std::shared_ptr<robot_log::FlightRecorder> flight_;
+        std::shared_ptr<robot_log::BlackboxRecorder> blackbox_;
         robot_log::CycleStats read_stats_;
         robot_log::CycleStats write_stats_;
         std::uint64_t last_read_begin_ns_{0};

@@ -5,7 +5,8 @@ import re
 
 import pytest
 
-from robot_log_tools import fault_codes, log
+from robot_log_tools import error_code
+from robot_log_tools import logger as log
 
 LINE = re.compile(r"^\[(DEBUG|INFO|WARN|ERROR|FATAL)\] \[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}\] \[([^\]]+)\]: (.*)$")
 
@@ -54,13 +55,13 @@ def test_asking_twice_does_not_duplicate_lines(logger):
 
 
 def test_a_fault_line_carries_its_registered_code_and_the_evidence_report_recognises_it(logger):
-    from robot_log_tools import evidence
+    from robot_log_tools import diagnose
     lg, stream, name = logger
-    code = next(f.code for f in fault_codes.load() if f.is_stop)
+    code = next(f.code for f in error_code.load() if f.is_stop)
     log.fault(lg, code, "something %d", 7)
     [line] = lines(stream)
     assert LINE.match(line).group(1) == "WARN" and f"[{code}] something 7" in line and "unregistered" not in line
-    [seen] = evidence.faults_in({name: [line]})
+    [seen] = diagnose.faults_in({name: [line]})
     assert (seen.code, seen.count) == (code, 1) and seen.first != ""
 
 
@@ -72,13 +73,13 @@ def test_an_unregistered_code_is_logged_with_a_note_not_raised(logger):
 
 def test_a_message_with_a_percent_sign_and_no_arguments_is_safe(logger):
     lg, stream, _ = logger
-    log.fault(lg, fault_codes.load()[0].code, "disk 90% full")
+    log.fault(lg, error_code.load()[0].code, "disk 90% full")
     assert "disk 90% full" in stream.getvalue()
 
 
 def test_the_level_of_a_fault_can_be_raised(logger):
     lg, stream, _ = logger
-    log.fault(lg, fault_codes.load()[0].code, "stop", level=logging.ERROR)
+    log.fault(lg, error_code.load()[0].code, "stop", level=logging.ERROR)
     assert LINE.match(lines(stream)[0]).group(1) == "ERROR"
 
 
@@ -119,7 +120,7 @@ def test_the_window_is_ten_seconds_in_normal_and_one_in_debug(monkeypatch):
 
 def test_the_reporter_writes_info_while_healthy_and_a_coded_warning_on_a_gap(logger):
     lg, stream, _ = logger
-    code = next(f.code for f in fault_codes.load() if not f.is_stop)
+    code = next(f.code for f in error_code.load() if not f.is_stop)
     stats = log.RateStats()
     reporter = log.HealthReporter(lg, "my_unit", stats, extra=lambda: "connected=1", gap_warn_ms=100.0, code=code, window_s=10.0)
     for t in (1.0, 1.01, 1.02):

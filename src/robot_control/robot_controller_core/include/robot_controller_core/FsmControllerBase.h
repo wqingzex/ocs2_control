@@ -16,8 +16,8 @@
 #include <vector>
 
 #include <controller_interface/controller_interface.hpp>
-#include <robot_log/flight.hpp>
-#include <robot_log/flight_types.hpp>
+#include <robot_log/blackbox.hpp>
+#include <robot_log/blackbox_types.hpp>
 #include <robot_log/health.hpp>
 #include <hardware_interface/loaned_command_interface.hpp>
 #include <hardware_interface/loaned_state_interface.hpp>
@@ -100,13 +100,13 @@ namespace robot_controller_core
         // Control-cycle statistics: filled by update() (a few relaxed atomics), read by the health timer.
         robot_log::CycleStats cycle_stats_;
 
-        // Flight recorder (shared memory ring named after the controller): measured positions and commands of every
+        // Blackbox (shared memory ring named after the controller): measured positions and commands of every
         // cycle, and the state changes. Made on the first activation; nullptr when no ring could be made.
         void recordCycleState(FSMStateName state);
         /// WARN once per /fsm_command message that asked for a state change the current state does not accept.
         void reportIgnoredCommand();
         void recordCycleCommand(FSMStateName state);
-        std::shared_ptr<robot_log::FlightRecorder> flight_;
+        std::shared_ptr<robot_log::BlackboxRecorder> blackbox_;
         std::uint64_t last_cycle_begin_ns_{0};
         /// Counts /fsm_command messages (written by the subscription thread); update() compares it with the last one
         /// it looked at, so a command that changed nothing is reported once per message (CTL-013).

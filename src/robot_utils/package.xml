@@ -3,7 +3,7 @@
 <package format="3">
   <name>robot_utils</name>
   <version>0.1.0</version>
-  <description>Running and observing the robot software: process management (units, supervisor, run-state files; Python), log modes, per-hop health statistics and the flight recorder (C++, header only), the fault code registry, flight decoder and diagnostics (Python)</description>
+  <description>Running and observing the robot software: process management (units, supervisor, run-state files; Python), log modes, per-hop health statistics and the blackbox (C++, header only), the fault code registry, blackbox decoder and diagnostics (Python)</description>
   <maintainer email="TODO@email.com"/>
   <license>Apache License 2.0</license>
 

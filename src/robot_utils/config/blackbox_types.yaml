@@ -1,7 +1,7 @@
-# 飞行记录器的记录类型：一个 id 对应一种“收到/发出了什么”，以及每个数值是什么。
+# 黑匣子的记录类型：一个 id 对应一种“收到/发出了什么”，以及每个数值是什么。
 #
-# 唯一来源：C++ 的 robot_log/flight_types.hpp 里的常量必须和这里一致（test_flight_decoder.py 对照检查），
-# 解码脚本 robot_log_tools/flight.py 用这里给 CSV 的列命名。
+# 唯一来源：C++ 的 robot_log/blackbox_types.hpp 里的常量必须和这里一致（test_blackbox_decoder.py 对照检查），
+# 解码脚本 robot_log_tools/blackbox.py 用这里给 CSV 的列命名。
 #
 # id 的百位是链路段：1xx XR 桥，2xx 遥操作，3xx 控制器，4xx 硬件（还没有）。
 #

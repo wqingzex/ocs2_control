@@ -1,7 +1,7 @@
 #pragma once
 #include <hardware_interface/system_interface.hpp>
-#include <robot_log/flight.hpp>
-#include <robot_log/flight_types.hpp>
+#include <robot_log/blackbox.hpp>
+#include <robot_log/blackbox_types.hpp>
 #include <robot_log/health.hpp>
 #include <hardware_interface/types/hardware_interface_return_values.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -70,7 +70,7 @@ private:
     int32_t max_position_accel_nct_ = 5;
 
     // What was read from and written to the motors in each cycle, for the diagnosis (src/robot_utils/README.md).
-    std::shared_ptr<robot_log::FlightRecorder> flight_;
+    std::shared_ptr<robot_log::BlackboxRecorder> blackbox_;
 
     // Health of the read / write cycles (src/robot_utils/README.md): filled by read() and write(), reported once per window by
     // health_timer_ while the hardware is active.

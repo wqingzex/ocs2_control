@@ -190,7 +190,7 @@ def main(argv=None) -> int:
     p_logs.add_argument("-f", "--follow", action="store_true")
     p_logs.add_argument("-n", type=int, default=100)
     p_diag = sub.add_parser("diag", help="collect what is needed to find out what went wrong (logs of the last minutes, "
-                                         "fault codes, health, the flight recorder rings) into one file and print the report")
+                                         "fault codes, health, the blackbox rings) into one file and print the report")
     p_diag.add_argument("--minutes", type=float, default=10.0, help="how far back to look (default 10)")
     p_diag.add_argument("reason", nargs="*", help="a note on what happened")
     args = parser.parse_args(argv)

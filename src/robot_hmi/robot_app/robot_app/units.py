@@ -7,7 +7,7 @@ from dataclasses import replace
 from typing import Any, Dict, Optional, Tuple
 
 from launch_helpers.devices.joystick import joystick_units
-from robot_log_tools.log import LOG_MODE_ENV  # set for every unit; the C++ components read it too
+from robot_log_tools.logger import LOG_MODE_ENV  # set for every unit; the C++ components read it too
 from robot_runtime.units import Unit, UnitSet
 from launch_helpers.devices.camera import camera_units
 from launch_helpers.devices.xr import xr_units

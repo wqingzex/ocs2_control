@@ -1,21 +1,21 @@
 """Logging for the Python processes of the robot software, in the same form as the C++ side.
 
-    from robot_log_tools import log
-    logger = log.get_logger("incident")
+    from robot_log_tools import logger
+    log = logger.get_logger("incident")
     logger.info("watching %s", path)
-    log.fault(logger, "XR-006", "headset frames stopped for %d ms", 300)       # [WARN] ... [XR-006] headset frames ...
+    logger.fault(log, "XR-006", "headset frames stopped for %d ms", 300)       # [WARN] ... [XR-006] headset frames ...
 
 What it fixes is the form, so a line from Python reads like one from a C++ node and the incident watcher and the
 fault code registry treat both alike:
   * a line is   [SEVERITY] [YYYY-mm-dd HH:MM:SS.mmm] [name]: message     (severity DEBUG INFO WARN ERROR FATAL)
-  * a fault line carries its registry code first: "[XR-006] ..."          (log.fault checks the code is registered)
+  * a fault line carries its registry code first: "[XR-006] ..."          (logger.fault checks the code is registered)
   * the log mode is the one of the run: ROBOT_LOG_MODE=debug shows DEBUG lines, otherwise INFO and above
 Output goes to stdout, flushed per line, which the supervisor writes to logs/<unit>/.
 
 Health of a hop that is Python (how often something happens, the longest silence) is counted by RateStats and
 written one line per window by HealthReporter, in the form robot_log/health.hpp writes:
-    stats = log.RateStats();  stats.record()                       # at every event, from any thread
-    log.HealthReporter(logger, "my_unit", stats).start()           # [HEALTH] my_unit window=10.0s count=.. rate_hz=.. gap_max_ms=..
+    stats = logger.RateStats();  stats.record()                       # at every event, from any thread
+    logger.HealthReporter(log, "my_unit", stats).start()           # [HEALTH] my_unit window=10.0s count=.. rate_hz=.. gap_max_ms=..
 The hops of the chain that need it today (control cycle, XR bridge, target_generator, hardware read/write) are C++ and
 use robot_log/health.hpp; no Python unit reports health yet.
 """
@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Optional, Set, TextIO
 
-from robot_log_tools import fault_codes
+from robot_log_tools import error_code
 
 LOG_MODE_ENV = "ROBOT_LOG_MODE"          # set for every unit by the supervisor; the C++ side reads the same variable
 _SEVERITY = {logging.DEBUG: "DEBUG", logging.INFO: "INFO", logging.WARNING: "WARN", logging.ERROR: "ERROR",
@@ -92,8 +92,8 @@ def registered_codes() -> Set[str]:
     global _registered
     if _registered is None:
         try:
-            _registered = {fault.code for fault in fault_codes.load()}
-        except (OSError, fault_codes.FaultRegistryError):
+            _registered = {fault.code for fault in error_code.load()}
+        except (OSError, error_code.FaultRegistryError):
             _registered = set()
     return _registered
 

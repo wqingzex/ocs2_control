@@ -10,8 +10,8 @@
 #include <atomic>
 #include <chrono>
 #include <rclcpp/rclcpp.hpp>
-#include <robot_log/flight.hpp>
-#include <robot_log/flight_types.hpp>
+#include <robot_log/blackbox.hpp>
+#include <robot_log/blackbox_types.hpp>
 #include <robot_log/health.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/pose.hpp>
@@ -264,7 +264,7 @@ namespace target_generator
         void reportHealth();
         void recordTarget(std::uint32_t side, const geometry_msgs::msg::Pose& pose);
         // XR poses received and targets sent, kept in shared memory for the incident recorder (nullptr: not recording).
-        std::shared_ptr<robot_log::FlightRecorder> flight_;
+        std::shared_ptr<robot_log::BlackboxRecorder> blackbox_;
         robot_log::RateStats xr_input_stats_;
         robot_log::RateStats target_stats_;
         double health_window_s_ = 10.0;

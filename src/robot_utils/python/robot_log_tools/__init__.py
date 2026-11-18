@@ -1,6 +1,10 @@
-"""Offline tools of the logging system: the fault code registry and the flight recorder decoder.
+"""Logging and diagnosis of the robot software, no ROS needed, for the whole chain and not for one package:
 
-They read files only (config tables, ring files, logs), need no ROS, and serve the whole chain, not one package.
+    logger        the logging of the Python processes (same form as the C++ side) and the health statistics
+    error_code    the registry of fault codes (config/fault_codes.yaml): loading, checking, rendering docs/故障码.md
+    blackbox      the decoder of the blackbox rings (the C++ side is robot_log/blackbox.hpp)
+    diagnose      after an incident: the analysis of the rings and the evidence bundle (./scripts/start.sh diag)
+
 Design: src/robot_utils/README.md.
 """
 import os

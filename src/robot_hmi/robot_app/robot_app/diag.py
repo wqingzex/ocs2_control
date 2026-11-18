@@ -4,8 +4,8 @@ diag_<stamp>.report.txt (the same report that is inside, to read without unpacki
     ./scripts/start.sh diag [--minutes N] [reason]
 
 It gathers the last N minutes (default 10) before now: the lines of every unit log, the fault codes and the health lines
-in them, and what each module received and sent (the flight recorder rings, which survive a crashed module), analysed
-for the first hop that went wrong (robot_log_tools.evidence). Besides that: the event timeline, the run states, the
+in them, and what each module received and sent (the blackbox rings, which survive a crashed module), analysed
+for the first hop that went wrong (robot_log_tools.diagnose). Besides that: the event timeline, the run states, the
 config in use, the machine (clock, memory, disk, network counters, kernel messages). console.token is never included.
 Nothing runs all the time; this is done by hand, after the fact, and costs nothing while teleoperating."""
 from __future__ import annotations
@@ -19,7 +19,7 @@ import tempfile
 from datetime import datetime
 from typing import Callable, List, Optional
 
-from robot_log_tools import evidence
+from robot_log_tools import diagnose
 
 from .events import git_revision
 
@@ -37,8 +37,8 @@ def _run(cmd: List[str], timeout: float = 5.0) -> str:
 
 
 def clock_warning(run: Callable[[List[str]], str] = _run) -> Optional[str]:
-    """A note when the system clock is not synchronised. The modules are lined up by the wall clock (logs, flight
-    recorder rings), so a clock that jumps makes the times of a diagnosis wrong. None when synchronised or unknown
+    """A note when the system clock is not synchronised. The modules are lined up by the wall clock (logs, blackbox
+    rings), so a clock that jumps makes the times of a diagnosis wrong. None when synchronised or unknown
     (no timedatectl, as in a container)."""
     answer = run(["timedatectl", "show", "-p", "NTPSynchronized", "--value"]).strip().lower()
     if answer == "no":
@@ -77,7 +77,7 @@ def report_path(bundle: str) -> str:
     return bundle[: -len(".tar.gz")] + ".report.txt"
 
 
-def make_bundle(ws_root: str, config_path: str, minutes: float = evidence.DEFAULT_MINUTES, reason: str = "",
+def make_bundle(ws_root: str, config_path: str, minutes: float = diagnose.DEFAULT_MINUTES, reason: str = "",
                 ros: Optional[Callable[[], str]] = None, machine: Optional[Callable[[], str]] = None) -> str:
     """Build the bundle; returns its path (the report is beside it, see report_path)."""
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -87,7 +87,7 @@ def make_bundle(ws_root: str, config_path: str, minutes: float = evidence.DEFAUL
     path = os.path.join(out_dir, name + ".tar.gz")
     work = tempfile.mkdtemp(prefix=".work_", dir=out_dir)
     try:
-        report = evidence.gather(log_dir, work, minutes, reason)
+        report = diagnose.gather(log_dir, work, minutes, reason)
         with tarfile.open(path, "w:gz") as tar:
             info = [f"time: {datetime.now().isoformat(timespec='seconds')}", f"git: {git_revision(ws_root)}",
                     f"config: {config_path}", f"reason: {reason}", f"window: last {minutes:g} minutes", "",
