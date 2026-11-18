@@ -300,3 +300,48 @@ def test_the_config_step_adds_the_keys_an_old_file_lacks(tmp_path):
 def test_a_step_that_needs_the_file_says_how_to_create_it(tmp_path):
     result, _ = _run_config_step(tmp_path, ("cam",))
     assert result.returncode != 0 and "setup.sh config" in result.stderr
+
+
+def fake_process(argv0):
+    """A process whose command line is argv0, so pgrep -f sees it like the real one."""
+    import subprocess as sp
+    return sp.Popen(["bash", "-c", 'exec -a "$0" sleep 60', argv0])
+
+
+def test_old_camera_setup_processes_are_stopped_before_the_camera_step_starts(tmp_path):
+    script = Path(__file__).resolve().parents[4] / "scripts" / "setup.sh"
+    leftovers = [
+        fake_process("python3 -m camera_setup.session --config x --ws-root y"),
+        fake_process("/opt/ros/jazzy/lib/rclcpp_components/component_container --ros-args -r __ns:=/setup_0123abcd_0_ab12cd_camera_head"),
+        fake_process("ros2 launch robot_startup cameras.launch.py config:=c.yaml name_prefix:=setup_0123abcd_1_ab12cd_"),
+    ]
+    running = [
+        fake_process("/opt/ros/jazzy/lib/rclcpp_components/component_container --ros-args -r __ns:=/camera_head"),
+        fake_process("ros2 launch robot_startup cameras.launch.py config:=robot.local.yaml name_prefix:="),
+    ]
+    try:
+        import time
+        time.sleep(0.3)
+        result = subprocess.run(["bash", "-c", 'source "$1"; stop_old_camera_setup', "--", str(script)],
+                                text=True, capture_output=True, timeout=30)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "清理上次相机配置残留的进程" in result.stdout
+        assert all(process.wait(timeout=5) is not None for process in leftovers)
+        assert all(process.poll() is None for process in running), "the cameras of a running robot are not setup leftovers"
+    finally:
+        for process in leftovers + running:
+            process.kill()
+            process.wait()
+
+
+def test_nothing_is_stopped_or_printed_when_there_are_no_leftovers(tmp_path):
+    script = Path(__file__).resolve().parents[4] / "scripts" / "setup.sh"
+    result = subprocess.run(["bash", "-c", 'source "$1"; stop_old_camera_setup', "--", str(script)],
+                            text=True, capture_output=True, timeout=30)
+    assert result.returncode == 0 and "清理" not in result.stdout
+
+
+def test_the_camera_step_cleans_up_first(tmp_path):
+    script = (Path(__file__).resolve().parents[4] / "scripts" / "setup.sh").read_text()
+    body = script[script.index("step_cameras() {"):].split("\n", 1)[0]
+    assert body.index("stop_old_camera_setup") < body.index("run_python_step cameras")
