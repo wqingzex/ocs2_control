@@ -201,6 +201,12 @@ class Console:
         sup = self.supervisor
         return [(f"停止{sup.units[n].title}", lambda n=n: sup.stop(n).to_dict()) for n in sup.units.stop_order(names)]
 
+    def inference_names(self) -> List[str]:
+        """What inference needs from this robot: the controllers and the cameras (the policy itself runs elsewhere).
+        No XR, no PC Service, no RViz."""
+        units = self.supervisor.units
+        return ["control"] + [n for n in units.names() if units[n].group == "camera"]
+
     def start(self, names: Optional[List[str]]) -> List[Dict]:
         with self.lock:
             return self._sequence("启动", self._start_steps(names))
@@ -319,6 +325,14 @@ def create_app(console: Console, static_dir: Optional[str]) -> FastAPI:
     @app.post("/api/units/{name}/restart")
     def restart_unit(name: str, confirm: bool = Body(False, embed=True)):
         return run(lambda: console.restart(unit_or_404(name), confirm))
+
+    @app.post("/api/inference/start")
+    def start_inference():
+        return run(lambda: console.start(console.inference_names()))
+
+    @app.post("/api/inference/stop")
+    def stop_inference(confirm: bool = Body(False, embed=True)):
+        return run(lambda: console.stop(console.inference_names(), confirm))
 
     @app.post("/api/all/start")
     def start_all():

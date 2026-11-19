@@ -466,3 +466,15 @@ def test_console_listens_on_this_computer_only_by_default():
     args = parser.parse_args(["--config", "c.yaml", "--ws-root", "/w"])
     assert args.host == "127.0.0.1"  # it can start and stop the robot: other computers are opt-in
     assert parser.parse_args(["--config", "c", "--ws-root", "/w", "--host", "0.0.0.0"]).host == "0.0.0.0"
+
+
+def test_inference_starts_only_the_controllers_and_the_cameras(setup):
+    client, console, probe, _ = setup
+    assert client.post("/api/inference/start").status_code == 200
+    running = {u["name"] for u in client.get("/api/state").json()["units"] if u["running"]}
+    assert running == {"control", "camera_head"}  # no XR, no RViz, no gamepad
+    probe.fsm_state = 3  # outside HOLD: stopping asks first, then goes to HOLD
+    asked = client.post("/api/inference/stop", json={"confirm": False})
+    assert asked.status_code == 409 and asked.json()["detail"]["need_confirm"]
+    assert client.post("/api/inference/stop", json={"confirm": True}).status_code == 200
+    assert not console.supervisor.is_running("control") and not console.supervisor.is_running("camera_head")

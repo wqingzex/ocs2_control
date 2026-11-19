@@ -156,7 +156,7 @@ function renderSummary(state) {
   const activity = state.activity;
   document.getElementById("activity").textContent = activity
     ? `正在${activity.action}：${activity.step}（${activity.index}/${activity.total}）` : "";
-  for (const id of ["start-all", "restart-all", "stop-all"]) document.getElementById(id).disabled = !!activity;
+  for (const id of ["inference-toggle", "all-toggle"]) document.getElementById(id).disabled = !!activity;
   for (const button of document.querySelectorAll(".chip-btn")) button.disabled = !!activity;
 }
 
@@ -332,6 +332,8 @@ async function refresh() {
     renderModes(lastState);
     renderBody(lastState);
     renderJoystick(lastState);
+    renderInference(lastState);
+    renderAll(lastState);
     renderUnits(lastState);
     renderPreviews(lastState);
   } catch (err) {
@@ -408,21 +410,52 @@ async function saveAssignment(devicesFound) {
   } catch (err) { toast(`保存失败：${err.message}`, true); }
 }
 
-// Both buttons act on the whole robot: ask first (stopping then asks again when the controller is not in HOLD).
-document.getElementById("start-all").addEventListener("click", async () => {
+// Everything the plain "start all" starts (on-demand RViz and gamepad excluded): all running -> the button stops.
+// A module on its own is restarted with the ↻ next to its status. Ask first (stopping then asks again outside HOLD).
+function allUnits(state) {
+  return (state.units || []).filter((u) => u.name !== "rviz" && u.name !== "joystick");
+}
+function renderAll(state) {
+  const units = allUnits(state);
+  const running = units.length > 0 && units.every((u) => u.running);
+  const toggle = document.getElementById("all-toggle");
+  toggle.textContent = running ? "全部停止" : "全部启动";
+  toggle.className = running ? "danger" : "primary";
+}
+document.getElementById("all-toggle").addEventListener("click", async () => {
+  const units = allUnits(lastState);
+  if (units.length && units.every((u) => u.running)) {
+    const ok = await confirmDialog("全部停止：将停止所有正在运行的模块，包括运控（机械臂会抱闸）。\n"
+      + "运控不在 HOLD 时，下一步还会再确认并先切到 HOLD。继续？");
+    if (ok) guarded("/api/all/stop", "全部停止");
+    return;
+  }
   const ok = await confirmDialog("全部启动：将启动运控（会使能机械臂，机械臂上电）、PC Service、头显桥和相机。\n"
     + "请确认急停在手边，机械臂、腰、头周围无人无物。继续？");
   if (ok) action("/api/all/start", "全部启动");
 });
-document.getElementById("restart-all").addEventListener("click", async () => {
-  const ok = await confirmDialog("全部重启：先停止所有正在运行的模块（运控会先切 HOLD，机械臂抱闸），再重新启动（机械臂重新上电）。\n"
+// Inference = the controllers plus the cameras (no XR, no RViz); the policy itself runs elsewhere. One toggle.
+function inferenceUnits(state) {
+  return (state.units || []).filter((u) => u.name === "control" || u.is_camera);
+}
+function renderInference(state) {
+  const units = inferenceUnits(state);
+  const running = units.length > 0 && units.every((u) => u.running);
+  const toggle = document.getElementById("inference-toggle");
+  toggle.textContent = running ? "关闭推理" : "启动推理";
+  toggle.className = running ? "danger" : "primary";
+  toggle.hidden = !units.some((u) => u.name === "control");
+}
+document.getElementById("inference-toggle").addEventListener("click", async () => {
+  const units = inferenceUnits(lastState);
+  if (units.length && units.every((u) => u.running)) {
+    const ok = await confirmDialog("关闭推理：将停止运控和相机（机械臂会抱闸）。\n运控不在 HOLD 时，下一步还会再确认并先切到 HOLD。继续？");
+    if (ok) guarded("/api/inference/stop", "关闭推理");
+    return;
+  }
+  const ok = await confirmDialog("启动推理：将启动运控（会使能机械臂，机械臂上电）和相机，不启动头显和 RViz。\n"
     + "请确认急停在手边，机械臂、腰、头周围无人无物。继续？");
-  if (ok) guarded("/api/all/restart", "全部重启");
-});
-document.getElementById("stop-all").addEventListener("click", async () => {
-  const ok = await confirmDialog("全部停止：将停止所有正在运行的模块，包括运控（机械臂会抱闸）。\n"
-    + "运控不在 HOLD 时，下一步还会再确认并先切到 HOLD。继续？");
-  if (ok) guarded("/api/all/stop", "全部停止");
+  if (ok) action("/api/inference/start", "启动推理");
 });
 document.getElementById("scan").addEventListener("click", scanCameras);
 document.getElementById("log-unit").addEventListener("change", loadLog);
