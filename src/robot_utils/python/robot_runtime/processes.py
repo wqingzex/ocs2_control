@@ -188,7 +188,9 @@ class OwnedDrivers:
             return
         entry = self.entries[name]
         process = entry['process']
-        for sig, wait in ((signal.SIGINT, 3), (signal.SIGTERM, 2), (signal.SIGKILL, 1)):
+        # A driver killed while it is still streaming can come back without delivering frames (camera_setup uses
+        # the same 10 s), so SIGINT gets the long grace and the kill comes last.
+        for sig, wait in ((signal.SIGINT, 10), (signal.SIGTERM, 3), (signal.SIGKILL, 1)):
             if not self.is_running(name):
                 break
             for pid, ticks in list(entry['tracked'].items()):

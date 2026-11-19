@@ -308,7 +308,7 @@ def fake_process(argv0):
     return sp.Popen(["bash", "-c", 'exec -a "$0" sleep 60', argv0])
 
 
-def test_old_camera_setup_processes_are_stopped_before_the_camera_step_starts(tmp_path):
+def test_every_old_camera_process_is_stopped_before_the_camera_step_starts(tmp_path):
     script = Path(__file__).resolve().parents[4] / "scripts" / "setup.sh"
     leftovers = [
         fake_process("python3 -m camera_setup.session --config x --ws-root y"),
@@ -326,8 +326,7 @@ def test_old_camera_setup_processes_are_stopped_before_the_camera_step_starts(tm
                                 text=True, capture_output=True, timeout=30)
         assert result.returncode == 0, result.stdout + result.stderr
         assert "清理上次相机配置残留的进程" in result.stdout
-        assert all(process.wait(timeout=5) is not None for process in leftovers)
-        assert all(process.poll() is None for process in running), "the cameras of a running robot are not setup leftovers"
+        assert all(process.wait(timeout=5) is not None for process in leftovers + running), "the cameras of a running robot go too"
     finally:
         for process in leftovers + running:
             process.kill()
@@ -345,3 +344,31 @@ def test_the_camera_step_cleans_up_first(tmp_path):
     script = (Path(__file__).resolve().parents[4] / "scripts" / "setup.sh").read_text()
     body = script[script.index("step_cameras() {"):].split("\n", 1)[0]
     assert body.index("stop_old_camera_setup") < body.index("run_python_step cameras")
+
+
+def test_old_xr_setup_processes_are_stopped_before_the_xr_step_starts():
+    script = Path(__file__).resolve().parents[4] / "scripts" / "setup.sh"
+    leftovers = [
+        fake_process("python3 -m xr_setup.session --config x --ws-root y xr"),
+        fake_process("/ws/install/xr_teleop/lib/xr_teleop/xr_bridge_node --ros-args"),
+        fake_process("RoboticsServiceProcess"),
+    ]
+    unrelated = fake_process("python3 -m camera_setup.session --config x --ws-root y")
+    try:
+        import time
+        time.sleep(0.3)
+        result = subprocess.run(["bash", "-c", 'source "$1"; stop_old_xr_setup', "--", str(script)],
+                                text=True, capture_output=True, timeout=30)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "清理上次XR配置残留的进程" in result.stdout
+        assert all(process.wait(timeout=5) is not None for process in leftovers)
+        assert unrelated.poll() is None
+    finally:
+        for process in leftovers + [unrelated]:
+            process.kill()
+            process.wait()
+
+
+def test_the_xr_step_cleans_up_first():
+    script = (Path(__file__).resolve().parents[4] / "scripts" / "setup.sh").read_text()
+    assert "step_xr() { stop_old_xr_setup; run_python_step xr; }" in script

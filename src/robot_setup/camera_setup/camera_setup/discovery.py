@@ -275,7 +275,8 @@ def stop_camera_processes(approved, devices, excluded_names=()):
         process = read_process(PROC / str(item['pid']))
         return process is not None and process[1] == item['start_ticks']
 
-    for sig, grace in ((signal.SIGINT, 3), (signal.SIGTERM, 2), (signal.SIGKILL, 1)):
+    # A camera killed while it is still streaming can come back without frames: give SIGINT 10 s (like camera_setup).
+    for sig, grace in ((signal.SIGINT, 10), (signal.SIGTERM, 3), (signal.SIGKILL, 1)):
         for item in targets:
             if alive(item):
                 try:

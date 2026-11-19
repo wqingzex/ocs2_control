@@ -406,39 +406,48 @@ step_config() {
   PYTHONPATH="${SETUP_PYTHONPATH}:${PYTHONPATH:-}" \
     python3 -m robot_config.setup_steps config --config "${CONFIG}" ${ENTRY:+--entry "${ENTRY}"} ${YES}
 }
-# 上次相机配置残留的进程（向导和它起的预览驱动）：每次进入相机配置前先清掉，卡住的驱动会一直占着相机。
-# 只认向导自己的名字：python3 -m camera_setup.session，以及命名空间前缀为 setup_ 的预览驱动；
-# 运控正在用的相机驱动（/camera_head 等）不带这个前缀，不受影响。
+# 旧进程：每次进入相机/XR 配置前全部清掉（包括运行中的运控驱动），卡住的驱动会一直占着相机，旧的桥接节点会和新的抢头显数据。
+# 相机：向导本身、所有相机驱动（含预览驱动和运控的 /camera_head 等），一台相机只能被一个驱动占用。
 OLD_CAMERA_SETUP_PATTERNS=(
   '^python3 -m camera_setup\.session'
-  'robot_startup cameras\.launch\.py.*name_prefix:=setup_'
-  'component_container.*__ns:=/setup_'
+  'robot_startup cameras\.launch\.py'
+  'orbbec_camera.*(gemini305|gemini_330_series)\.launch\.py'
+  'component_container.*__ns:=/[A-Za-z0-9_]*camera_(head|left_wrist|right_wrist)'
 )
-old_camera_setup_pids() {
+# XR：向导本身、桥接节点、PC Service（配对时由向导自己重新起）。
+OLD_XR_SETUP_PATTERNS=(
+  '^python3 -m xr_setup\.session'
+  'xr_teleop.*xr_bridge_node'
+  'RoboticsServiceProcess'
+)
+old_setup_pids() {  # 参数：名字数组的名字
+  local -n patterns="$1"
   local pattern
-  for pattern in "${OLD_CAMERA_SETUP_PATTERNS[@]}"; do pgrep -f "${pattern}" || true; done | sort -un | grep -vx "$$" || true
+  for pattern in "${patterns[@]}"; do pgrep -f "${pattern}" || true; done | sort -un | grep -vx "$$" || true
 }
-stop_old_camera_setup() {  # 先 INT（让驱动自己释放相机），不行再 TERM、KILL
-  local pids step signal seconds
-  pids="$(old_camera_setup_pids | tr '\n' ' ')"
+stop_old_setup_processes() {  # 参数：中文名、模式数组的名字；先 INT（让驱动自己释放设备），不行再 TERM、KILL
+  local label="$1" array="$2" pids step signal seconds
+  pids="$(old_setup_pids "${array}" | tr '\n' ' ')"
   [[ -n "${pids// /}" ]] || return 0
-  info "清理上次相机配置残留的进程：${pids}"
+  info "清理上次${label}配置残留的进程：${pids}"
   for step in "INT 5" "TERM 2" "KILL 1"; do
     signal="${step% *}" seconds="${step#* }"
     # shellcheck disable=SC2086
     kill -"${signal}" ${pids} 2>/dev/null || true
     for _ in $(seq 1 $((seconds * 10))); do
-      pids="$(old_camera_setup_pids | tr '\n' ' ')"
+      pids="$(old_setup_pids "${array}" | tr '\n' ' ')"
       [[ -n "${pids// /}" ]] || return 0
       sleep 0.1
     done
   done
-  warn "仍有相机配置进程没能结束：${pids}"
+  warn "仍有${label}配置进程没能结束：${pids}"
 }
+stop_old_camera_setup() { stop_old_setup_processes 相机 OLD_CAMERA_SETUP_PATTERNS; }
+stop_old_xr_setup() { stop_old_setup_processes XR OLD_XR_SETUP_PATTERNS; }
 step_cameras() { stop_old_camera_setup; run_python_step cameras; }
 step_ee() { run_python_step ee; }
 step_dyn() { run_python_step dyn; }
-step_xr() { run_python_step xr; }
+step_xr() { stop_old_xr_setup; run_python_step xr; }
 
 # ---- 已配置或默认值可用的步骤不再配置 ---------------------------------------------------------------
 # 完整流程里这样的步骤直接跳过；单步命令（如 ./scripts/setup.sh cam）和 --force 永远重新配置。
