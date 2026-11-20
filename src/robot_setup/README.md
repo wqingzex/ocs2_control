@@ -8,6 +8,7 @@
 | [`camera_setup`](camera_setup/README.md) | Orbbec 相机：扫描、相机设置窗口、预览 |
 | [`end_effector_setup`](end_effector_setup/README.md) | 末端（灵巧手、夹爪）：串口探测、开合测试、末端设置窗口 |
 | [`xr_setup`](xr_setup/README.md) | XR 头显配对：选网卡、等头显连上、保存头显 ID |
+| [`dyn_setup`](dyn_setup/README.md) | 天机臂工具负载辨识向导（`ros2 run dyn_setup tool_dyn_identify_wizard`） |
 
 依赖方向：各 `*_setup` 包依赖 `robot_config`，`robot_config` 不引用它们；`camera_setup`、`xr_setup` 还依赖 `launch_helpers`（预览和配对要临时启动设备），反过来不依赖。
 

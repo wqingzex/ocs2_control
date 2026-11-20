@@ -465,7 +465,7 @@ def sync_run(path: str, requested_entry: Optional[str], io: Io) -> bool:
 
 # ---- dyn: tool load identification ----------------------------------------------------------------------------
 
-WIZARD = ("ros2", "run", "robot_config", "tool_dyn_identify_wizard")
+WIZARD = ("ros2", "run", "dyn_setup", "tool_dyn_identify_wizard")
 ARM_OF_SIDE = {"left": "A", "right": "B"}  # the wizard's own names for the arms
 YES = ("y", "yes", "是")
 

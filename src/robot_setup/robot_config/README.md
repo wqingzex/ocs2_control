@@ -1,10 +1,10 @@
 # robot_config
 
-W2 外接装置的公共部分：机器人配置文件的读取、设置窗口的框架、负载辨识。相机在 [`camera`](../camera_setup/README.md)，手在 [`end_effector`](../end_effector_setup/README.md)。遥操作和推理程序共用，**不依赖** `robot_app`、头显桥接或 PC Service。
+W2 外接装置的公共部分：机器人配置文件的读取、设置窗口的框架、负载辨识的流程（向导本身在 [`dyn_setup`](../dyn_setup/README.md)）。相机在 [`camera`](../camera_setup/README.md)，手在 [`end_effector`](../end_effector_setup/README.md)。遥操作和推理程序共用，**不依赖** `robot_app`、头显桥接或 PC Service。
 
 ## 作用
 
-`./scripts/setup.sh` 的负载辨识（`dyn`）和检查（`check`）两步是这个包，相机、手两步由各自的包提供，配置写入同一份 `config/robot.local.yaml`。
+`./scripts/setup.sh` 的负载辨识（`dyn`，调用 `dyn_setup` 的向导并写回结果）和检查（`check`）两步是这个包，相机、手两步由各自的包提供，配置写入同一份 `config/robot.local.yaml`。
 
 ```bash
 ./scripts/setup.sh dyn      # 负载辨识（--reset 恢复默认负载）

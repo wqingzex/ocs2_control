@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>dyn_setup</name>
+  <version>0.1.0</version>
+  <description>Tool load identification wizard for the Marvin arms (ros2 run dyn_setup tool_dyn_identify_wizard). It uses the SDK_PYTHON that marvin_hardware installs; ./scripts/setup.sh dyn (robot_config) runs it and writes the result.</description>
+  <maintainer email="TODO@email.com"/>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>marvin_hardware</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

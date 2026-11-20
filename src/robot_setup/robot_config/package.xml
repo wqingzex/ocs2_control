@@ -10,7 +10,6 @@
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>python3-ruamel.yaml</exec_depend>
   <exec_depend>python3-pyqt5</exec_depend>
-  <exec_depend>marvin_hardware</exec_depend>  <!-- the wizard uses its installed SDK_PYTHON -->
   <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>robot_utils</test_depend>  <!-- test_device_setup uses robot_runtime -->
   <test_depend>python3-pytest</test_depend>

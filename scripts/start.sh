@@ -298,7 +298,7 @@ cmd_dyn_identify() {
     ln -sf "${sdk_root}/${control_sdk}/libMarvinSDK.so" "${sdk_root}/SDK_PYTHON/libMarvinSDK.so"
   fi
   cd "${WS_DIR}"  # the wizard writes logs/dyn_identify/ relative to the working directory
-  exec ros2 run robot_config tool_dyn_identify_wizard
+  exec ros2 run dyn_setup tool_dyn_identify_wizard
 }
 
 # 录制、回放、录包列表：逻辑在 robot_app.recording。
