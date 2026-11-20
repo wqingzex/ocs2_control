@@ -792,7 +792,7 @@ TEST_F(XrInputHandlerTest, noStickInputForTooLongStopsTheBase)
     EXPECT_EQ(base_velocities_.size(), sent);
 }
 
-TEST_F(XrInputHandlerTest, enteringChassisDriveStopsTheArmsFromFollowing)
+TEST_F(XrInputHandlerTest, theArmsKeepFollowingWhileTheSticksDriveTheBase)
 {
     fsmIs(kOcs2);
     moveLeftController(0.0, 0.0, 0.0);
@@ -804,16 +804,16 @@ TEST_F(XrInputHandlerTest, enteringChassisDriveStopsTheArmsFromFollowing)
     press(kToggleChassisDrive);
     left_targets_.clear();
     moveLeftController(0.05, 0.0, 0.0);
-    EXPECT_TRUE(left_targets_.empty()) << "the arm followed while the sticks drive the base";
+    EXPECT_FALSE(left_targets_.empty()) << "the arm stopped following when the sticks started to drive the base";
 }
 
-TEST_F(XrInputHandlerTest, theRightStickKeyDoesNotStartFollowingWhileDrivingTheBase)
+TEST_F(XrInputHandlerTest, theRightStickKeyStartsFollowingWhileDrivingTheBase)
 {
     startChassisDrive();
     moveLeftController(0.0, 0.0, 0.0);
     press(kToggleFollow);
     moveLeftController(0.03, 0.0, 0.0);
-    EXPECT_TRUE(left_targets_.empty()) << "arm following and base driving at the same time";
+    EXPECT_FALSE(left_targets_.empty()) << "the arm did not follow while the sticks drive the base";
 }
 
 // Chassis drive is opt in: with xr_base left at its default (false) the handler has no publisher on the base

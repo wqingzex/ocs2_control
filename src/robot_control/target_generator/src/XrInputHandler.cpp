@@ -536,14 +536,6 @@ namespace target_generator
 
     void XrInputHandler::toggleFollow()
     {
-        // 摇杆在开车时手臂不跟随：先按左摇杆退出底盘遥控
-        if (chassis_drive_.load())
-        {
-            RCLCPP_INFO_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
-                                 "🔘 [右摇杆按钮] 按下 - 功能: 切换跟随 - 操作: 忽略（底盘遥控开着，先按左摇杆退出）");
-            return;
-        }
-
         // 只在OCS2状态下执行；不在 OCS2 时按了没反应，用 INFO 提示（节流），方便排查
         if (current_fsm_state_.load() != kFsmOcs2)
         {
@@ -669,12 +661,7 @@ namespace target_generator
             RCLCPP_WARN(node_->get_logger(), "[TEL-004] chassis drive refused: %s", why.c_str());
             return;
         }
-        if (is_update_mode_.load())
-        {
-            stopFollowing();  // the arms wait: sticks drive the base now
-            RCLCPP_INFO(node_->get_logger(), "🕹️ 底盘遥控开启，手臂和头部停止跟随");
-        }
-        chassis_drive_.store(true);
+        chassis_drive_.store(true);  // the arms keep following: their targets are relative to the body
         RCLCPP_INFO(node_->get_logger(),
                     "🔘 [左摇杆按钮] 按下 - 功能: 底盘遥控 - 操作: 开启（左摇杆前后 / 左右，右摇杆转向；满杆 %.2f m/s、%.2f rad/s）",
                     chassis_linear_scale_, chassis_angular_scale_);
