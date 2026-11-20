@@ -7,7 +7,7 @@
 #include <thread>
 #include <vector>
 
-#include "marvin_hardware/tool/arm_bus.h"
+#include "marvin_hardware/comm/arm_bus.h"
 #include "robot_comm/bus_hub.h"
 
 using marvin_hardware::ArmBuses;

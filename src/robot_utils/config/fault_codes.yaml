@@ -147,10 +147,10 @@
 
 - code: HW-004
   class: M
-  title: Marvin 工具通道心跳丢失
-  behavior: 超过阈值（30 秒）没有有效应答时发布 /Base_HardwareError 并记 WARN，机器人继续运行
-  check: 工具（夹爪、手）供电和 485 接线；对应通道号
-  source: {file: src/robot_hardware/marvin_hardware/src/marvin_hardware.cpp, match: "tool heartbeat offline"}
+  title: 末端执行器（bus 驱动）离线
+  behavior: 超过 offline_after_ms（RG75、L6 默认 2000 ms，XHand1 200 ms）没有好应答时记 ERROR（"[HW-004] … no good reply for … (offline)"），机器人继续运行；设备重新应答后自动恢复（RG75 保持当时的位置，L6 继续写位置，XHand1 先发 0 力矩帧再保持当前位置）
+  check: 末端（夹爪、手）供电和 485 / USB 接线；日志里的 bus 名字（arm_rs485://… 或 usb_rs485://…）
+  source: {file: src/robot_hardware/end_effector_hardware/src/bus/bus_device.cpp, match: "[HW-004]"}
 
 - code: HW-005
   class: M

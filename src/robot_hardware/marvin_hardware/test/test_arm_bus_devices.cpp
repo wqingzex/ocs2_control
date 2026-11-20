@@ -13,7 +13,7 @@
 
 #include "end_effector_hardware/bus/jodell_rg75.h"
 #include "end_effector_hardware/bus/linkerhand_l6.h"
-#include "marvin_hardware/tool/arm_bus.h"
+#include "marvin_hardware/comm/arm_bus.h"
 #include "robot_comm/bus_hub.h"
 #include "robot_comm_modbus/rtu_frame.h"
 

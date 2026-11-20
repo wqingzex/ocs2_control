@@ -15,7 +15,7 @@ find_package(rclcpp REQUIRED)
 find_package(robot_utils REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(pluginlib REQUIRED)
-find_package(robot_comm_core REQUIRED)  # flange ports as buses (tool/arm_bus)
+find_package(robot_comm_core REQUIRED)  # flange ports as buses (comm/arm_bus)
 find_package(end_effector_hardware REQUIRED)  # header-only gripper protocol target only (not the plugin library)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(EIGEN3 REQUIRED eigen3)
@@ -144,11 +144,8 @@ add_compile_definitions(CMPL_LIN)
 # Create library
 add_library(${PROJECT_NAME} SHARED
         src/marvin_hardware.cpp
-        src/sensors/kwr75_marvin485_client.cpp
-        src/tool/marvin_rs485_bus.cpp
-        src/tool/modbus_io.cpp
-        src/tool/arm_bus.cpp
-        src/tool/grippers/jodell/jd_gripper.cpp
+        src/comm/sdk_channels.cpp
+        src/comm/arm_bus.cpp
 )
 
 add_dependencies(${PROJECT_NAME} build_kine_sdk build_marvin_sdk)
@@ -190,7 +187,6 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
         ${robot_utils_TARGETS}
         ${rclcpp_lifecycle_TARGETS}
         ${pluginlib_TARGETS}
-        end_effector_hardware::gripper_protocol
         robot_comm_core::robot_comm_bus
         ${EXTERNAL_KINEMATICSO}
         MarvinSDK
@@ -203,12 +199,12 @@ pluginlib_export_plugin_description_file(hardware_interface marvin_hardware.xml)
 if(BUILD_TESTING)
     find_package(ament_cmake_gtest REQUIRED)
     # The flange buses on fake SDK channel functions (no SDK, no arm).
-    ament_add_gtest(test_arm_bus test/test_arm_bus.cpp src/tool/arm_bus.cpp)
+    ament_add_gtest(test_arm_bus test/test_arm_bus.cpp src/comm/arm_bus.cpp)
     target_include_directories(test_arm_bus PRIVATE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
     target_link_libraries(test_arm_bus robot_comm_core::robot_comm_bus ${rclcpp_TARGETS})
     # End effector components (end_effector_hardware's bus devices) on the flange buses, with simulated devices.
     find_package(robot_comm_modbus REQUIRED)
-    ament_add_gtest(test_arm_bus_devices test/test_arm_bus_devices.cpp src/tool/arm_bus.cpp)
+    ament_add_gtest(test_arm_bus_devices test/test_arm_bus_devices.cpp src/comm/arm_bus.cpp)
     target_include_directories(test_arm_bus_devices PRIVATE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
     target_link_libraries(test_arm_bus_devices end_effector_hardware::end_effector_hardware
                           robot_comm_core::robot_comm_bus robot_comm_modbus::robot_comm_modbus ${rclcpp_TARGETS})
@@ -217,97 +213,6 @@ if(BUILD_TESTING)
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
     )
 
-endif()
-
-# Minimal example: connect to robot and initialize dual Jodell RG75 gripper (always build if source exists)
-set(MARVIN_EXAMPLE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/examples/marvin_gripper_init_example.cpp")
-if(EXISTS "${MARVIN_EXAMPLE_SRC}")
-    add_executable(marvin_gripper_init_example "${MARVIN_EXAMPLE_SRC}")
-    add_dependencies(marvin_gripper_init_example build_kine_sdk build_marvin_sdk)
-    target_include_directories(marvin_gripper_init_example PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${HEADER_KINE_DIR}
-        ${HEADER_CONTROL_DIR}
-        ${EIGEN3_INCLUDE_DIRS}
-    )
-    target_link_directories(marvin_gripper_init_example PRIVATE
-        ${LIB_KINE_DIR}
-        ${LIB_CONTROL_DIR}
-    )
-    set_target_properties(marvin_gripper_init_example PROPERTIES
-        BUILD_RPATH "${LIB_KINE_DIR};${LIB_CONTROL_DIR}"
-        INSTALL_RPATH "$ORIGIN;$ORIGIN/../lib"
-        INSTALL_RPATH_USE_LINK_PATH TRUE
-    )
-    target_link_libraries(marvin_gripper_init_example
-        ${PROJECT_NAME}
-        ${rclcpp_TARGETS}
-        end_effector_hardware::gripper_protocol
-        ${EXTERNAL_KINEMATICSO}
-        MarvinSDK
-        pthread
-        rt
-    )
-    install(TARGETS marvin_gripper_init_example
-        RUNTIME DESTINATION lib/${PROJECT_NAME}
-    )
-    message(STATUS "marvin_hardware: building and installing marvin_gripper_init_example")
-endif()
-
-# Hand init example: connect to robot and initialize dual LinkerHand (dexterous hand)
-set(MARVIN_HAND_EXAMPLE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/examples/marvin_hand_init_example.cpp")
-if(EXISTS "${MARVIN_HAND_EXAMPLE_SRC}")
-    add_executable(marvin_hand_init_example "${MARVIN_HAND_EXAMPLE_SRC}")
-    add_dependencies(marvin_hand_init_example build_kine_sdk build_marvin_sdk)
-    target_include_directories(marvin_hand_init_example PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${HEADER_KINE_DIR}
-        ${HEADER_CONTROL_DIR}
-        ${EIGEN3_INCLUDE_DIRS}
-    )
-    target_link_directories(marvin_hand_init_example PRIVATE
-        ${LIB_KINE_DIR}
-        ${LIB_CONTROL_DIR}
-    )
-    set_target_properties(marvin_hand_init_example PROPERTIES
-        BUILD_RPATH "${LIB_KINE_DIR};${LIB_CONTROL_DIR}"
-        INSTALL_RPATH "$ORIGIN;$ORIGIN/../lib"
-        INSTALL_RPATH_USE_LINK_PATH TRUE
-    )
-    target_link_libraries(marvin_hand_init_example
-        ${PROJECT_NAME}
-        ${rclcpp_TARGETS}
-        end_effector_hardware::gripper_protocol
-        ${EXTERNAL_KINEMATICSO}
-        MarvinSDK
-        pthread
-        rt
-    )
-    install(TARGETS marvin_hand_init_example
-        RUNTIME DESTINATION lib/${PROJECT_NAME}
-    )
-    message(STATUS "marvin_hardware: building and installing marvin_hand_init_example")
-endif()
-
-# Standalone async raw 485 test: SDK only, no ROS, no marvin_hardware library
-set(ASYNC_RAW_SDK_ONLY_SRC "${CMAKE_CURRENT_SOURCE_DIR}/examples/async_raw_485_test_sdk_only.cpp")
-if(EXISTS "${ASYNC_RAW_SDK_ONLY_SRC}")
-    add_executable(async_raw_485_test_sdk_only "${ASYNC_RAW_SDK_ONLY_SRC}")
-    add_dependencies(async_raw_485_test_sdk_only build_marvin_sdk)
-    target_include_directories(async_raw_485_test_sdk_only PRIVATE ${HEADER_CONTROL_DIR})
-    target_link_directories(async_raw_485_test_sdk_only PRIVATE ${LIB_CONTROL_DIR})
-    set_target_properties(async_raw_485_test_sdk_only PROPERTIES
-        BUILD_RPATH "${LIB_KINE_DIR};${LIB_CONTROL_DIR}"
-        INSTALL_RPATH "$ORIGIN;$ORIGIN/../lib"
-        INSTALL_RPATH_USE_LINK_PATH TRUE
-    )
-    target_link_libraries(async_raw_485_test_sdk_only MarvinSDK pthread)
-    install(TARGETS async_raw_485_test_sdk_only
-        RUNTIME DESTINATION lib/${PROJECT_NAME}
-    )
-    message(STATUS "marvin_hardware: building and installing async_raw_485_test_sdk_only (SDK only)")
 endif()
 
 install(

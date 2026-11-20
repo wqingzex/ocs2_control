@@ -1,10 +1,10 @@
 # marvin_hardware
 
-天机 Marvin 机械臂（M6 等）的 `ros2_control` 驱动，通过 Marvin SDK 连接控制器，并驱动臂体上的末端工具。插件 `marvin_hardware/MarvinHardware`。
+天机 Marvin 机械臂（M6 等）的 `ros2_control` 驱动，通过 Marvin SDK 连接控制器，只驱动臂本体；臂末端的手、夹爪和力传感器是各自独立的组件（见 [`end_effector_hardware`](../end_effector_hardware/README.md)，经本包提供的法兰总线通信）。插件 `marvin_hardware/MarvinHardware`。
 
 ## 作用
 
-fa_w2 和 M6 的双臂用它（URDF 里的 `arms`）。双臂时左臂走 A 通道，右臂走 B 通道。独立 USB 转接的末端不走本包，用 [`end_effector_hardware`](../end_effector_hardware/README.md)。
+fa_w2 和 M6 的双臂用它（URDF 里的 `arms`）。双臂时左臂走 A 通道，右臂走 B 通道。末端执行器不走本包的关节接口。
 
 ## 使用
 
@@ -14,29 +14,16 @@ fa_w2 和 M6 的双臂用它（URDF 里的 `arms`）。双臂时左臂走 A 通�
 |---|---|
 | `arm_type` | `left` / `right` / `dual` |
 | `device_ip` | 控制器 IP |
-| `left_ee_type` / `right_ee_type` | 末端类型键，见下 |
-| `left_ee_channel` / `right_ee_channel` | `2` 臂体 RS485（默认），`1` CAN / CAN FD |
 | `ctrl_mode` | 初始控制模式 |
 | `max_joint_speed` / `max_joint_acceleration` | 关节限速 |
-| `left_dyn_param` / `right_dyn_param` | 工具动力学，10 维 |
-| `left_kine_param` / `right_kine_param` | 工具运动学，6 维 |
+| `left_dyn_param` / `right_dyn_param` | 末端负载动力学，10 维（`setup.sh dyn` 辨识） |
+| `left_kine_param` / `right_kine_param` | 末端负载运动学，6 维 |
 
 接口：命令 `position`；状态 `position`、`velocity`、`effort`。
 
-## 末端类型
-
-按 `left_ee_type` / `right_ee_type`（大写归一化）创建；只支持下面两种，其他类型初始化直接失败。
-
-| 类型键 | 产品 | 总线 |
-|---|---|---|
-| `RG75` / `JDGRIPPER` | Jodell RG75 夹爪 | RS485 |
-| `linkerhand_l6` / `L6` | LinkerHand L6 灵巧手 | RS485 |
-
-本仓库的描述包只带 `linkerhand_l6` 和 `xhand1`（后者不走本包）。
-
 ## 法兰总线
 
-某一侧臂没有本包驱动的工具、也没有 KWR75 时，本包把这侧法兰口登记成 `robot_comm` bus，供 `end_effector_hardware/EndEffectorHardware` 使用（`end_effector_driver: bus`，见 `m6_ccs_description` 的 `external_ee_systems`）：
+每条臂的法兰口登记成 `robot_comm` bus，供 `end_effector_hardware` 的 `EndEffectorHardware`（RG75、L6）和 `Kwr75Sensor` 使用（见 `m6_ccs_description` 的 `external_ee_systems`、`ft_sensor_systems`）。代码在 `comm/`：`sdk_channels` 是 SDK 通道收发函数的薄封装（左臂 A、右臂 B），`arm_bus` 把它们变成 bus。
 
 | bus | SDK 通道 |
 |---|---|
@@ -55,7 +42,6 @@ fa_w2 和 M6 的双臂用它（URDF 里的 `arms`）。双臂时左臂走 A 通�
 | `ctrl_mode` | `POSITION` / `JOINT_IMPEDANCE` / `CART_IMPEDANCE` / `POWER_OFF` |
 | `joint_k_gains` `joint_d_gains` | 7 维关节阻抗 |
 | `cart_k_gains` `cart_d_gains` | 7 维笛卡尔阻抗 |
-| `left_tool_torque` `left_tool_velocity`（右同） | 末端归一化力矩、速度 |
 | `left_brake_release` `right_brake_release` | 松闸，仅 `POWER_OFF` 下可用 |
 
 **松闸**：先停控制器，再把硬件组件设为 `inactive`，之后才能松闸；恢复前先抱闸。

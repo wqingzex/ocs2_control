@@ -27,8 +27,7 @@ find_package(robot_comm_modbus REQUIRED)
 find_package(robot_comm_can REQUIRED)
 
 # Gripper / hand Modbus protocol (register tables, unit conversion, command building): header-only, depends on rclcpp
-# only. Exported as end_effector_hardware::gripper_protocol for marvin_hardware, which drives the same devices through
-# the arm's RS485 pass-through and links this target, not the plugin library.
+# only. Linked by the plugin library (the bus devices).
 add_library(gripper_protocol INTERFACE)
 target_include_directories(gripper_protocol INTERFACE
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

@@ -8,7 +8,7 @@
 #include <thread>
 #include <vector>
 
-#include "marvin_hardware/tool/modbus_io.h"
+#include "marvin_hardware/comm/sdk_channels.h"
 #include "robot_comm/bus_hub.h"
 #include "robot_comm/queued_bus.h"
 
@@ -30,7 +30,7 @@ namespace marvin_hardware
     class ArmBuses
     {
     public:
-        ArmBuses(std::string host, std::string side, Send485Func send, GetChDataFunc get);
+        ArmBuses(std::string host, std::string side, ChannelSendFunc send, ChannelReceiveFunc receive);
         ~ArmBuses();
 
         /** Register the three buses in BusHub. */
@@ -62,8 +62,8 @@ namespace marvin_hardware
         void complete(robot_comm::CompletionStatus status, const std::string& error = {});
 
         const std::string side_;
-        Send485Func send_;
-        GetChDataFunc get_;
+        ChannelSendFunc send_;
+        ChannelReceiveFunc receive_;
         std::array<Port, 3> ports_;
         std::vector<std::unique_ptr<robot_comm::BusHub::Provision>> provisions_;
         std::optional<InFlight> in_flight_;

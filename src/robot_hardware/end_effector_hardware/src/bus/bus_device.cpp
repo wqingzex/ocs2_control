@@ -62,7 +62,7 @@ namespace end_effector_hardware
         if (online_ && std::chrono::steady_clock::now() - last_good_ > offline_after_)
         {
             online_ = false;
-            RCLCPP_ERROR(logger_, "%s on %s: no good reply for %lld ms (HW-004 offline)", model_.c_str(),
+            RCLCPP_ERROR(logger_, "[HW-004] %s on %s: no good reply for %lld ms (offline)", model_.c_str(),
                          bus_->name().text().c_str(), static_cast<long long>(offline_after_.count()));
         }
     }

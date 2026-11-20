@@ -1,4 +1,4 @@
-#include "marvin_hardware/tool/arm_bus.h"
+#include "marvin_hardware/comm/arm_bus.h"
 
 #include <utility>
 
@@ -20,8 +20,8 @@ namespace marvin_hardware
         using QueuedBus::takeNext;
     };
 
-    ArmBuses::ArmBuses(std::string host, std::string side, Send485Func send, GetChDataFunc get)
-        : side_(std::move(side)), send_(send), get_(get)
+    ArmBuses::ArmBuses(std::string host, std::string side, ChannelSendFunc send, ChannelReceiveFunc receive)
+        : side_(std::move(side)), send_(send), receive_(receive)
     {
         const std::string arm = host + "/" + side_;
         ports_ = {{
@@ -101,7 +101,7 @@ namespace marvin_hardware
         for (int i = 0; i < kMaxChunksPerPull && in_flight_; ++i)
         {
             long channel = 0;
-            const long n = get_ ? get_(buffer, &channel) : 0;
+            const long n = receive_ ? receive_(buffer, &channel) : 0;
             if (n <= 0) break;
             if (channel != in_flight_->port->channel) continue;  // another port of this arm: not ours
             auto& received = in_flight_->received;

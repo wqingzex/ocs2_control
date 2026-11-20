@@ -2,7 +2,7 @@
 
 外接末端执行器的 ros2_control 驱动：夹爪、灵巧手、六轴力传感器，按设备分目录。原来的 `modbus_hardware`（RS485 / Modbus 上的末端）和 `can_hardware`（CAN 上的末端）合并而来。通信只用 [`comm/`](../comm/README.md)（`robot_comm_serial`、`robot_comm_modbus`、`robot_comm_can`），每个设备的协议在本包；夹爪和灵巧手的协议层（寄存器表、单位换算、指令组装、`GripperBase`）在 `include/end_effector_hardware/gripper_protocol/`，命名空间 `gripper_protocol`，导出成纯头文件目标 `end_effector_hardware::gripper_protocol`：[`marvin_hardware`](../marvin_hardware/README.md) 经臂体 RS485 透传驱动同样的设备，只链接这个目标，不链接插件库。夹爪只支持 Jodell RG75。
 
-接在臂体 485 口上的末端走 [`marvin_hardware`](../marvin_hardware/README.md)；Wuji Hand 2（以太网、厂家 SDK）走 [`wuji_hardware`](../wuji_hardware/README.md)。
+接在臂法兰口上的末端（RG75、L6、KWR75）也用本包的 bus 驱动，通信经 [`marvin_hardware`](../marvin_hardware/README.md) 的法兰总线；Wuji Hand 2（以太网、厂家 SDK）走 [`wuji_hardware`](../wuji_hardware/README.md)。
 
 ## 插件
 
