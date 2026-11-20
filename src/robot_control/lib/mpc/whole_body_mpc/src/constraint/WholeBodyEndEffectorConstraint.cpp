@@ -15,10 +15,11 @@ using mobile_manipulator::MobileManipulatorPreComputation;
 
 WholeBodyEndEffectorConstraint::WholeBodyEndEffectorConstraint(
     const EndEffectorKinematics<scalar_t>& endEffectorKinematics,
-    const SwitchedHumanoidReferenceManager& referenceManager)
+    const SwitchedHumanoidReferenceManager& referenceManager, size_t baseStateDim)
     : StateConstraint(ConstraintOrder::Linear),
       endEffectorKinematicsPtr_(endEffectorKinematics.clone()),
-      referenceManagerPtr_(&referenceManager) {
+      referenceManagerPtr_(&referenceManager),
+      baseStateDim_(baseStateDim) {
     if (endEffectorKinematics.getIds().size() != 2) {
         throw std::runtime_error(
             "[WholeBodyEndEffectorConstraint] Expected exactly 2 end effectors, got " +
@@ -47,7 +48,7 @@ vector_t WholeBodyEndEffectorConstraint::getValue(scalar_t time, const vector_t&
         pinocchioEEKinPtr_->setPinocchioInterface(preCompMM.getPinocchioInterface());
     }
 
-    const auto leftArmPose = interpolateLeftArmPose(time);
+    const auto leftArmPose = toWorld(state, interpolateLeftArmPose(time));
     const auto positions = endEffectorKinematicsPtr_->getPosition(state);
 
     vector_t constraint(12);
@@ -62,7 +63,7 @@ vector_t WholeBodyEndEffectorConstraint::getValue(scalar_t time, const vector_t&
         return constraint;
     }
 
-    const auto rightArmPose = interpolateRightArmPose(time);
+    const auto rightArmPose = toWorld(state, interpolateRightArmPose(time));
     const auto orientationErrors =
         endEffectorKinematicsPtr_->getOrientationError(state, {leftArmPose.second, rightArmPose.second});
     constraint.head<3>() = positions[0] - leftArmPose.first;
@@ -98,7 +99,7 @@ VectorFunctionLinearApproximation WholeBodyEndEffectorConstraint::getLinearAppro
         pinocchioEEKinPtr_->setPinocchioInterface(preCompMM.getPinocchioInterface());
     }
 
-    const auto leftArmPose = interpolateLeftArmPose(time);
+    const auto leftArmPose = toWorld(state, interpolateLeftArmPose(time));
     const auto positions = endEffectorKinematicsPtr_->getPositionLinearApproximation(state);
 
     if (coupled) {
@@ -109,12 +110,16 @@ VectorFunctionLinearApproximation WholeBodyEndEffectorConstraint::getLinearAppro
         approximation.dfdx.topRows<3>() = kCoupledLeftScale * positions[0].dfdx;
         approximation.f.segment<3>(3) = kCoupledLeftScale * orientationErrors[0].f;
         approximation.dfdx.middleRows<3>(3) = kCoupledLeftScale * orientationErrors[0].dfdx;
+        if (bodyFrame()) {
+            approximation.dfdx.topRows<3>().leftCols<3>() -= kCoupledLeftScale * leftArmPose.baseJacobian;
+            approximation.dfdx.middleRows<3>(3).leftCols<3>().setZero();
+        }
         approximation.f.tail<6>().setZero();
         approximation.dfdx.bottomRows<6>().setZero();
         return approximation;
     }
 
-    const auto rightArmPose = interpolateRightArmPose(time);
+    const auto rightArmPose = toWorld(state, interpolateRightArmPose(time));
     const auto orientationErrors =
         endEffectorKinematicsPtr_->getOrientationErrorLinearApproximation(state, {leftArmPose.second, rightArmPose.second});
     approximation.f.head<3>() = positions[0].f - leftArmPose.first;
@@ -125,6 +130,12 @@ VectorFunctionLinearApproximation WholeBodyEndEffectorConstraint::getLinearAppro
     approximation.dfdx.middleRows<3>(6) = positions[1].dfdx;
     approximation.f.tail<3>() = orientationErrors[1].f;
     approximation.dfdx.bottomRows<3>() = orientationErrors[1].dfdx;
+    if (bodyFrame()) {
+        approximation.dfdx.topRows<3>().leftCols<3>() -= leftArmPose.baseJacobian;
+        approximation.dfdx.middleRows<3>(3).leftCols<3>().setZero();
+        approximation.dfdx.middleRows<3>(6).leftCols<3>() -= rightArmPose.baseJacobian;
+        approximation.dfdx.bottomRows<3>().leftCols<3>().setZero();
+    }
     if (!leftOn) {
         approximation.f.head<6>().setZero();
         approximation.dfdx.topRows<6>().setZero();
@@ -134,6 +145,16 @@ VectorFunctionLinearApproximation WholeBodyEndEffectorConstraint::getLinearAppro
         approximation.dfdx.bottomRows<6>().setZero();
     }
     return approximation;
+}
+
+WholeBodyEndEffectorConstraint::WorldPose WholeBodyEndEffectorConstraint::toWorld(
+    const vector_t& state, const std::pair<vector_t, quaternion_t>& pose) const {
+    if (!bodyFrame()) {
+        return {pose.first, pose.second, Eigen::Matrix<scalar_t, 3, 3>::Zero()};
+    }
+    const auto target = bodyFrameTargetPosition(state(0), state(1), state(2), pose.first.head<3>());
+    const quaternion_t yawRotation(Eigen::AngleAxis<scalar_t>(state(2), vector3_t::UnitZ()));
+    return {target.world, (yawRotation * pose.second).normalized(), target.baseJacobian};
 }
 
 std::pair<vector_t, WholeBodyEndEffectorConstraint::quaternion_t>

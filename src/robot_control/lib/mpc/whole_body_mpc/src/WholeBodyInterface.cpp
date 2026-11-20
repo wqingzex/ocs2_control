@@ -1083,14 +1083,16 @@ std::unique_ptr<StateCost> WholeBodyInterface::getEndEffectorConstraint(
         MobileManipulatorPinocchioMapping pinocchioMapping(modelInfo_);
         PinocchioEndEffectorKinematics eeKinematics(pinocchioInterface, pinocchioMapping,
             {modelInfo_.eeFrame, modelInfo_.eeFrame1});
-        constraint = std::make_unique<WholeBodyEndEffectorConstraint>(eeKinematics, *referenceManagerPtr_);
+        constraint = std::make_unique<WholeBodyEndEffectorConstraint>(
+            eeKinematics, *referenceManagerPtr_, modelInfo_.stateDim - modelInfo_.armDim);
     } else {
         MobileManipulatorPinocchioMappingCppAd pinocchioMappingCppAd(modelInfo_);
         PinocchioEndEffectorKinematicsCppAd eeKinematics(pinocchioInterface, pinocchioMappingCppAd,
             {modelInfo_.eeFrame, modelInfo_.eeFrame1},
             modelInfo_.stateDim, modelInfo_.inputDim,
             "end_effector_kinematics", libraryFolder, recompileLibraries, false);
-        constraint = std::make_unique<WholeBodyEndEffectorConstraint>(eeKinematics, *referenceManagerPtr_);
+        constraint = std::make_unique<WholeBodyEndEffectorConstraint>(
+            eeKinematics, *referenceManagerPtr_, modelInfo_.stateDim - modelInfo_.armDim);
     }
     
     std::vector<std::unique_ptr<PenaltyBase>> penaltyArray(12);

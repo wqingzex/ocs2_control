@@ -335,12 +335,6 @@ public:
         observation_.input = vector_t::Zero(minfo.inputDim);
         observation_.time = 0.0;
 
-        if (interface_->hasMobileBase()) {
-            base_x_ = observation_.state(0);
-            base_y_ = observation_.state(1);
-            base_yaw_ = observation_.state(2);
-        }
-
         last_execute_time_ = node_->now();
         cached_last_action_ = observation_.state;
     }
@@ -404,8 +398,7 @@ private:
     void humanoidModeCallback(const std_msgs::msg::String::SharedPtr msg);
     void setupTfBuffer(const std::string& topic);
     void tfMsgCallback(const tf2_msgs::msg::TFMessage::SharedPtr msg);
-    void lookupBasePoseFromBuffer();
-    [[nodiscard]] bool tryLookupMobileBasePoseFromTf();
+    [[nodiscard]] bool externalBaseTfAvailable();
     void finalizeMobileBaseTfProbe(bool available);
     void updateMobileBaseTfProbe();
     void publishIdentityWorldTfOnce(const rclcpp::Time& time);
@@ -509,10 +502,6 @@ private:
     rclcpp::Time mobile_base_tf_probe_start_{0, 0, RCL_ROS_TIME};
     bool world_tf_publish_done_{false};
 
-    // 底盘位姿：仅在控制线程由外部 TF lookup 更新（TF 回调只写 tf_buffer_）。
-    double base_x_{0.0};
-    double base_y_{0.0};
-    double base_yaw_{0.0};
     // 无外部 world TF 时发一次 identity static TF，供可视化（避免动态 TF 超时过期）。
     std::unique_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
 

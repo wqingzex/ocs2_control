@@ -63,7 +63,9 @@ angular.z = −右摇杆x × angular_scale     逆时针为正（摇杆往右推
 
 **这个速度不直接给底盘**：全身控制器（MPC）订阅 `base_velocity_target`，在每次求解前把它写进目标轨迹的底盘输入（`SwitchedHumanoidReferenceManager::modifyReferences`），底盘输入代价把底盘拉向这个速度，和手臂跟踪、速度限幅一起折中，最后由 MPC 往 `/base_velocity_command` 发速度。所以这是**偏好**，推满摇杆不保证达到 `linear_scale`；要更“听话”就调小 `.info` 里底盘输入的 R。MPC 侧 `base_velocity_target_timeout_sec`（默认 0.2 s）内没有新帧就当 0。
 
-**什么时候底盘才会动**：底盘必须被解锁（`BASE_*` 模式），而解锁要有外部 `world→base` TF，没有时底盘被硬锁，参考速度没有效果。去掉对 TF 的依赖见 `docs/待办.md`。
+**什么时候底盘才会动**：底盘模型是移动底盘、模式是底盘可动（`BASE_UNLOCK`，初始模式 `HM_DUAL_CUSTOM_LOCK` 就是），并且在 OCS2。**不需要里程计，也不需要 `world→base` TF**：MPC 每个周期都以底盘当前位置为原点规划（状态里的底盘 x、y、yaw 恒为 0），手的目标相对底盘（`WholeBodyEndEffectorConstraint` 把目标按预测的底盘位姿转到世界系，所以底盘驱动时手相对身体的位置不变）。位置误差的雅可比已按此修正，姿态误差不含底盘列（近似，误差大时不准）。外部有 `world→base` TF 时只影响 RViz，规划不用它。
+
+**已知没处理**：躯干跟踪、头部目标仍是起始位姿下的固定目标，底盘走动时它们在时域内会有一点滞后；底盘和手臂在这个设计里没有耦合项，MPC 对底盘只做速度限幅，防倾倒要靠底盘自己的加速度限制和稳定裕度。
 
 **能开**（`[TEL-004]`）：在 OCS2、200 ms 内有摇杆帧。**立刻发零速度参考并退出**：再按一次左摇杆、离开 OCS2、摇杆帧停了超过 `xr_chassis.stale_ms`（50 ms 一次的看门狗，头显断线和桥掉了都不会再有零帧）。退出后要重新按左摇杆。进入时如果手臂在跟随，先 `stopFollowing()`（头部一起停）。
 

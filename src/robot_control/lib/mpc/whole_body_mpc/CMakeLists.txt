@@ -89,6 +89,8 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_base_velocity_reference test/test_base_velocity_reference.cpp)
   target_link_libraries(test_base_velocity_reference ${PROJECT_NAME})
+  ament_add_gtest(test_body_frame_target test/test_body_frame_target.cpp)
+  target_link_libraries(test_body_frame_target ${PROJECT_NAME})
 endif()
 
 ament_package()

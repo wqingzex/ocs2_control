@@ -85,14 +85,6 @@ std::string cppadLibraryFolder(const std::string& robot_name, const std::string&
     return cppadCacheBase() + "/ocs2_ros2/" + robot_name + "/" + subdir + "/" + hash;
 }
 
-namespace {
-double wrapToPi(double a) {
-    while (a > M_PI) a -= 2.0 * M_PI;
-    while (a < -M_PI) a += 2.0 * M_PI;
-    return a;
-}
-}  // namespace
-
 FrameOverrides loadInfoFrameDefaults(const std::string& task_file)
 {
     boost::property_tree::ptree pt;
@@ -211,25 +203,14 @@ void WholeBodyMpcTask::tfMsgCallback(const tf2_msgs::msg::TFMessage::SharedPtr m
     }
 }
 
-void WholeBodyMpcTask::lookupBasePoseFromBuffer() {
-    (void)tryLookupMobileBasePoseFromTf();
-}
-
-bool WholeBodyMpcTask::tryLookupMobileBasePoseFromTf() {
+// Only whether somebody else publishes world->base (then we do not publish an identity one for RViz): the pose
+// itself is not used, the MPC plans in the frame of the base (see WholeBodyEndEffectorConstraint).
+bool WholeBodyMpcTask::externalBaseTfAvailable() {
     if (!tf_buffer_) {
         return false;
     }
     try {
-        const auto tf = tf_buffer_->lookupTransform(world_frame_, base_frame_, tf2::TimePointZero);
-        const auto& p = tf.transform.translation;
-        const auto& o = tf.transform.rotation;
-        tf2::Quaternion q(o.x, o.y, o.z, o.w);
-        double roll = 0.0, pitch = 0.0, yaw = 0.0;
-        tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
-        base_x_ = p.x;
-        base_y_ = p.y;
-        // Continuize yaw across ±π so MPC observation does not jump by ~2π.
-        base_yaw_ = base_yaw_ + wrapToPi(yaw - base_yaw_);
+        (void)tf_buffer_->lookupTransform(world_frame_, base_frame_, tf2::TimePointZero);
         return true;
     } catch (const tf2::TransformException& ex) {
         RCLCPP_DEBUG_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
@@ -240,7 +221,7 @@ bool WholeBodyMpcTask::tryLookupMobileBasePoseFromTf() {
 }
 
 bool WholeBodyMpcTask::isMobileBasePlanningEnabled() const {
-    return interface_ && interface_->hasMobileBase() && mobile_base_tf_available_;
+    return interface_ && interface_->hasMobileBase();
 }
 
 void WholeBodyMpcTask::beginMobileBaseTfProbe() {
@@ -272,28 +253,10 @@ void WholeBodyMpcTask::finalizeMobileBaseTfProbe(bool available) {
                         world_frame_.c_str(), base_frame_.c_str());
         }
     } else {
-        if (interface_->hasMobileBase()) {
-            base_x_ = 0.0;
-            base_y_ = 0.0;
-            base_yaw_ = 0.0;
-            // Persist locked default so later FSM resets cannot unlock without TF.
-            {
-                auto hm = HumanoidMode::decode(fsm_default_humanoid_mode_);
-                if (!hm.baseLocked) {
-                    hm.baseLocked = true;
-                    fsm_default_humanoid_mode_ = hm.encode();
-                }
-            }
-            RCLCPP_WARN(node_->get_logger(),
-                        "No external TF %s->%s within %.1fs: unlocked-base planning disabled "
-                        "(model still has mobile base DOF; base stays locked at origin). "
-                        "Publishing identity world TF once for visualization.",
-                        world_frame_.c_str(), base_frame_.c_str(), mobile_base_tf_timeout_sec_);
-        } else {
-            RCLCPP_INFO(node_->get_logger(),
-                        "No external TF %s->%s within %.1fs: publishing identity world TF once for visualization",
-                        world_frame_.c_str(), base_frame_.c_str(), mobile_base_tf_timeout_sec_);
-        }
+        RCLCPP_INFO(node_->get_logger(),
+                    "No external TF %s->%s within %.1fs: publishing identity world TF once for visualization "
+                    "(base planning does not need it: the MPC plans in the frame of the base)",
+                    world_frame_.c_str(), base_frame_.c_str(), mobile_base_tf_timeout_sec_);
         publishIdentityWorldTfOnce(node_->now());
     }
     // Install the startup default once (base lock included). Later rounds reset on OCS2 exit.
@@ -305,7 +268,7 @@ void WholeBodyMpcTask::updateMobileBaseTfProbe() {
     if (!mobile_base_tf_probe_active_ || mobile_base_tf_decided_) {
         return;
     }
-    if (tryLookupMobileBasePoseFromTf()) {
+    if (externalBaseTfAvailable()) {
         finalizeMobileBaseTfProbe(true);
         return;
     }
@@ -1174,13 +1137,10 @@ void WholeBodyMpcTask::updateObservation(const rclcpp::Time& time) {
 
     if (interface_->hasMobileBase()) {
         // WheelBasedMobileManipulator 状态向量：[x, y, yaw, q0, q1, ..., qN]
-        // 前3维仅在外部 world TF 可用时由 TF 更新；否则固定在原点（禁止底盘规划）。
-        if (isMobileBasePlanningEnabled()) {
-            lookupBasePoseFromBuffer();
-        }
-        observation_.state[0] = base_x_;
-        observation_.state[1] = base_y_;
-        observation_.state[2] = base_yaw_;
+        // 前3维每个周期都是 0：以底盘当前位置为原点规划，末端目标相对底盘（不需要里程计 / world TF）。
+        observation_.state[0] = 0.0;
+        observation_.state[1] = 0.0;
+        observation_.state[2] = 0.0;
         for (size_t i = 0; i < joint_names_.size(); ++i) {
             observation_.state[3 + i] = ctrl_interfaces_.measuredJointPosition(i);
         }
@@ -1340,9 +1300,9 @@ void WholeBodyMpcTask::resetMpc() {
     {
         observation_.time = node_->now().seconds();
         if (interface_->hasMobileBase()) {
-            observation_.state[0] = base_x_;
-            observation_.state[1] = base_y_;
-            observation_.state[2] = base_yaw_;
+            observation_.state[0] = 0.0;
+            observation_.state[1] = 0.0;
+            observation_.state[2] = 0.0;
             for (size_t i = 0; i < joint_names_.size() && i < ctrl_interfaces_.last_sent_joint_positions_.size(); ++i) {
                 observation_.state[3 + i] = ctrl_interfaces_.last_sent_joint_positions_[i];
             }
