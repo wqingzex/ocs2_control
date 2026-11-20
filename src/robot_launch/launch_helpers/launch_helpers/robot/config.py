@@ -79,6 +79,10 @@ def clear_config_cache():
     _config_cache.clear()
     print("[INFO] Config cache cleared")
 
+COMMON_CONFIG_FILE = "common.yaml"
+DEFAULT_CONFIG_FILES = ("ros2_controllers.yaml", COMMON_CONFIG_FILE)  # a type file is any other name
+
+
 def get_robot_package_path(robot_name):
     """
     Get common robot-related paths.
@@ -216,7 +220,12 @@ def load_robot_config(
     compose_applied = False
     if config_type == "ros2_control":
         config_dir = os.path.join(robot_pkg_path, "config", "ros2_control")
-        default_config_file = "ros2_controllers.yaml"
+        # A robot package keeps its defaults in common.yaml alone; a hand package has ros2_controllers.yaml only.
+        default_config_file = (
+            "ros2_controllers.yaml"
+            if os.path.exists(os.path.join(config_dir, "ros2_controllers.yaml"))
+            else COMMON_CONFIG_FILE
+        )
     else:
         config_dir = os.path.join(robot_pkg_path, "config", config_type)
         default_config_file = f"{config_type}.yaml"
@@ -246,9 +255,9 @@ def load_robot_config(
         if asymmetric:
             print(f"[INFO] Asymmetric EEF compose: {left} + {right}, base config: {config_file}")
 
-    common_config_path = os.path.join(config_dir, "common.yaml")
+    common_config_path = os.path.join(config_dir, COMMON_CONFIG_FILE)
     common_config = {}
-    if config_type == "ros2_control" and os.path.exists(common_config_path):
+    if config_type == "ros2_control" and config_file != COMMON_CONFIG_FILE and os.path.exists(common_config_path):
         with open(common_config_path, "r") as file:
             common_config = yaml.safe_load(file) or {}
 

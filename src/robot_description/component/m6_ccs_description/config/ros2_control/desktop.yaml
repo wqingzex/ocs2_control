@@ -1,12 +1,4 @@
 # Dual-arm desktop scene variant
-controller_manager:
-  ros__parameters:
-    left_gripper_controller:
-      type: end_effector_controller/GripperController
-
-    right_gripper_controller:
-      type: end_effector_controller/GripperController
-
 arm_controller:
   ros__parameters:
     info_file_name: dual_arm_eef_desktop
@@ -14,16 +6,3 @@ arm_controller:
              -0.6040, -0.3464, 0.0316, -1.6737, 1.2492, -0.3462, 0.9460]
     home_2: [0.7011, -0.8633699963902674, 0.2114065285584414, -0.8974199090303408, -1.3849558811978124, -0.7447381599253574, -1.1295225067208675,
              -0.7011, -0.8633699963902674, -0.2114065285584414, -0.8974199090303408, 1.3849558811978124, -0.7447381599253574, 1.1295225067208675]
-
-left_gripper_controller:
-  ros__parameters:
-    joints: [left_gripper_joint]
-    command_interfaces: [position]
-    state_interfaces: [position]
-    use_effort_interface: false
-    movej_interpolation_type: none   # write the target directly, like the old gripper plugin
-
-right_gripper_controller:
-  ros__parameters:
-    joints: [right_gripper_joint]
-    use_effort_interface: false

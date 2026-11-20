@@ -16,7 +16,7 @@ from ..robot.profile import (
     resolve_profile_path,
     resolve_robot_variant,
 )
-from ..robot.config import EMPTY_ROBOT_CONFIG_META, RobotConfigMeta, get_robot_package_path, load_robot_config
+from ..robot.config import COMMON_CONFIG_FILE, DEFAULT_CONFIG_FILES, EMPTY_ROBOT_CONFIG_META, RobotConfigMeta, get_robot_package_path, load_robot_config
 from ..robot.urdf import get_ros2_control_robot_description
 from ..launch_utils import create_rmw_zenohd_node
 
@@ -47,9 +47,8 @@ def _build_ros2_control_node_parameters(
         return []
 
     config_filename = os.path.basename(ros2_controllers_path or "")
-    default_config_filename = "ros2_controllers.yaml"
     is_type_specific_config = bool(
-        ros2_controllers_path and config_filename != default_config_filename
+        ros2_controllers_path and config_filename not in DEFAULT_CONFIG_FILES
     )
 
     config_has_robot_type = False
@@ -67,13 +66,13 @@ def _build_ros2_control_node_parameters(
         print(f"[INFO] Using merged ros2_control config file: {meta.merged_yaml_path}")
     else:
         common_config_path = os.path.join(
-            os.path.dirname(ros2_controllers_path or ""), "common.yaml"
+            os.path.dirname(ros2_controllers_path or ""), COMMON_CONFIG_FILE
         )
-        if os.path.exists(common_config_path):
+        if os.path.exists(common_config_path) and common_config_path != ros2_controllers_path:
             node_parameters.append(common_config_path)
             print(f"[INFO] Loading common ros2_control defaults from: {common_config_path}")
         if ros2_controllers_path:
-            node_parameters.append(ros2_controllers_path)
+            node_parameters.append(ros2_controllers_path)  # common.yaml itself when there is no type file
 
     node_parameters.append({"use_sim_time": use_sim_time})
 

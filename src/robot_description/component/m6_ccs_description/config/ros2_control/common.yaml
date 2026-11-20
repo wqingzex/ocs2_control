@@ -10,6 +10,14 @@ controller_manager:
     arm_controller:
       type: arm_controller/ArmController
 
+    # Grippers of the dual-arm default (no explicit end-effector type). The one-arm variants (left / right) have no
+    # gripper joint, so their spawners skip these.
+    left_gripper_controller:
+      type: end_effector_controller/GripperController
+
+    right_gripper_controller:
+      type: end_effector_controller/GripperController
+
 arm_controller:
   ros__parameters:
     # Joint configuration
@@ -37,9 +45,23 @@ arm_controller:
 
     future_time_offset: 1.0
     robot_name: m6_ccs
+    info_file_name: dual_arm_eef   # the variants (desktop, left, right) set their own
     mpc_frequency: 50
 
     home_1: [1.457133809892805, -1.0633699963902674, -1.1994065285584414, -0.8074199090303408, -0.6949558811978124, -0.6864381599253574, -0.1295225067208675,
              -1.457133809892805, -1.0633699963902674, 1.1994065285584414, -0.8074199090303408, 0.6949558811978124, -0.6864381599253574, 0.1295225067208675]
     home_2: [2.502, -1.528, -1.562, -1.680, 0.0, -0.787, 0.0,
              -2.502, -1.528, 1.562, -1.680, 0.0, -0.787, 0.0]
+
+left_gripper_controller:
+  ros__parameters:
+    joints: [left_gripper_joint]
+    command_interfaces: [position]
+    state_interfaces: [position]
+    use_effort_interface: false
+    movej_interpolation_type: none   # write the target directly, like the old gripper plugin
+
+right_gripper_controller:
+  ros__parameters:
+    joints: [right_gripper_joint]
+    use_effort_interface: false
