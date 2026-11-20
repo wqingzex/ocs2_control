@@ -227,13 +227,6 @@ install(FILES
     OPTIONAL
 )
 
-# Install Python tools as ROS executables (so `ros2 run marvin_hardware <tool>` works).
-install(PROGRAMS
-    scripts/tool_dyn_identify_wizard.py
-    DESTINATION lib/${PROJECT_NAME}
-    RENAME tool_dyn_identify_wizard
-)
-
 # Install SDK Python bindings and identification template data.
 if(EXISTS "${_TJ_SDK_ROOT}/SDK_PYTHON")
     install(
