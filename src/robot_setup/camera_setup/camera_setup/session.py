@@ -10,11 +10,13 @@ import tempfile
 import threading
 import time
 import uuid
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict
 from pathlib import Path
 from typing import Callable, List
 
 import yaml
+from ament_index_python.packages import PackageNotFoundError, get_package_prefix
 
 from robot_config import config_file
 from robot_config.config import ROLES, ROTATIONS, section_defaults, validate_camera_assignments
@@ -23,6 +25,7 @@ from robot_config.setup_steps import Io, SetupSession, main_for, run_wizard
 from robot_runtime.processes import OwnedDrivers, require_idle
 
 from launch_helpers.devices.camera import DRIVER_READY_LOG, DRIVER_READY_TIMEOUT_S
+from launch_helpers.launch_utils import is_rmw_zenoh, is_zenoh_router_running
 
 from . import discovery
 from .discovery import camera_error, find_camera_processes, stop_camera_processes
@@ -426,6 +429,31 @@ class CameraPanel:
                             card['image'].size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
 
 
+@contextmanager
+def camera_zenoh_router(ws_root, io):
+    # A custom session or endpoint configuration selects its own router.
+    custom_session = os.environ.get('ZENOH_SESSION_CONFIG_URI') or 'connect/endpoints' in os.environ.get('ZENOH_CONFIG_OVERRIDE', '')
+    if not is_rmw_zenoh() or custom_session or is_zenoh_router_running():
+        yield
+        return
+    try:
+        prefix = get_package_prefix('rmw_zenoh_cpp')
+    except PackageNotFoundError as exc:
+        raise RuntimeError('找不到 rmw_zenoh_cpp，无法启动相机预览所需的 Zenoh 路由') from exc
+
+    name = 'rmw_zenohd'
+    log_root = Path(ws_root) / 'logs' / 'setup' / ('zenoh_' + uuid.uuid4().hex[:8])
+    router = OwnedDrivers(log_root)
+    router.configure(name, (str(Path(prefix) / 'lib' / 'rmw_zenoh_cpp' / name),))
+    io.info('启动相机预览所需的 Zenoh 路由 ...')
+    try:
+        if not router.start(name, ready_log='Started Zenoh router with id', ready_timeout_s=5.0):
+            raise RuntimeError(f'Zenoh 路由未就绪，日志目录 {log_root / name}')
+        yield
+    finally:
+        router.stop(name)
+
+
 def step_cameras(config_path: str, ws_root: str, io: Io,
                  scanner: Callable[[], List[discovery.Device]] = discovery.scan, runner=None) -> bool:
     _, raw = config_file.load_rt(config_path)
@@ -458,16 +486,17 @@ def step_cameras(config_path: str, ws_root: str, io: Io,
             return True
         io.error('首次相机配置或设备映射变化需要在窗口中确认；未保存配置，请去掉 --yes 重试')
         return False
-    session = CameraSetup(config_path, ws_root, devs)
-    try:
-        ok = (runner or run_wizard)(session, io)
-        if ok:
-            io.info(f'相机画面与位置已确认，已写入 {config_path}')
-        else:
-            io.error('相机配置已取消，未保存本次修改')
-        return ok
-    finally:
-        session.close()
+    with camera_zenoh_router(ws_root, io) if runner is None else nullcontext():
+        session = CameraSetup(config_path, ws_root, devs)
+        try:
+            ok = (runner or run_wizard)(session, io)
+            if ok:
+                io.info(f'相机画面与位置已确认，已写入 {config_path}')
+            else:
+                io.error('相机配置已取消，未保存本次修改')
+            return ok
+        finally:
+            session.close()
 
 
 def main(argv=None):

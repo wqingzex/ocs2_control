@@ -109,6 +109,58 @@ def process_stat(pid):
         return None
 
 
+def _process_identity(path):
+    """A live process's start time and parent PID, even if it started a new session."""
+    try:
+        fields = (path / 'stat').read_text().rsplit(')', 1)[1].split()
+        return None if fields[0] == 'Z' else (int(fields[19]), int(fields[1]))
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def _shutdown_roots(live, proc):
+    for pid, (_, parent) in live.items():
+        # A launcher (or its setup wizard) forwards shutdown even across sessions.
+        while parent > 1 and parent not in live:
+            state = _process_identity(proc / str(parent))
+            parent = state[1] if state else 0
+        if parent not in live:
+            yield pid
+
+
+def stop_processes(tracked, *, proc=Path('/proc')):
+    """Stop the selected PID identities. tracked() may discover more owned descendants while waiting."""
+    def live_processes():
+        live = {}
+        for pid, ticks in tracked().items():
+            state = _process_identity(proc / str(pid))
+            if state and state[0] == ticks:
+                live[pid] = state
+        return live
+
+    # A driver interrupted during stream shutdown can stall on its next start.
+    for sig, grace in ((signal.SIGINT, 10), (signal.SIGTERM, 3), (signal.SIGKILL, 1)):
+        live = live_processes()
+        if not live:
+            return True
+        # Finish selecting roots before signaling any of them. A child still
+        # shutting down after its parent exits needs the rest of the grace period.
+        targets = list(_shutdown_roots(live, proc)) if sig != signal.SIGKILL else live
+        for pid in targets:
+            state = _process_identity(proc / str(pid))
+            if state and state[0] == live[pid][0]:
+                try:
+                    os.kill(pid, sig)
+                except ProcessLookupError:
+                    pass
+        deadline = time.monotonic() + grace
+        while time.monotonic() < deadline:
+            if not live_processes():
+                return True
+            time.sleep(.05)
+    return not live_processes()
+
+
 def require_idle(ws_root, names):
     run_dir = str(Path(ws_root) / 'run')
     for name in names:
@@ -128,7 +180,7 @@ class OwnedDrivers:
         self.commands[name] = command
 
     def start(self, name, ready_log='', ready_timeout_s=20.0):
-        """Start the command; with ready_log, return once the log shows it (or it exited, or the timeout passed)."""
+        """Start the command. With ready_log, return whether it appeared before exit or timeout."""
         directory = self.log_root / name
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / (str(time.time_ns()) + '.log')
@@ -141,7 +193,7 @@ class OwnedDrivers:
         if current:
             self.entries[name]['tracked'][process.pid] = current[0]
         if ready_log:
-            wait_for_log(path, ready_log, lambda: self.is_running(name), ready_timeout_s)
+            return wait_for_log(path, ready_log, lambda: self.is_running(name), ready_timeout_s)
 
     def is_running(self, name):
         entry = self.entries.get(name)
@@ -151,12 +203,9 @@ class OwnedDrivers:
         snapshot = {}
         for path in Path('/proc').iterdir():
             if path.name.isdigit():
-                try:
-                    fields = (path / 'stat').read_text().rsplit(')', 1)[1].split()
-                    if fields[0] != 'Z':
-                        snapshot[int(path.name)] = (int(fields[19]), int(fields[1]))
-                except (OSError, IndexError, ValueError):
-                    continue
+                state = _process_identity(path)
+                if state:
+                    snapshot[int(path.name)] = state
         tracked = {pid: ticks for pid, ticks in entry['tracked'].items()
                    if pid in snapshot and snapshot[pid][0] == ticks}
         # Keep already-seen descendants even if they later become orphans.
@@ -187,22 +236,10 @@ class OwnedDrivers:
         if name not in self.entries:
             return
         entry = self.entries[name]
-        process = entry['process']
-        # A driver killed while it is still streaming can come back without delivering frames (camera_setup uses
-        # the same 10 s), so SIGINT gets the long grace and the kill comes last.
-        for sig, wait in ((signal.SIGINT, 10), (signal.SIGTERM, 3), (signal.SIGKILL, 1)):
-            if not self.is_running(name):
-                break
-            for pid, ticks in list(entry['tracked'].items()):
-                current = process_stat(pid)
-                if current and current[0] == ticks:
-                    try:
-                        os.kill(pid, sig)
-                    except ProcessLookupError:
-                        pass
-            deadline = time.monotonic() + wait
-            while self.is_running(name) and time.monotonic() < deadline:
-                time.sleep(.05)
-        process.poll()
-        if self.is_running(name):
+
+        def tracked():
+            self.is_running(name)
+            return entry['tracked']
+
+        if not stop_processes(tracked):
             raise RuntimeError(f'相机预览进程未完全退出：{name}')

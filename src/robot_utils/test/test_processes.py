@@ -63,3 +63,41 @@ def test_wait_for_log_returns_when_the_text_appears_and_gives_up_when_the_proces
     assert run_state.wait_for_log(str(log), "Initialize device cost", lambda: True, 3.0)
     assert not run_state.wait_for_log(str(log), "never printed", lambda: False, 3.0)
     assert not run_state.wait_for_log(str(tmp_path / "missing.log"), "x", lambda: True, 0.3)
+
+
+def test_owned_shutdown_lets_the_launcher_signal_its_driver_once(tmp_path):
+    driver = """
+import signal
+import time
+
+interrupts = []
+signal.signal(signal.SIGINT, lambda *_: interrupts.append(time.monotonic()))
+print('driver ready', flush=True)
+while not interrupts or time.monotonic() - interrupts[0] < 0.5:
+    time.sleep(0.01)
+print(f'driver interrupts: {len(interrupts)}', flush=True)
+"""
+    launcher = f"""
+import signal
+import subprocess
+import sys
+import time
+
+driver = subprocess.Popen([sys.executable, '-c', {driver!r}], start_new_session=True)
+
+def shutdown(*_):
+    time.sleep(0.1)
+    driver.send_signal(signal.SIGINT)
+
+signal.signal(signal.SIGINT, shutdown)
+driver.wait()
+"""
+    owner = run_state.OwnedDrivers(tmp_path)
+    owner.configure('camera', [sys.executable, '-c', launcher])
+    try:
+        owner.start('camera', ready_log='driver ready')
+        log = owner.entries['camera']['log']
+        assert 'driver ready' in log.read_text()
+    finally:
+        owner.stop('camera')
+    assert 'driver interrupts: 1' in log.read_text()

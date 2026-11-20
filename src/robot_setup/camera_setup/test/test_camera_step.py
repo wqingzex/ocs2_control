@@ -128,6 +128,50 @@ def test_camera_step_releases_own_resources_when_window_fails(ws_root):
     assert config_file.camera_serials(path)["head"] == ""
 
 
+@pytest.mark.parametrize('router_exists', [False, True])
+def test_camera_wizard_has_a_zenoh_router_before_opening(ws_root, monkeypatch, router_exists):
+    path = str(ws_root / 'config/robot.local.yaml')
+    events = []
+
+    class Router:
+        def __init__(self, log_root):
+            pass
+
+        def configure(self, name, command):
+            assert command == ('/opt/ros/lib/rmw_zenoh_cpp/rmw_zenohd',)
+
+        def start(self, name, **kwargs):
+            assert kwargs['ready_log'] == 'Started Zenoh router with id'
+            events.append('router ready')
+            return True
+
+        def stop(self, name):
+            events.append('router stopped')
+
+    class Previews:
+        def close(self):
+            events.append('previews stopped')
+
+    def window(session, _):
+        events.append('window opened')
+        session.previews = Previews()
+        return False
+
+    monkeypatch.setenv('RMW_IMPLEMENTATION', 'rmw_zenoh_cpp')
+    monkeypatch.delenv('ZENOH_SESSION_CONFIG_URI', raising=False)
+    monkeypatch.delenv('ZENOH_CONFIG_OVERRIDE', raising=False)
+    monkeypatch.setattr(camera_setup, 'is_zenoh_router_running', lambda: router_exists)
+    monkeypatch.setattr(camera_setup, 'get_package_prefix', lambda _: '/opt/ros')
+    monkeypatch.setattr(camera_setup, 'OwnedDrivers', Router)
+    monkeypatch.setattr(camera_setup, 'run_wizard', window)
+    assert not camera_setup.step_cameras(path, str(ws_root), ScriptedIo([]),
+                                         scanner=lambda: devices.parse_list_devices(SCAN))
+    expected = ['window opened', 'previews stopped']
+    if not router_exists:
+        expected = ['router ready', *expected, 'router stopped']
+    assert events == expected
+
+
 def test_unattended_camera_step_does_not_save_when_a_camera_is_missing(ws_root):
     path = str(ws_root / "config" / "robot.local.yaml")
     two = devices.parse_list_devices(SCAN)[:2]

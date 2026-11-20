@@ -384,11 +384,14 @@ step_build() {
 
 # ---- 相机 camera_setup、末端 end_effector_setup、负载辨识 robot_config；XR 配对由 xr_teleop 处理 ---------------------------------
 SETUP_PYTHONPATH="${WS_DIR}/src/robot_setup/robot_config:${WS_DIR}/src/robot_setup/camera_setup:${WS_DIR}/src/robot_setup/end_effector_setup:${WS_DIR}/src/robot_setup/xr_setup"
+SETUP_RUNTIME_PYTHONPATH="${WS_DIR}/src/robot_utils/python"
 run_python_step() {
   source_ros --workspace
   local python_status=0 module command="" python_path="${SETUP_PYTHONPATH}"
   case "$1" in
-    cameras) module=camera_setup.session ;;
+    cameras)
+      module=camera_setup.session
+      python_path="${python_path}:${SETUP_RUNTIME_PYTHONPATH}" ;;
     ee) module=end_effector_setup.session ;;
     dyn) module=robot_config.setup_steps command=dyn ;;
     xr)
@@ -442,7 +445,27 @@ stop_old_setup_processes() {  # 参数：中文名、模式数组的名字；先
   done
   warn "仍有${label}配置进程没能结束：${pids}"
 }
-stop_old_camera_setup() { stop_old_setup_processes 相机 OLD_CAMERA_SETUP_PATTERNS; }
+stop_old_camera_setup() {
+  local pids=()
+  mapfile -t pids < <(old_setup_pids OLD_CAMERA_SETUP_PATTERNS)
+  (( ${#pids[@]} )) || return 0
+  info "清理上次相机配置残留的进程：${pids[*]}"
+  if ! PYTHONPATH="${SETUP_RUNTIME_PYTHONPATH}:${PYTHONPATH:-}" python3 - "${pids[@]}" <<'PY'
+import sys
+
+from robot_runtime.processes import start_ticks, stop_processes
+
+targets = {pid: start_ticks(pid) for pid in map(int, sys.argv[1:])}
+try:
+    stopped = stop_processes(lambda: targets)
+except PermissionError:
+    stopped = False
+sys.exit(0 if stopped else 1)
+PY
+  then
+    warn "仍有相机配置进程没能结束：${pids[*]}"
+  fi
+}
 stop_old_xr_setup() { stop_old_setup_processes XR OLD_XR_SETUP_PATTERNS; }
 step_cameras() { stop_old_camera_setup; run_python_step cameras; }
 step_ee() { run_python_step ee; }
