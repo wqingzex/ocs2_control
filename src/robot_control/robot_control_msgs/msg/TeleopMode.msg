@@ -4,7 +4,7 @@ uint8 CONTROL_CHASSIS=1
 
 builtin_interfaces/Time stamp
 
-# true when teleop commands are active (joystick must enable; keyboard always true)
+# true when teleop commands are active (keyboard always true; the XR handler enables it with the headset)
 bool active
 uint8 control_mode
 bool mirror_movement

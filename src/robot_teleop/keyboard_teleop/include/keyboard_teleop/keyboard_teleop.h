@@ -1,5 +1,5 @@
 //
-// Keyboard teleop: publishes same topics as joystick_teleop (except /fsm_command).
+// Keyboard teleop: publishes the teleop command topics (no /fsm_command).
 //
 
 #ifndef ARMS_TELEOP_KEYBOARD_TELEOP_H

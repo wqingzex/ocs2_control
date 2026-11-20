@@ -12,7 +12,7 @@
 | `xr` | [`xr_teleop`](../../robot_teleop/xr_teleop/README.md) 的 `xr_bridge` 节点，把头显和手柄数据发布成 `/teleop/*` |
 | `control` | 运控 launch（控制器 + `target_generator`，不带 RViz） |
 | `camera_head` `camera_left_wrist` `camera_right_wrist` | 每台相机一个驱动进程 |
-| `joystick` `rviz` | 按需启动，不随"全部启动"带起 |
+| `rviz` | 按需启动，不随"全部启动"带起 |
 
 ## 使用
 

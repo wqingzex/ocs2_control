@@ -28,7 +28,6 @@ nodes = create_controller_manager_nodes(
 | `robot/urdf.py` | 从 xacro 生成 URDF：控制视图、规划视图（见下） |
 | `devices/camera.py` | Orbbec 相机：配置转驱动参数 `camera_specs`、`camera_units` |
 | `devices/xr.py` | XR 头显：PC Service 起停、`xr_units`、就绪判断（读桥的日志） |
-| `devices/joystick.py` | 手柄单元 `joystick_units` |
 | `control/compose.py` | 按左右末端类型合成控制器配置，注册表见 `config/eef_control_registry.yaml` |
 | `control/manager.py` | 创建 `robot_state_publisher`、`ros2_control_node`、`joint_state_broadcaster` |
 | `control/spawners.py` | 检测 URDF 里有哪些控制器并生成 spawner |

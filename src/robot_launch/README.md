@@ -7,4 +7,4 @@
 | [`launch_helpers`](launch_helpers/README.md) | 纯 Python 库：机器人和配置解析、URDF 生成、控制器拼装、设备启动参数和单元（`devices/`），不含 launch 文件 |
 | [`robot_visualize`](robot_visualize/README.md) | 在 RViz 里看模型、拖关节，不带控制器 |
 
-所有启动文件在 `robot_startup`：整机（分体、全身、双臂），以及设备：`cameras.launch.py`（相机）、`joystick.launch.py`（手柄）、`dexcap.launch.py`（DexCap，需要先编译 `dexcap_teleop`），它们调用 `launch_helpers`。
+所有启动文件在 `robot_startup`：整机（分体、全身、双臂），以及设备：`cameras.launch.py`（相机）、`dexcap.launch.py`（DexCap，需要先编译 `dexcap_teleop`），它们调用 `launch_helpers`。

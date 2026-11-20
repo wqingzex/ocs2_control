@@ -42,15 +42,15 @@ def test_missing_keys_are_added_and_nothing_else_changes(tmp_path):
     path = tmp_path / "robot.local.yaml"
     setup_steps.sync_run(str(path), "whole_body", Quiet())
     text = path.read_text(encoding="utf-8").replace("  frame_timeout_ms: 300", "  frame_timeout_ms: 450")
-    text = "\n".join(line for line in text.split("\n") if "stats_period_s" not in line and "joystick" not in line
-                     and 'device: ""' not in line)  # drop two keys and a whole section
+    text = "\n".join(line for line in text.split("\n") if "stats_period_s" not in line
+                     and "reconnect_interval_s" not in line)  # drop two keys
     path.write_text(text + "\n# my own note\n", encoding="utf-8")
     assert setup_steps.sync_status(str(path))[0]
 
     assert setup_steps.sync_run(str(path), None, Quiet())
 
     after = read(path)
-    assert after["robot"]["body"]["interface"]["stats_period_s"] == 0 and after["joystick"] == {"device": ""}
+    assert after["robot"]["body"]["interface"]["stats_period_s"] == 0 and after["xr"]["reconnect_interval_s"] == 3.0
     assert after["xr"]["frame_timeout_ms"] == 450  # the value in the file wins
     assert "# my own note" in path.read_text(encoding="utf-8")
     assert (tmp_path / "robot.local.yaml.bak").exists()

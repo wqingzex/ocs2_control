@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 PACKAGE_DIR = Path(__file__).resolve().parents[1] / "robot_config"
-APPLICATION_NAMES = ("robot_app", "joystick_teleop", "keyboard_teleop", "target_generator", "arm_controller", "robot_startup", "launch_helpers", "robot_visualize")
+APPLICATION_NAMES = ("robot_app", "keyboard_teleop", "target_generator", "arm_controller", "robot_startup", "launch_helpers", "robot_visualize")
 # module -> the robot_config modules it may import. Dependencies only point down:
 #   setup_steps -> config_file -> config (the template, the validation, the device mappings).
 # The device packages (camera, end_effector) sit above all of these; robot_config never imports them.

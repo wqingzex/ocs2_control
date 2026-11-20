@@ -24,7 +24,7 @@ Python 模块名和 C++ 头文件路径没有随包名变化（合并前是 `rob
 | `processes.py` | 状态文件读写、进程是否存活（防 PID 复用）、等日志出现某段文字；`OwnedDrivers`（设置窗口自己拉起并清理的子进程） |
 | `events.py` | 每个单元只留最新的 20 份日志 |
 
-**谁提供单元**：设备的启动定义统一放在 `robot_launch`：`launch_helpers/devices/camera.py`（相机）、`launch_helpers/devices/xr.py`（PC Service、XR 桥）；手柄在 `joystick_teleop.units`；`robot_app.build_units` 汇总，运控和 RViz 由 `robot_app` 构造。依赖单向：`robot_launch`、`robot_setup`、设备包和 `robot_app` 依赖本包，本包不依赖它们（所以进程管理不能并进 `robot_app`：它们都要用 `Unit` 和 `Supervisor`，会形成循环依赖）。
+**谁提供单元**：设备的启动定义统一放在 `robot_launch`：`launch_helpers/devices/camera.py`（相机）、`launch_helpers/devices/xr.py`（PC Service、XR 桥）；`robot_app.build_units` 汇总，运控和 RViz 由 `robot_app` 构造。依赖单向：`robot_launch`、`robot_setup`、设备包和 `robot_app` 依赖本包，本包不依赖它们（所以进程管理不能并进 `robot_app`：它们都要用 `Unit` 和 `Supervisor`，会形成循环依赖）。
 
 # 观测：日志、故障码、黑匣子、诊断
 

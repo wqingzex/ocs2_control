@@ -4,7 +4,7 @@
 
 ## 作用
 
-不需要头显和手柄时的遥操作入口，输出由 `target_generator` 接收。不要同时运行键盘和手柄（[`joystick_teleop`](../joystick_teleop/README.md)），它们发布同样的话题。
+不需要头显时的遥操作入口，输出由 `target_generator` 接收。
 
 ## 使用
 

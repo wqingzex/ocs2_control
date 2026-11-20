@@ -77,7 +77,6 @@ def setup(tmp_path, monkeypatch):
     fake_units = UnitSet({
         "control": Unit("control", "运控", SLEEPER, topics=("/fsm_state",)),
         "rviz": Unit("rviz", "RViz", SLEEPER, depends=("control",), on_demand=True),
-        "joystick": Unit("joystick", "手柄遥操", SLEEPER, depends=("control",), on_demand=True),
         "xr": Unit("xr", "XR", SLEEPER, topics=("/teleop/connection_status",)),
         "camera_head": Unit("camera_head", "头部相机", SLEEPER, topics=("/camera_head/color/image_raw/compressed",),
                              group="camera"),
@@ -86,8 +85,7 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "PREVIEW_IDLE_S", 0.5)
     probe = FakeProbe()
     console = server.Console(str(cfg), str(tmp_path), probe_factory=lambda: probe,
-                             scanner=lambda: parse_list_devices(SCAN),
-                             joysticks=lambda: [{"id": 0, "name": "Xbox"}, {"id": 2, "name": "Logitech"}])
+                             scanner=lambda: parse_list_devices(SCAN))
     static = tmp_path / "static"
     static.mkdir()
     (static / "index.html").write_text("<html>console</html>", encoding="utf-8")
@@ -115,9 +113,9 @@ def test_page_files_are_revalidated_by_the_browser(setup):
 def test_state_reports_units_and_probe_data(setup):
     client, *_ = setup
     state = client.get("/api/state").json()
-    assert [u["name"] for u in state["units"]] == ["control", "rviz", "joystick", "xr", "camera_head"]
+    assert [u["name"] for u in state["units"]] == ["control", "rviz", "xr", "camera_head"]
     assert state["fsm_name"] == "HOLD" and state["xr_connected"] is True
-    assert state["units"][4]["is_camera"] and state["units"][0]["rates"] == {"/fsm_state": 30.0}
+    assert state["units"][3]["is_camera"] and state["units"][0]["rates"] == {"/fsm_state": 30.0}
 
 
 def test_start_stop_and_log(setup):
@@ -163,15 +161,14 @@ def test_the_activity_is_cleared_when_a_step_fails(setup):
     assert console.activity is None
 
 
-def test_restarting_the_controller_brings_back_rviz_and_the_gamepad_it_took_down(setup):
+def test_restarting_the_controller_brings_back_rviz_it_took_down(setup):
     client, *_ = setup
     assert client.post("/api/units/control/start").status_code == 200
     assert client.post("/api/units/rviz/start").status_code == 200
-    assert client.post("/api/units/joystick/start").status_code == 200
     pids = {u["name"]: u["pid"] for u in client.get("/api/state").json()["units"]}
     assert client.post("/api/units/control/restart", json={"confirm": False}).status_code == 200
     after = {u["name"]: u for u in client.get("/api/state").json()["units"]}
-    assert all(after[n]["running"] and after[n]["pid"] != pids[n] for n in ("control", "rviz", "joystick"))
+    assert all(after[n]["running"] and after[n]["pid"] != pids[n] for n in ("control", "rviz"))
 
 
 def test_restarting_a_unit_does_not_start_dependents_that_were_not_running(setup):
@@ -179,7 +176,7 @@ def test_restarting_a_unit_does_not_start_dependents_that_were_not_running(setup
     assert client.post("/api/units/control/start").status_code == 200
     assert client.post("/api/units/control/restart", json={"confirm": False}).status_code == 200
     after = {u["name"]: u for u in client.get("/api/state").json()["units"]}
-    assert after["control"]["running"] and not after["rviz"]["running"] and not after["joystick"]["running"]
+    assert after["control"]["running"] and not after["rviz"]["running"]
 
 
 def test_stopping_control_outside_hold_needs_confirmation(setup):
@@ -356,35 +353,6 @@ def test_rviz_is_not_started_by_start_all_and_closes_without_touching_control(se
     assert client.post("/api/units/rviz/stop", json={"confirm": False}).status_code == 200
     assert not sup.is_running("rviz") and sup.is_running("control")
     assert probe.hold_requests == 0 and probe.sent == []
-
-
-# --- joystick teleop -------------------------------------------------------------------------
-
-def test_joystick_devices_are_listed_with_the_saved_choice(setup):
-    client, *_ = setup
-    data = client.get("/api/joysticks").json()
-    assert data["devices"] == [{"id": 0, "name": "Xbox"}, {"id": 2, "name": "Logitech"}]
-    assert data["selected"] == ""
-
-
-def test_choosing_a_joystick_is_saved_and_valid_only(setup):
-    client, console, _, cfg = setup
-    assert client.post("/api/joysticks/select", json={"device": "/dev/input/js2"}).status_code == 200
-    assert "js2" in cfg.read_text(encoding="utf-8")
-    assert client.get("/api/joysticks").json()["selected"] == "/dev/input/js2"
-    before = cfg.read_text(encoding="utf-8")
-    assert client.post("/api/joysticks/select", json={"device": "/dev/input/event1"}).status_code == 400
-    assert cfg.read_text(encoding="utf-8") == before
-    assert client.post("/api/joysticks/select", json={"device": ""}).status_code == 200  # back to auto
-
-
-def test_joystick_needs_the_controllers_and_never_starts_them(setup):
-    client, console, *_ = setup
-    res = client.post("/api/units/joystick/start")
-    assert res.status_code == 400 and "需要先启动运控" in res.json()["detail"]["message"]
-    client.post("/api/units/control/start")
-    assert client.post("/api/units/joystick/start").status_code == 200
-    assert console.supervisor.is_running("joystick")
 
 
 def test_console_page_is_served_from_the_workspace_web_folder():

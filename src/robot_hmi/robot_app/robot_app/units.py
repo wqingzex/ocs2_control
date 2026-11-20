@@ -7,7 +7,6 @@ from dataclasses import replace
 from typing import Any, Dict, Optional, Tuple
 
 from launch_helpers.devices.base import base_units
-from launch_helpers.devices.joystick import joystick_units
 from robot_log_tools.logger import LOG_MODE_ENV  # set for every unit; the C++ components read it too
 from robot_runtime.units import Unit, UnitSet
 from launch_helpers.devices.camera import camera_units
@@ -66,7 +65,6 @@ def build_units(cfg: Dict[str, Any], config_path: str, ws_root: str) -> UnitSet:
     units.update({name: unit for name, unit in xr.items() if name == "pc_service"})
     units.update(base)
     units.update({"control": control, "rviz": rviz})
-    units.update(joystick_units(cfg))
     units.update({name: unit for name, unit in xr.items() if name != "pc_service"})
     units.update(camera_units(cfg, config_path))
     # The log mode is one fact for the whole run: every process gets it in the environment and applies it once.

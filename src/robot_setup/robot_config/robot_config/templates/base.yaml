@@ -7,7 +7,7 @@
 # 新机器先看这 5 项：
 #   robot.entry   robot.hardware   robot.base.type   robot.end_effector.type   robot.end_effector.interface.bus
 #
-# 分组：1 机器 robot | 2 控制 control | 3 遥操作输入 xr、joystick | 4 感知 cameras | 5 运行时 log、record | 6 自动写入 setup
+# 分组：1 机器 robot | 2 控制 control | 3 遥操作输入 xr | 4 感知 cameras | 5 运行时 log、record | 6 自动写入 setup
 # ======================================================================================================
 
 
@@ -101,9 +101,6 @@ xr:                              # XR 头显
   # ---- 超时和重连 ----
   frame_timeout_ms: 300          # 多久没有头显帧就停止发布，/teleop/connection_status=false
   reconnect_interval_s: 3.0      # PC Service 断开这么久后重新初始化 SDK
-
-joystick:
-  device: ""                     # 空 = 自动，或 /dev/input/jsN
 
 
 # ======================================================================================================

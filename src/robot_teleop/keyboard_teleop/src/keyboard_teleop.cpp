@@ -1,5 +1,5 @@
 //
-// Keyboard teleop: stdin (TTY) + 20Hz timer; aligns with joystick_teleop topics & kinematics.
+// Keyboard teleop: stdin (TTY) + 20Hz timer; same topics as the other teleop inputs.
 //
 
 #include "keyboard_teleop/keyboard_teleop.h"
@@ -433,7 +433,7 @@ void KeyboardTeleop::timerCallback()
     rs_x_a = applyActivation(rs_x_a);
     rs_y_a = applyActivation(rs_y_a);
 
-    // Chassis uses the same stick axes as joystick processChassisAxes — mirror OFF.
+    // Chassis axes: mirror OFF.
     const double ls_x_ch = applyActivation(ls_x);
     const double ls_y_ch = applyActivation(ls_y);
     const double rs_x_ch = applyActivation(rs_x);

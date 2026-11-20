@@ -108,7 +108,7 @@ namespace target_generator
             "/whole_body_controller/current_state", 10,
             [this](robot_control_msgs::msg::WholeBodyCurrentState::SharedPtr msg) { wholeBodyStateCallback(msg); });
 
-        // 底盘遥控：摇杆轴值进，底盘速度出（和 joystick_teleop / 全身控制器是同一个话题）。默认关：不开就不创建
+        // 底盘遥控：摇杆轴值进，底盘速度出（和全身控制器是同一个话题）。默认关：不开就不创建
         // 发布者、订阅和看门狗，不会往底盘速度话题发任何东西，误按左摇杆也不会让手臂停下
         chassis_enabled_ = node_->declare_parameter("xr_base", chassis_enabled_);
         chassis_linear_scale_ = node_->declare_parameter("xr_chassis.linear_scale", chassis_linear_scale_);

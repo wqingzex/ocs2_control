@@ -76,15 +76,6 @@ def test_camera_assignment_exposure_and_gain_are_both_auto_or_both_fixed():
             validate_camera_assignments({"head": bad})
 
 
-def test_joystick_defaults_and_validation():
-    merged = validate(full_config(cameras=CAMERAS_OFF))
-    assert merged["joystick"]["device"] == ""
-    assert validate(full_config(cameras=CAMERAS_OFF, joystick={"device": "/dev/input/js1"}))
-    for bad in ("/dev/input/event3", "js1", "/dev/input/js1; rm"):
-        with pytest.raises(ConfigError, match="joystick.device"):
-            validate(full_config(cameras=CAMERAS_OFF, joystick={"device": bad}))
-
-
 def test_the_control_section_shares_the_file_and_is_passed_through():
     merged = validate(full_config(cameras=CAMERAS_OFF, control={"arm_mode": "position", "patch": {"x_controller": {}}}))
     assert merged["robot"]["entry"] == "whole_body" and "control" not in merged  # read by the ROS launch, not here

@@ -1,6 +1,6 @@
 # robot_control_suite
 
-基于 OCS2 的通用机器人运控框架：MPC 末端控制、状态机、ros2_control 硬件驱动，以及配套的遥操作（XR 头显、手柄）、相机和网页控制台。支持多种机型（双臂、全身人形等），机型的模型和参数在 [`src/robot_description`](src/robot_description)，设备的配置（相机、末端、头显）在 [`src/robot_setup`](src/robot_setup/README.md)，输入设备在 [`src/robot_teleop`](src/robot_teleop/README.md)。源码、驱动、模型都在本仓库，另有子模块 `OrbbecSDK_ROS2` 和 `ocs2_ros2`（固定在 `ae75126f0`，升级时改子模块指针并重新验证）。
+基于 OCS2 的通用机器人运控框架：MPC 末端控制、状态机、ros2_control 硬件驱动，以及配套的遥操作（XR 头显）、相机和网页控制台。支持多种机型（双臂、全身人形等），机型的模型和参数在 [`src/robot_description`](src/robot_description)，设备的配置（相机、末端、头显）在 [`src/robot_setup`](src/robot_setup/README.md)，输入设备在 [`src/robot_teleop`](src/robot_teleop/README.md)。源码、驱动、模型都在本仓库，另有子模块 `OrbbecSDK_ROS2` 和 `ocs2_ros2`（固定在 `ae75126f0`，升级时改子模块指针并重新验证）。
 
 ## 快速开始
 

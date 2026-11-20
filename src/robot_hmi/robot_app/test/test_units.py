@@ -21,7 +21,7 @@ def test_headset_id_is_passed_as_a_string_even_when_it_is_numeric():
 
 def test_all_units_are_generated_from_the_config():
     units = build_units(make_cfg(), "/ws/config/robot.local.yaml", "/ws")
-    assert units.names() == ["pc_service", "control", "rviz", "joystick", "xr",
+    assert units.names() == ["pc_service", "control", "rviz", "xr",
                              "camera_left_wrist", "camera_right_wrist", "camera_head"]
     assert units["xr"].depends == ("pc_service",)
     assert "__node:=xr_target_node" in units["xr"].cmd
@@ -31,7 +31,7 @@ def test_all_units_are_generated_from_the_config():
 
 def test_disabled_parts_produce_no_units():
     units = build_units(make_cfg(xr={"enable": False}, cameras={"enable": False}), "/c.yaml", "/ws")
-    assert units.names() == ["control", "rviz", "joystick"]
+    assert units.names() == ["control", "rviz"]
 
 
 def test_xr_without_managed_pc_service_has_no_dependency():
@@ -53,17 +53,6 @@ def test_unknown_unit_names_the_choices():
         build_units(make_cfg(), "/c.yaml", "/ws")["camera_tail"]
 
 
-def test_joystick_is_an_on_demand_unit_that_needs_control():
-    units = build_units(make_cfg(joystick={"device": "/dev/input/js2"}), "/c.yaml", "/ws")
-    joystick = units["joystick"]
-    assert joystick.on_demand and joystick.depends == ("control",)
-    assert joystick.cmd[:4] == ("ros2", "launch", "robot_startup", "joystick.launch.py")
-    assert "joy_dev:=/dev/input/js2" in joystick.cmd
-    auto = build_units(make_cfg(), "/c.yaml", "/ws")["joystick"]
-    assert not any(a.startswith("joy_dev") for a in auto.cmd)
-    assert "joystick" not in build_units(make_cfg(), "/c.yaml", "/ws").start_order()
-
-
 def test_rviz_is_a_separate_on_demand_unit():
     units = build_units(make_cfg(), "/c.yaml", "/ws")
     control, rviz = units["control"].cmd, units["rviz"].cmd
@@ -74,7 +63,7 @@ def test_rviz_is_a_separate_on_demand_unit():
     assert "rviz" not in units.start_order()          # up / "全部启动" leaves it out
     assert units.launch_order(["rviz"]) == ["rviz"]  # never starts the controllers by itself
     assert units.launch_order(["xr", "rviz"]) == ["pc_service", "xr", "rviz"]
-    assert units.stop_order(["control"]) == ["joystick", "rviz", "control"]  # dependents stop first
+    assert units.stop_order(["control"]) == ["rviz", "control"]  # dependents stop first
     assert "rviz" in units.stop_order()               # "全部停止" still closes it
 
 

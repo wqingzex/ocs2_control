@@ -50,7 +50,7 @@ MARVIN_FIRMWARE_DEFAULT=343   # 和 marvin_hardware/CMakeLists.txt 的默认值�
 # build --minimal 只编译这些包及其依赖。
 MINIMAL_PACKAGES=(
   fa_w2_description juxie_hardware marvin_hardware end_effector_hardware
-  joystick_teleop keyboard_teleop xr_teleop topic_based_hardware robot_app camera_setup end_effector_setup
+  keyboard_teleop xr_teleop topic_based_hardware robot_app camera_setup end_effector_setup
 )
 
 # ==================================================================================================

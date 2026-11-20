@@ -15,10 +15,9 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from robot_config import config_file
 from camera_setup import discovery as devices
-from .. import joystick_devices
 from . import health
 from ..diag import make_bundle
-from ..config import JOYSTICK_RE, ConfigError, load, load_lenient
+from ..config import ConfigError, load, load_lenient
 from ..events import session_info
 from ..ros_probe import BODY_COMMANDS, FSM_ACTIONS, FSM_COMMANDS, FSM_HOLD, SWITCH_POSE_PULSE_S, body_options, fsm_name
 from robot_runtime.supervisor import Supervisor, UnitError
@@ -33,12 +32,10 @@ class Console:
     """Application state; one instance per server."""
 
     def __init__(self, config_path: str, ws_root: str, probe_factory: Optional[Callable[[], Any]] = None,
-                 scanner: Callable[[], List[devices.Device]] = devices.scan,
-                 joysticks: Callable[[], List[Dict[str, Any]]] = joystick_devices.enumerate_joysticks):
+                 scanner: Callable[[], List[devices.Device]] = devices.scan):
         self.config_path = os.path.abspath(config_path)
         self.ws_root = ws_root
         self.scanner = scanner
-        self.joysticks = joysticks
         self.access_urls: List[str] = []  # set by the entrypoint: what other computers can open
         self.lock = threading.RLock()  # serialises every state-changing action
         self.activity: Optional[Dict[str, Any]] = None  # what a running start / stop / restart is doing now
@@ -166,19 +163,6 @@ class Console:
         """Pack logs, event timeline and config for a developer; built on demand, not under the console lock."""
         self.supervisor.events.record("diag", source="console")
         return make_bundle(self.ws_root, self.config_path)
-
-    def joystick_state(self) -> Dict[str, Any]:
-        """Connected gamepads and the device saved in the config ('' = automatic)."""
-        selected = load_lenient(self.config_path)["joystick"]["device"]
-        return {"devices": self.joysticks(), "selected": selected}
-
-    def select_joystick(self, device: str) -> Dict[str, Any]:
-        if not JOYSTICK_RE.match(device):
-            raise HTTPException(400, {"message": f"手柄设备应为空（自动）或 /dev/input/jsN，收到 {device!r}"})
-        with self.lock:
-            config_file.set_fields(self.config_path, "joystick", {"device": device})
-            self.reload()
-            return {"selected": device}
 
     def _sequence(self, label: str, steps: List[Tuple[str, Callable[[], Any]]]) -> List[Any]:
         """Run the steps one after another and publish which one is running (state()["activity"]), so the page
@@ -353,14 +337,6 @@ def create_app(console: Console, static_dir: Optional[str]) -> FastAPI:
         if not os.path.isfile(path):
             raise HTTPException(404, {"message": "没有这个诊断包"})
         return FileResponse(path, filename=name, media_type="application/gzip")
-
-    @app.get("/api/joysticks")
-    def joysticks():
-        return console.joystick_state()
-
-    @app.post("/api/joysticks/select")
-    def select_joystick(device: str = Body("", embed=True)):
-        return console.select_joystick(device)
 
     @app.get("/api/units/{name}/log")
     def unit_log(name: str, lines: int = 200):

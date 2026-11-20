@@ -76,7 +76,7 @@ int main(int argc, char** argv)
                 marker_fixed_frame.c_str(),
                 body_controller_name.c_str());
     RCLCPP_INFO(node->get_logger(),
-                "Joystick/keyboard scales: linear=%.3f, angular=%.3f (deadzone handled at input source)",
+                "Keyboard scales: linear=%.3f, angular=%.3f (deadzone handled at input source)",
                 linear_scale, angular_scale);
 
     RCLCPP_INFO(node->get_logger(),
@@ -179,7 +179,7 @@ int main(int argc, char** argv)
 
         RCLCPP_INFO(node->get_logger(), "TargetGenerator is ready!");
         RCLCPP_INFO(node->get_logger(), "Use RViz to interact with the markers.");
-        RCLCPP_INFO(node->get_logger(), "Control input handler is ready for joystick/keyboard control!");
+        RCLCPP_INFO(node->get_logger(), "Control input handler is ready for keyboard control!");
         if (enable_xr)
         {
             RCLCPP_INFO(node->get_logger(), "XR input handler is ready for XR control!");

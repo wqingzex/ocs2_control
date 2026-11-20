@@ -51,8 +51,8 @@ def test_a_key_that_is_not_in_the_template_is_an_error(section, expected):
 
 def test_no_default_is_filled_in():
     cfg = config()
-    del cfg["joystick"]["device"]
-    with pytest.raises(ConfigError, match="joystick.device"):
+    del cfg["xr"]["frame_timeout_ms"]
+    with pytest.raises(ConfigError, match="frame_timeout_ms"):
         validate(cfg)
 
 
@@ -105,12 +105,12 @@ def test_control_patch_and_setup_are_free_form():
 
 def test_extension_adds_checks_of_its_own_sections():
     def check(cfg):
-        expect(cfg["joystick"]["device"] == "", "'joystick.device' must stay empty here")
+        expect(cfg["xr"]["frame_timeout_ms"] == 300, "'xr.frame_timeout_ms' must stay 300 here")
 
     ext = Extension(checks=(check,))
     validate(config(), ext)
-    with pytest.raises(ConfigError, match="joystick.device"):
-        validate(config(joystick={"device": "/dev/input/js1"}), ext)
+    with pytest.raises(ConfigError, match="frame_timeout_ms"):
+        validate(config(xr={"frame_timeout_ms": 450}), ext)
     assert len(Extension(checks=(check,)).merge(Extension(checks=(check,))).checks) == 2
 
 

@@ -382,7 +382,7 @@ def add_missing(local: Any, template: Any, prefix: str = "") -> List[str]:
 
 
 # Keys (dotted paths) the template no longer has: an old file keeps them until `setup.sh config` deletes them.
-RETIRED_KEYS = ("navigation", "robot.end_effector.interface.left.channel", "robot.end_effector.interface.right.channel")
+RETIRED_KEYS = ("navigation", "joystick", "robot.end_effector.interface.left.channel", "robot.end_effector.interface.right.channel")
 
 
 def drop_retired(local: Any) -> List[str]:

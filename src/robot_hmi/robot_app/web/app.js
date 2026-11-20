@@ -283,47 +283,6 @@ document.getElementById("rviz-toggle").addEventListener("click", () => {
   else action("/api/units/rviz/start", "打开 RViz");
 });
 
-// Joystick teleop: the device choice is saved in the config, the unit is started like any other.
-async function loadJoysticks() {
-  const select = document.getElementById("joystick-device");
-  try {
-    const data = await api("/api/joysticks");
-    const options = [el("option", { value: "" }, "自动")].concat(data.devices.map(
-      (d) => el("option", { value: `/dev/input/js${d.id}` }, `js${d.id}：${d.name}`)));
-    select.replaceChildren(...options);
-    select.value = data.selected;
-    if (select.value !== data.selected) {  // saved device is not connected right now
-      select.append(el("option", { value: data.selected }, `${data.selected}（未连接）`));
-      select.value = data.selected;
-    }
-  } catch (err) { toast(`读取手柄失败：${err.message}`, true); }
-}
-
-function renderJoystick(state) {
-  const unit = (state.units || []).find((u) => u.name === "joystick");
-  const control = (state.units || []).find((u) => u.name === "control");
-  const pill = document.getElementById("joystick-state");
-  const toggle = document.getElementById("joystick-toggle");
-  const running = !!(unit && unit.running);
-  pill.textContent = running ? "运行中" : "已停止";
-  pill.className = "pill" + (running ? " ok" : "");
-  toggle.textContent = running ? "停止手柄遥操" : "启动手柄遥操";
-  toggle.disabled = !unit || (!running && !(control && control.running));
-  toggle.title = toggle.disabled && unit ? "先启动运控" : "";
-  document.getElementById("joystick-device").disabled = running;
-}
-
-document.getElementById("joystick-refresh").addEventListener("click", loadJoysticks);
-document.getElementById("joystick-toggle").addEventListener("click", async () => {
-  const unit = lastState && lastState.units.find((u) => u.name === "joystick");
-  if (!unit) return;
-  if (unit.running) { guarded("/api/units/joystick/stop", "停止手柄遥操"); return; }
-  try {
-    await api("/api/joysticks/select", { method: "POST", body: { device: document.getElementById("joystick-device").value } });
-  } catch (err) { toast(`保存手柄选择失败：${err.message}`, true); return; }
-  action("/api/units/joystick/start", "启动手柄遥操");
-});
-
 async function refresh() {
   try {
     lastState = await api("/api/state");
@@ -331,7 +290,6 @@ async function refresh() {
     renderAccess(lastState);
     renderModes(lastState);
     renderBody(lastState);
-    renderJoystick(lastState);
     renderInference(lastState);
     renderAll(lastState);
     renderUnits(lastState);
@@ -410,10 +368,10 @@ async function saveAssignment(devicesFound) {
   } catch (err) { toast(`保存失败：${err.message}`, true); }
 }
 
-// Everything the plain "start all" starts (on-demand RViz and gamepad excluded): all running -> the button stops.
+// Everything the plain "start all" starts (on-demand RViz excluded): all running -> the button stops.
 // A module on its own is restarted with the ↻ next to its status. Ask first (stopping then asks again outside HOLD).
 function allUnits(state) {
-  return (state.units || []).filter((u) => u.name !== "rviz" && u.name !== "joystick");
+  return (state.units || []).filter((u) => u.name !== "rviz");
 }
 function renderAll(state) {
   const units = allUnits(state);
@@ -462,6 +420,5 @@ document.getElementById("log-unit").addEventListener("change", loadLog);
 document.addEventListener("visibilitychange", () => lastState && renderPreviews(lastState));
 
 refresh().then(loadLog);
-loadJoysticks();
 setInterval(refresh, 1000);
 setInterval(() => { if (document.getElementById("log-follow").checked) loadLog(); }, 2000);

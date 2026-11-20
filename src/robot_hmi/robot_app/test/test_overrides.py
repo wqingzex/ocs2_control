@@ -98,4 +98,3 @@ def test_up_with_adds_on_demand_units_after_the_regular_ones():
     assert up_names(units, ["xr"], []) == ["xr"]
     names = up_names(units, [], ["rviz"])
     assert units.launch_order(names) == ["control", "xr", "rviz"]
-    assert units.launch_order(up_names(units, ["control"], ["rviz", "joystick"])) == ["control", "rviz", "joystick"]
