@@ -222,8 +222,8 @@ public:
         const std::string humanoid_mode_topic = auto_declare("humanoid_mode_topic", std::string("mode_command"));
         setupHumanoidModeSubscription(humanoid_mode_topic);
 
-        // Mobile-base pose from external TF only. Probe world->baseFrame at activate
-        // (unlock planning if mobile; skip identity TF publish if external TF exists).
+        // world->baseFrame is only probed at activate: skip the identity TF publish for RViz if somebody else
+        // publishes it. Base planning does not use it (the MPC plans in the frame of the base).
         world_frame_ = auto_declare("world_frame", std::string("world"));
         base_frame_ = minfo.baseFrame;
         if (base_frame_.empty()) {
@@ -231,13 +231,13 @@ public:
         }
         mobile_base_tf_timeout_sec_ = auto_declare("mobile_base_tf_timeout_sec", 2.0);
         // Relative "tf" → /<ns>/tf under multi-robot namespaces (Isaac dual G1D).
-        // Absolute "/tf" misses /g1d/tf|/g1d_01/tf and disables unlocked-base planning.
+        // Absolute "/tf" misses /g1d/tf|/g1d_01/tf, so the probe would not see the external TF.
         const std::string tf_topic = auto_declare("tf_topic", std::string("tf"));
         setupTfBuffer(tf_topic);
         if (interface_->hasMobileBase()) {
             RCLCPP_INFO(node_->get_logger(),
-                        "Mobile base model: unlocked-base planning requires %s->%s on TF topic %s "
-                        "(timeout %.1fs at activate).",
+                        "Mobile base model: probing %s->%s on TF topic %s (timeout %.1fs at activate) only to decide "
+                        "whether to publish an identity TF for RViz; base planning does not need it.",
                         world_frame_.c_str(), base_frame_.c_str(), tf_topic.c_str(),
                         mobile_base_tf_timeout_sec_);
         } else {

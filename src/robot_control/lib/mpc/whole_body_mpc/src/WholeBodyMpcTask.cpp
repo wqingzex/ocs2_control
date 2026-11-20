@@ -232,7 +232,7 @@ void WholeBodyMpcTask::beginMobileBaseTfProbe() {
     mobile_base_tf_probe_start_ = node_->now();
     RCLCPP_INFO(node_->get_logger(),
                 "Probing external TF %s->%s for up to %.1fs "
-                "(mobile: unlock planning; any model: skip identity world TF if found)",
+                "(skip the identity world TF for RViz if found)",
                 world_frame_.c_str(), base_frame_.c_str(), mobile_base_tf_timeout_sec_);
     updateMobileBaseTfProbe();
 }
@@ -245,7 +245,7 @@ void WholeBodyMpcTask::finalizeMobileBaseTfProbe(bool available) {
         world_tf_publish_done_ = true;  // external TF owns world->base; do not publish ours
         if (interface_->hasMobileBase()) {
             RCLCPP_INFO(node_->get_logger(),
-                        "External TF %s->%s available: unlocked-base planning enabled",
+                        "External TF %s->%s available: no identity world TF published",
                         world_frame_.c_str(), base_frame_.c_str());
         } else {
             RCLCPP_INFO(node_->get_logger(),
