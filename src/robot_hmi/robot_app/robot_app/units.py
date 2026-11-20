@@ -6,6 +6,7 @@ import os
 from dataclasses import replace
 from typing import Any, Dict, Optional, Tuple
 
+from launch_helpers.devices.base import base_units
 from launch_helpers.devices.joystick import joystick_units
 from robot_log_tools.logger import LOG_MODE_ENV  # set for every unit; the C++ components read it too
 from robot_runtime.units import Unit, UnitSet
@@ -38,6 +39,7 @@ def build_units(cfg: Dict[str, Any], config_path: str, ws_root: str) -> UnitSet:
     """Units enabled in the config, in the order status lists them: the controllers and RViz are ours, every
     device package (XR headset, gamepad, cameras) supplies its own units."""
     xr = xr_units(cfg)
+    base = base_units(cfg)
     launch_file, args = controller_launch(cfg, config_path)
 
     def controller_cmd(launch_args: Dict[str, str]) -> Tuple[str, ...]:
@@ -49,6 +51,7 @@ def build_units(cfg: Dict[str, Any], config_path: str, ws_root: str) -> UnitSet:
         cmd=controller_cmd(args),  # launch_mode:=control_only, no RViz
         # /fsm_state is latched (published on change only), so its rate says nothing; /joint_states does.
         topics=("/joint_states",),
+        depends=tuple(base),  # the simulated base is up first: its TF is there when the controller looks for one
     )
     # Same launch file in rviz_only mode, so the RViz panels get the controller names they need.
     rviz = Unit(
@@ -61,6 +64,7 @@ def build_units(cfg: Dict[str, Any], config_path: str, ws_root: str) -> UnitSet:
     )
     units: Dict[str, Unit] = {}
     units.update({name: unit for name, unit in xr.items() if name == "pc_service"})
+    units.update(base)
     units.update({"control": control, "rviz": rviz})
     units.update(joystick_units(cfg))
     units.update({name: unit for name, unit in xr.items() if name != "pc_service"})

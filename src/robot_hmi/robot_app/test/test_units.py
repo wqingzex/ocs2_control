@@ -85,3 +85,13 @@ def test_display_env_keeps_an_existing_display_and_falls_back_to_local_x(monkeyp
     (tmp_path / ".Xauthority").write_text("x")
     env = dict(units_mod.display_env({"HOME": str(tmp_path)}))
     assert env["DISPLAY"] == ":0" and env["XAUTHORITY"] == str(tmp_path / ".Xauthority")
+
+def test_the_simulated_base_is_a_unit_only_with_mock_hardware_and_the_controller_starts_after_it():
+    mock = build_units(make_cfg(robot={"hardware": "mock_components"}), "/c.yaml", "/ws")
+    assert mock.names()[:3] == ["pc_service", "base", "control"]
+    assert mock["base"].cmd == ("python3", "-m", "robot_app.base_sim")
+    assert mock["control"].depends == ("base",)
+    assert mock.start_order(["control"]) == ["base", "control"]
+    for hardware in ("real", "isaac"):
+        units = build_units(make_cfg(robot={"hardware": hardware}), "/c.yaml", "/ws")
+        assert "base" not in units and units["control"].depends == ()
