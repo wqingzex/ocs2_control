@@ -37,7 +37,7 @@ ros2 launch robot_startup head_body.launch.py    robot:=fa_w2                   
 | 路径 | 作用 |
 |---|---|
 | `xacro/robot.xacro`、`xacro/ros2_control/robot.xacro` | 运动学模型、加硬件的模型（薄封装，宏在 m6_ccs） |
-| `config/ros2_control/common.yaml` | 控制器参数：`whole_body_controller`（全身）、`arm_controller`（双臂）、`body_joint_controller`、`head_joint_controller` 等，包括归位姿态 `home_1`~`home_4`；机器人包只有这一个默认文件（手的包用 `ros2_controllers.yaml`） |
+| `config/ros2_control/common.yaml` | 控制器参数：`whole_body_controller`（全身）、`arm_controller`（双臂）、`body_joint_controller`、`head_joint_controller` 等；机器人包只有这一个默认文件（手的包用 `ros2_controllers.yaml`） |
 | `config/ocs2/*.info` | MPC 配置，命名和可选值见下方 [`.info` 命名](#info-命名)；改关节速度惩罚、限速在这里 |
 | `xacro/ros2_control/body.xacro` | 腰和头的 Juxie 硬件接口 |
 
