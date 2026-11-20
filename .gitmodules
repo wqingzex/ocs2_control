@@ -18,3 +18,7 @@
 	path = src/third_party/dexcap-sdk-cpp
 	url = https://github.com/DexRobot/dexcap-sdk-cpp.git
 	shallow = true
+[submodule "src/third_party/xCoreSDK-CPP"]
+	path = src/third_party/xCoreSDK-CPP
+	url = https://github.com/RokaeRobot/xCoreSDK-CPP.git
+	shallow = true

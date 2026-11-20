@@ -1109,7 +1109,7 @@ namespace rokae_hardware {
             // 启动实时控制线程
             rt_control_running_ = true;
             rt_move_restart_requested_ = false;
-            rt_controller_->setLoopRecvDataTimeout(8);
+            // xCoreSDK 0.7.1 has no setLoopRecvDataTimeout any more (0.7.0 raised its limit to 20 ms): the SDK default applies
             rt_control_thread_ = std::thread(&RokaeHardware::controlLoop, this);
             bindThreadToCpu(rt_control_thread_, rt_cpu_affinity_, "realtime control");
 

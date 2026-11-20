@@ -126,11 +126,13 @@ deps_rosdep_update() {
 #   MarvinPlatform_EN：PyInstaller 打包脚本，colcon 扫描时会执行它的 setup.py 并报错；
 #   dexcap-sdk-cpp：整个忽略。里面只有预编译库，dexcap_teleop 按路径引用；examples/ 是厂家示例（CMake 项目
 #   DexGloveDemo，要 Qt6 和 libbluetooth），urdf/ 是 ROS 1 catkin 包，都编不了。
+#   xCoreSDK-CPP：整个忽略。珞石 SDK 的头文件和库只给 rokae_hardware 按路径引用，它自己的 CMake 工程（示例、Eigen）不能被 colcon 当成包去编。
 # 子模块里的 COLCON_IGNORE 同时加入子模块的 info/exclude（写相对子模块根的路径），避免子模块显示为有未跟踪文件。
 colcon_ignore_submodule_dirs() {
   local dir entry exclude
   for dir in "${WS_DIR}"/src/third_party/TJ_FX_ROBOT_CONTRL_SDK_*/MarvinPlatform_EN \
-             "${WS_DIR}"/src/third_party/dexcap-sdk-cpp; do
+             "${WS_DIR}"/src/third_party/dexcap-sdk-cpp \
+             "${WS_DIR}"/src/third_party/xCoreSDK-CPP; do
     [[ -d "${dir}" ]] || continue
     touch "${dir}/COLCON_IGNORE"
     entry="$(git -C "${dir}" rev-parse --show-prefix 2>/dev/null || true)COLCON_IGNORE"
@@ -142,9 +144,46 @@ colcon_ignore_submodule_dirs() {
   done
 }
 
+# 珞石 xCoreSDK：官方仓库（子模块 third_party/xCoreSDK-CPP，固定在发布 tag）不带预编译库，库按平台放在 GitHub Release 里。
+# 版本要和子模块一致；下载的包先校验 sha256 再解压，解压到子模块的 lib/（上游 .gitignore 已忽略，子模块不会变脏）。
+ROKAE_SDK_VERSION="0.7.1"
+rokae_sdk_sha256() {
+  case "$1" in
+    x86_64) echo "ccc125c41f0f72712eb12835f80a5be5fa62429ca045bc5476fe1be224b36270" ;;
+    aarch64) echo "78cc578b066c9edb2c015389a14bc5bdf1c3c69f6e8c1c7ee749dec568fc4518" ;;
+    *) return 1 ;;
+  esac
+}
+rokae_sdk_libs() {
+  local dir="${WS_DIR}/src/third_party/xCoreSDK-CPP" arch pkg url tmpdir expected actual version
+  arch="$(uname -m)"
+  [[ -f "${dir}/CMakeLists.txt" ]] || die "缺少 ${dir}（先执行 ./scripts/setup.sh deps）"
+  version="$(sed -n 's/^project *( *xCoreSDK VERSION \([0-9.]*\).*/\1/p' "${dir}/CMakeLists.txt" | head -1)"
+  [[ "${version}" == "${ROKAE_SDK_VERSION}" ]] \
+    || die "子模块 xCoreSDK-CPP 是 ${version:-未知版本}，setup.sh 里固定的库是 ${ROKAE_SDK_VERSION}：换版本要一起改 ROKAE_SDK_VERSION 和两个 sha256"
+  if [[ -f "${dir}/lib/Linux/${arch}/libxCoreSDK.a" && -f "${dir}/lib/Linux/${arch}/libxMateModel.a" ]]; then
+    info "珞石 xCoreSDK ${ROKAE_SDK_VERSION} 的库已就绪"; return
+  fi
+  expected="$(rokae_sdk_sha256 "${arch}")" || die "珞石 xCoreSDK 没有 ${arch} 的发布包"
+  pkg="xCoreSDK-${ROKAE_SDK_VERSION}-linux-${arch}.tar.gz"
+  url="https://github.com/RokaeRobot/xCoreSDK-CPP/releases/download/v${ROKAE_SDK_VERSION}/${pkg}"
+  tmpdir="$(mktemp -d)"
+  info "下载 ${pkg}"
+  curl -fSL -o "${tmpdir}/${pkg}" "${url}" || { rm -rf "${tmpdir}"; die "下载失败：${url}"; }
+  actual="$(sha256sum "${tmpdir}/${pkg}" | cut -d' ' -f1)"
+  if [[ "${actual}" != "${expected}" ]]; then
+    rm -rf "${tmpdir}"
+    die "${pkg} 的 sha256 不对（期望 ${expected}，实际 ${actual}），未解压"
+  fi
+  tar -xzf "${tmpdir}/${pkg}" -C "${dir}"  # 包里的路径是 lib/Linux/<arch>/...
+  rm -rf "${tmpdir}"
+  info "珞石 xCoreSDK ${ROKAE_SDK_VERSION} 的库已解压到 ${dir}/lib/Linux/${arch}"
+}
+
 step_deps() {
   git -C "${WS_DIR}" submodule update --init --recursive --depth 1  # 浅克隆：只取固定的提交
   colcon_ignore_submodule_dirs
+  rokae_sdk_libs
   source_ros
   command -v rosdep >/dev/null || die "未安装 rosdep：sudo apt install python3-rosdep"
   [[ -d /etc/ros/rosdep/sources.list.d ]] || as_root rosdep init
@@ -371,6 +410,7 @@ PY
 # ---- build ----------------------------------------------------------------------------------------
 step_build() {
   colcon_ignore_submodule_dirs
+  [[ -n "${MINIMAL}" ]] || rokae_sdk_libs  # rokae_hardware 要这些库；--minimal 不编它
   source_ros
   cd "${WS_DIR}"
   export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-8}"

@@ -2,6 +2,12 @@
 
 珞石 Rokae 机械臂的 `ros2_control` 驱动（xCoreSDK）。插件 `rokae_hardware/RokaeHardware`。本仓库现有的 fa_w2 和 M6 都不使用，用于 Rokae 机型。
 
+## SDK
+
+xCoreSDK 来自子模块 `src/third_party/xCoreSDK-CPP`（v0.7.1，头文件），预编译库由 `./scripts/setup.sh deps` 从官方 Release 下载并校验（见 `third_party/README.md`）。缺库时 CMake 会报错并给出这个命令。xCore 控制器固件需要满足 SDK 的要求（v0.7.0 起 ≥ v3.2.0）。
+
+v0.7.1 删掉了 `setLoopRecvDataTimeout`，驱动不再设置实时接收超时（以前设成 8 ms，SDK 默认 3 ms）。
+
 ## 使用
 
 接口：命令 `position`；状态 `position`、`velocity`、`effort`。测试环境 Ubuntu 24.04 + ROS 2 Jazzy。
