@@ -12,8 +12,8 @@ FULL = {
         "end_effector": {
             "type": "linkerhand_l6",
             "interface": {"bus": "usb_can",
-                          "left": {"port": "/dev/serial/by-id/usb-L", "can": "can3", "channel": 2},
-                          "right": {"port": "/dev/serial/by-id/usb-R", "can": "can4", "channel": 3}},
+                          "left": {"port": "/dev/serial/by-id/usb-L", "can": "can3"},
+                          "right": {"port": "/dev/serial/by-id/usb-R", "can": "can4"}},
             "dyn_param": {"left": [1, 0, 0, 0.1, 0, 0, 0, 0, 0, 0], "right": []},
         },
     },
@@ -31,8 +31,8 @@ def test_every_field_reaches_its_xacro_argument():
         "arm_driver": "marvin", "device_ip": "10.0.0.2",
         "body_can_interface": "can7", "body_can_stats_period_s": "10",
         "arm_ctrl_mode": "joint_impedance", "max_joint_speed": "80", "max_joint_acceleration": "60",
-        "usb_left_port": "/dev/serial/by-id/usb-L", "left_ee_can_interface": "can3", "left_ee_channel": "2",
-        "usb_right_port": "/dev/serial/by-id/usb-R", "right_ee_can_interface": "can4", "right_ee_channel": "3",
+        "usb_left_port": "/dev/serial/by-id/usb-L", "left_ee_can_interface": "can3",
+        "usb_right_port": "/dev/serial/by-id/usb-R", "right_ee_can_interface": "can4",
         "left_dyn_param": "1,0,0,0.1,0,0,0,0,0,0",
     }
     assert p["control"] == {"patch": FULL["control"]["patch"]}

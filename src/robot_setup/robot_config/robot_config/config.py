@@ -193,9 +193,6 @@ def _check_robot(robot: Dict[str, Any]) -> None:
            f"'robot.arm.interface.firmware' must be one of {list(MARVIN_FIRMWARES)}, got {firmware!r}")
     check_end_effector(eef["type"], eef["interface"]["bus"])
     for side in SIDES:
-        channel = eef["interface"][side]["channel"]
-        expect(channel is None or channel in (1, 2, 3) and not isinstance(channel, bool),
-               f"'robot.end_effector.interface.{side}.channel' must be 1, 2 or 3, got {channel!r}")
         rate = eef["interface"][side]["rw_rate"]
         expect(rate is None or (_is_number(rate) and not isinstance(rate, bool) and rate > 0),
                f"'robot.end_effector.interface.{side}.rw_rate' must be a number > 0 (Hz) or null, got {rate!r}")
@@ -371,7 +368,7 @@ def ee_drive(robot: Dict[str, Any]) -> str:
 
 
 def ee_side(robot: Dict[str, Any], side: str) -> Dict[str, Any]:
-    """robot.end_effector.interface.<side>: port, can, channel (only what is written)."""
+    """robot.end_effector.interface.<side>: port, can (only what is written)."""
     return _mapping(_mapping(_mapping(robot.get("end_effector")).get("interface")).get(side))
 
 
@@ -404,8 +401,7 @@ def ee_mapping(raw: Dict[str, Any]) -> Dict[str, Any]:
         elif value["drive"] == "ethernet":
             keys = {}  # Wuji: the driver scans and matches each hand by hand_side
         else:
-            keys = {"device_ip": arm_ip(robot), "left_ee_channel": left.get("channel") or 1,
-                    "right_ee_channel": right.get("channel") or 1}
+            keys = {"device_ip": arm_ip(robot)}
         value.update(keys)
     return value
 

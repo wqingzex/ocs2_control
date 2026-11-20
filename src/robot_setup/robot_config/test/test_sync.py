@@ -72,6 +72,21 @@ def test_a_retired_section_is_deleted_with_a_backup(tmp_path):
     assert not setup_steps.sync_status(str(path))[0]
 
 
+def test_the_retired_channel_of_the_hands_is_deleted(tmp_path):
+    path = tmp_path / "robot.local.yaml"
+    setup_steps.sync_run(str(path), "whole_body", Quiet())
+    text = path.read_text(encoding="utf-8")
+    assert "left: {port: \"\", can: can1, rw_rate: null}" in text
+    path.write_text(text.replace("left: {port: \"\", can: can1, rw_rate: null}",
+                                 "left: {port: \"\", can: can1, channel: 2, rw_rate: null}"), encoding="utf-8")
+    assert setup_steps.sync_status(str(path))[0]
+
+    assert setup_steps.sync_run(str(path), None, Quiet())
+
+    assert "channel" not in read(path)["robot"]["end_effector"]["interface"]["left"]
+    assert not setup_steps.sync_status(str(path))[0]
+
+
 def test_a_complete_file_is_left_alone(tmp_path):
     path = tmp_path / "robot.local.yaml"
     setup_steps.sync_run(str(path), "whole_body", Quiet())

@@ -71,7 +71,6 @@ class EeSetup(SetupSession):
             else:
                 # not configured by serial number yet (empty, or an old /dev/ttyUSBn): offer the next adapter to choose
                 self.draft[side + '_port'] = self.ports[index]['path'] if index < len(self.ports) else ''
-            self.draft[side + '_channel'] = interface.get('channel') or 1
         self.results = {}
 
     def state(self):
@@ -106,9 +105,6 @@ class EeSetup(SetupSession):
                         raise ValueError('两只 XHand1 不能使用同一串口')
                 else:
                     ipaddress.IPv4Address(draft['device_ip'])
-                    if any(type(draft[side + '_channel']) is not int or draft[side + '_channel'] not in (1, 2, 3)
-                           for side in ('left', 'right')):
-                        raise ValueError('485 通道必须是 1、2 或 3')
             self.draft = copy.deepcopy(draft)
             self.results = {}
             self.revision += 1
@@ -130,7 +126,7 @@ class EeSetup(SetupSession):
             self.results.pop(side, None)
             try:
                 self.results[side] = self.worker({**self.draft, 'side': side, 'operation': operation,
-                    'port': self.draft[side + '_port'], 'channel': self.draft[side + '_channel'], 'ws_root': self.ws_root})
+                    'port': self.draft[side + '_port'], 'ws_root': self.ws_root})
             except (RuntimeError, OSError) as exc:
                 self.results[side] = {'ok': False, 'message': str(exc)}
                 raise
@@ -159,8 +155,6 @@ class EeSetup(SetupSession):
                         interface[side] = {'port': self.draft[side + '_port']}
                 else:
                     changes['robot']['arm'] = {'interface': {'ip': self.draft['device_ip']}}
-                    for side in ('left', 'right'):
-                        interface[side] = {'channel': self.draft[side + '_channel']}
             # Validate the staged robot options before committing any fields.
             candidate = copy.deepcopy(self.raw)
             _deep_update(candidate.setdefault('robot', {}), changes['robot'])
@@ -205,11 +199,8 @@ class EePanel:
             port = window.combo(ports, draft[side + '_port'])
             port_label = Q.QLabel('USB 串口')
             form.addRow(port_label, port)
-            channel = window.combo([(value, str(value)) for value in (1, 2, 3)], draft[side + '_channel'])
-            channel_label = Q.QLabel('485 通道')
-            arm = Q.QLabel('485：机器人' + ('左臂（A）' if side == 'left' else '右臂（B）'))
+            arm = Q.QLabel('485：机器人' + ('左臂（A）' if side == 'left' else '右臂（B）') + '法兰口 1')
             body.addWidget(arm)
-            form.addRow(channel_label, channel)
             body.addLayout(form)
             actions = Q.QHBoxLayout()
             test = Q.QPushButton('开合测试')
@@ -222,8 +213,7 @@ class EePanel:
             body.addStretch(1)
             check = Q.QCheckBox('我已核对该设备是机器人的' + title)
             body.addWidget(check)
-            window.cards[side] = {'box': box, 'port': port, 'port_label': port_label, 'channel': channel,
-                                  'channel_label': channel_label, 'arm': arm, 'test': test,
+            window.cards[side] = {'box': box, 'port': port, 'port_label': port_label, 'arm': arm, 'test': test,
                                   'feedback': feedback, 'check': check}
             grid.addWidget(box, 0, index)
 
@@ -232,7 +222,6 @@ class EePanel:
                  'device_ip': self.device_ip.text().strip()}
         for side, card in self.window.cards.items():
             draft[side + '_port'] = card['port'].currentData()
-            draft[side + '_channel'] = card['channel'].currentData()
         return draft
 
     def apply_payload(self):
@@ -285,8 +274,7 @@ class EePanel:
             card['box'].setEnabled(not busy and enabled)
             card['port'].setVisible(drive == 'usb')
             card['port_label'].setVisible(drive == 'usb')
-            for name in ('channel', 'channel_label', 'arm'):
-                card[name].setVisible(drive == '485')
+            card['arm'].setVisible(drive == '485')
             result = window.state['results'].get(side, {})
             card['feedback'].setText(result.get('message', '尚未测试'))
             card['test'].setEnabled(not busy and not window.dirty and enabled)

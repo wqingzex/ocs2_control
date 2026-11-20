@@ -381,15 +381,21 @@ def add_missing(local: Any, template: Any, prefix: str = "") -> List[str]:
     return added
 
 
-# Sections the template no longer has: an old file keeps them until `setup.sh config` deletes them.
-RETIRED_KEYS = ("navigation",)
+# Keys (dotted paths) the template no longer has: an old file keeps them until `setup.sh config` deletes them.
+RETIRED_KEYS = ("navigation", "robot.end_effector.interface.left.channel", "robot.end_effector.interface.right.channel")
 
 
 def drop_retired(local: Any) -> List[str]:
-    """Delete the retired sections from the mapping; returns the keys deleted."""
-    dropped = [key for key in RETIRED_KEYS if key in local]
-    for key in dropped:
-        del local[key]
+    """Delete the retired keys from the mapping; returns the paths deleted."""
+    dropped = []
+    for path in RETIRED_KEYS:
+        *parents, key = path.split(".")
+        node = local
+        for name in parents:
+            node = node.get(name) if isinstance(node, dict) else None
+        if isinstance(node, dict) and key in node:
+            del node[key]
+            dropped.append(path)
     return dropped
 
 

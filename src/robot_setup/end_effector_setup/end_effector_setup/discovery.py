@@ -143,14 +143,17 @@ class SerialTransport:
                 self.fd = -1
 
 
+# SDK channel of the arm's flange port 1 (OnSetChData / OnGetChData: 1 = CANFD, 2 = COM1, 3 = COM2), where the runtime
+# driver reaches the hand too (arm_rs485://<ip>/<side>/port1).
+COM1_CHANNEL = 2
+
+
 class Arm485Transport:
     """Only the SDK's dedicated 485 datagrams; never call OnSetSend/OnClearErr."""
-    def __init__(self, ws_root, address, side, channel):
+    def __init__(self, ws_root, address, side):
         address = ipaddress.IPv4Address(address)
         if address.is_loopback or address.is_multicast or address.is_unspecified or str(address) == '255.255.255.255':
             raise ValueError('机械臂控制器 IPv4 地址无效')
-        if channel not in (1, 2, 3):
-            raise ValueError('末端 485 通道必须是 1、2 或 3')
         # The vendor SDK falls back to shared memory if its fixed UDP port is busy.
         # Refuse that path instead of attaching to somebody else's controller.
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as guard:
@@ -171,7 +174,7 @@ class Arm485Transport:
         self.sdk = ctypes.CDLL(str(library))
         self.sdk.OnLinkTo.argtypes, self.sdk.OnLinkTo.restype = [ctypes.c_ubyte] * 4, ctypes.c_bool
         self.sdk.OnRelease.restype = ctypes.c_bool
-        self.channel = channel
+        self.channel = COM1_CHANNEL
         suffix = 'A' if side == 'left' else 'B'
         self.send, self.receive = getattr(self.sdk, 'OnSetChData' + suffix), getattr(self.sdk, 'OnGetChData' + suffix)
         self.send.argtypes = [ctypes.POINTER(ctypes.c_ubyte), ctypes.c_long, ctypes.c_long]
@@ -354,7 +357,7 @@ def run(request):
     if drive == 'usb':
         transport = SerialTransport(request['port'], 115200 if hand == 'linkerhand_l6' else 3000000)
     else:
-        transport = Arm485Transport(request['ws_root'], request['device_ip'], side, request['channel'])
+        transport = Arm485Transport(request['ws_root'], request['device_ip'], side)
     with contextlib.closing(transport):
         device = L6(transport, side) if hand == 'linkerhand_l6' else XHand(transport)
         positions = device.test() if operation == 'test' else device.read()

@@ -18,8 +18,9 @@ GOLDEN = {
                 "79d79d838d96cc514acf6082b2f9ef5125a61c919838bfd505beecf39a5819b7"),
     "ethernet": ("d6c2e06cfa3e40a3070e7c2a5b9a09e75d0e25683ff3bb741e08a316fd99a0d4",
                  "ff9eb6adf2e4c9db39db31225491a85a8e54324e1911b0c6dd685b0251ffda70"),
+    # the ee fingerprint of arm_rs485 changed once when the 485 channel left the configuration (the hand is on port 1)
     "arm_rs485": ("d6c2e06cfa3e40a3070e7c2a5b9a09e75d0e25683ff3bb741e08a316fd99a0d4",
-                  "01b1b3f08728216cef1ad49d6a67a8fd9ad2e3032d7f67171a58f819d8f29d18"),
+                  "6b47a0d3ffb96fda2acc7c5222dc1e082b1c64664fcc44b260134150054fbfa4"),
     "none": ("d6c2e06cfa3e40a3070e7c2a5b9a09e75d0e25683ff3bb741e08a316fd99a0d4",
              "e4fa57b6493dadb55edefacfa2b00414cdbff223bd8367e9aa7326655e6b0eba"),
     "cam_changed": ("13a6144735d9c719cbd6fb451786b216645278ff68b9a1be5f1a1e84a1e72d7b",
@@ -33,7 +34,7 @@ CASES = {
         "bus": "usb_can", "left": {"can": "can3"}}}}},
     "ethernet": {"robot": {"end_effector": {"type": "wuji_hand2", "interface": {"bus": "ethernet"}}}},
     "arm_rs485": {"robot": {"end_effector": {"type": "jodell_rg75", "interface": {
-        "bus": "arm_rs485", "left": {"channel": 2}}}, "arm": {"interface": {"ip": "10.0.0.7"}}}},
+        "bus": "arm_rs485"}}, "arm": {"interface": {"ip": "10.0.0.7"}}}},
     "none": {"robot": {"end_effector": {"type": "none"}}},
     "cam_changed": {"cameras": {"enable": True, "left": {"serial": "CAM123", "rotation": 90}}},
 }
@@ -56,7 +57,7 @@ def test_a_camera_field_that_changes_changes_the_camera_fingerprint_only():
     ("usb_rs485", {"usb_left_port", "usb_right_port"}),
     ("usb_can", {"left_ee_can_interface", "right_ee_can_interface"}),
     ("ethernet", set()),  # Wuji: the driver scans and matches each hand by hand_side
-    ("arm_rs485", {"device_ip", "left_ee_channel", "right_ee_channel"}),
+    ("arm_rs485", {"device_ip"}),
 ])
 def test_the_hand_mapping_holds_the_fields_its_wiring_uses(bus, expected_keys):
     value = config.ee_mapping({"robot": {"end_effector": {"type": "linkerhand_l6", "interface": {"bus": bus}}}})

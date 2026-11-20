@@ -150,4 +150,4 @@ def test_485_refuses_busy_sdk_port_before_loading_or_connecting(monkeypatch):
     monkeypatch.setattr(ee_probe.socket, 'socket', lambda *args: BusySocket())
     monkeypatch.setattr(ee_probe.ctypes, 'CDLL', lambda *args: pytest.fail('must not load SDK'))
     with pytest.raises(RuntimeError, match='端口 4730'):
-        ee_probe.Arm485Transport('/workspace', '192.168.1.190', 'left', 1)
+        ee_probe.Arm485Transport('/workspace', '192.168.1.190', 'left')

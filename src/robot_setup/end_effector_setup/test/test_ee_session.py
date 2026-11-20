@@ -112,7 +112,7 @@ def test_hand_485_requires_controller_connection_confirmation(hand):
         hand.action({'revision': hand.revision, 'side': 'left', 'operation': 'probe'})
     assert hand.calls == []
     hand.action({'revision': hand.revision, 'side': 'left', 'operation': 'probe', 'allow_controller_connection': True})
-    assert hand.calls[0]['drive'] == '485' and hand.calls[0]['channel'] == 1
+    assert hand.calls[0]['drive'] == '485' and 'channel' not in hand.calls[0]
 
 
 def test_hand_does_not_open_hardware_when_control_is_running(hand, monkeypatch):
