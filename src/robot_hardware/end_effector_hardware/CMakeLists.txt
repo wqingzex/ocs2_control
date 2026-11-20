@@ -49,15 +49,8 @@ target_link_libraries(end_effector_can_protocols PUBLIC robot_comm_can::robot_co
 set_target_properties(end_effector_can_protocols PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(${PROJECT_NAME} SHARED
-        # grippers (RS485 / Modbus)
-        src/grippers/modbus_gripper_base.cpp
-        src/grippers/jodell_gripper.cpp
-        src/grippers/gripper_modbus_hardware.cpp
-        # dexterous hands
-        src/hands/dexterous_hand_base.cpp
-        src/hands/linkerhand/linkerhand_rs485_hardware.cpp
+        # LinkerHand on classic CAN
         src/hands/linkerhand/linkerhand_can_hardware.cpp
-        src/hands/xhand1/xhand1_rs485_hardware.cpp
         # end effectors on a robot_comm bus (USB or an arm's flange port)
         src/bus/bus_device.cpp
         src/bus/jodell_rg75.cpp
@@ -66,9 +59,6 @@ add_library(${PROJECT_NAME} SHARED
         src/bus/end_effector_hardware.cpp
         src/bus/kwr75_sensor.cpp
         src/bus/bus_probe.cpp
-        # sensors
-        src/sensors/kwr75/kwr75_serial_client.cpp
-        src/sensors/kwr75/kwr75_force_torque_sensor.cpp
 )
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -113,10 +103,6 @@ if(BUILD_TESTING)
   ament_add_gtest(test_end_effector_hardware test/test_end_effector_hardware.cpp)
   target_link_libraries(test_end_effector_hardware ${PROJECT_NAME})
   ament_target_dependencies(test_end_effector_hardware hardware_interface rclcpp rclcpp_lifecycle)
-  # Until the earlier XHand1Rs485Hardware is removed: the bus XHand1 sends the same bytes.
-  ament_add_gtest(test_xhand1_parity test/test_xhand1_parity.cpp)
-  target_link_libraries(test_xhand1_parity ${PROJECT_NAME})
-  ament_target_dependencies(test_xhand1_parity hardware_interface rclcpp rclcpp_lifecycle)
   ament_add_gtest(test_kwr75_sensor test/test_kwr75_sensor.cpp)
   target_link_libraries(test_kwr75_sensor ${PROJECT_NAME})
   ament_target_dependencies(test_kwr75_sensor hardware_interface rclcpp rclcpp_lifecycle)
@@ -124,9 +110,6 @@ if(BUILD_TESTING)
   # The bus measurement on a MockBus with simulated devices: round trips, loss, gaps, failed devices.
   ament_add_gtest(test_bus_probe test/test_bus_probe.cpp)
   target_link_libraries(test_bus_probe ${PROJECT_NAME})
-
-  ament_add_gtest(test_jodell_gripper test/test_jodell_gripper.cpp)
-  target_link_libraries(test_jodell_gripper ${PROJECT_NAME})
 
   # The LinkerHand CAN protocol: frames in and out, without ROS and without a bus.
   ament_add_gtest(test_linkerhand_can_protocol test/test_linkerhand_can_protocol.cpp)

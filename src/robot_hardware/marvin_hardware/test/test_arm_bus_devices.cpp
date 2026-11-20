@@ -1,4 +1,4 @@
-// End effector components on the arm's flange buses, as on the robot with end_effector_driver bus: the real bus devices
+// End effector components on the arm's flange buses, as on the robot: the real bus devices
 // of end_effector_hardware (Jodell RG75 on the left arm, LinkerHand L6 on the right) behind ArmBuses, whose fake SDK
 // channel functions answer like the devices. The buses move only in the arm's read() / write() (pull / push), in the
 // order ros2_control runs the components: arms read, end effector read, arms write, end effector write.

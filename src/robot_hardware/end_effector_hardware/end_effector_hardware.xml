@@ -16,44 +16,6 @@
             polled once per read() without waiting.
         </description>
     </class>
-    <class name="end_effector_hardware/GripperModbusHardware"
-           type="end_effector_hardware::GripperModbusHardware"
-           base_class_type="hardware_interface::SystemInterface">
-        <description>
-            Modbus ROS2 Control Hardware Interface
-            Supports multiple Modbus-based end effectors (grippers, etc.) with different protocols.
-            Currently supports: Jodell RG75 gripper (gripper_type: jodell)
-        </description>
-    </class>
-    <class name="end_effector_hardware/LinkerHandRs485Hardware"
-           type="end_effector_hardware::LinkerHandRs485Hardware"
-           base_class_type="hardware_interface::SystemInterface">
-        <description>
-            Modbus ROS2 Control Hardware Interface for Dexterous Hand
-            Supports O7 mechanical hand via Modbus RTU protocol.
-            Modbus ID: Right hand 0x27, Left hand 0x28
-            Baudrate: 115200 (fixed)
-            Function codes: 04 (read), 16 (write)
-        </description>
-    </class>
-    <class name="end_effector_hardware/XHand1Rs485Hardware"
-           type="end_effector_hardware::XHand1Rs485Hardware"
-           base_class_type="hardware_interface::SystemInterface">
-        <description>
-            ROS2 Control Hardware Interface for XHAND1 over its custom RS485 protocol.
-            Defaults: /dev/ttyUSB0, hand ID 0, host ID 0xFE, baudrate 3000000, 8N1.
-            Commands: 0x02 realtime 12-joint position control and feedback.
-        </description>
-    </class>
-    <class name="end_effector_hardware/Kwr75ForceTorqueSensor"
-           type="end_effector_hardware::Kwr75ForceTorqueSensor"
-           base_class_type="hardware_interface::SensorInterface">
-        <description>
-            KWR75 six-axis force/torque sensor over custom RS485 (USB-RS485 adapter).
-            Defaults: /dev/ttyUSB0, baudrate 115200, 8N1, command 0x49.
-            Poll command 0x49 0xAA 0x0D 0x0A, response 28-byte float frame.
-        </description>
-    </class>
     <class name="end_effector_hardware/LinkerHandCanHardware"
            type="end_effector_hardware::LinkerHandCanHardware"
            base_class_type="hardware_interface::SystemInterface">

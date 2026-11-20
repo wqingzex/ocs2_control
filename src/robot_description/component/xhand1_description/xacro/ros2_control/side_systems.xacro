@@ -3,8 +3,8 @@
 
   <xacro:include filename="$(find xhand1_description)/xacro/ros2_control/side_system.xacro"/>
 
-  <!-- commands: the command interfaces of each joint. EndEffectorHardware (end_effector_driver bus) takes position
-       only; the earlier XHand1Rs485Hardware also declares velocity / effort (overwritten by its tool parameters). -->
+  <!-- commands: the command interfaces of each joint. EndEffectorHardware takes position only; the mock and Isaac
+       systems of the whole robot declare velocity / effort as well. -->
   <xacro:macro name="xhand1_interfaces" params="name commands:='position velocity effort'">
     <xacro:property name="prefix" value="${name + '_' if name else ''}"/>
 
@@ -108,43 +108,21 @@
 
   <xacro:macro name="xhand1_rs485_side_system" params="side serial_port baudrate:=3000000 host_id:=0xFE hand_id:=0 rw_rate:=''">
     <!-- rw_rate: optional ros2_control read/write rate [Hz]; empty = controller_manager rate -->
-    <!-- end_effector_driver (m6_ccs_description external_ee_systems.xacro): bus = EndEffectorHardware on a
-         robot_comm bus, the same frames without a thread of its own (not yet verified on the robot). -->
-    <xacro:if value="${end_effector_driver == 'bus'}">
-      <xacro:side_ros2_control_system name="${side}_end_effector" rw_rate="${rw_rate}">
-        <contents>
-          <hardware>
-            <plugin>end_effector_hardware/EndEffectorHardware</plugin>
-            <param name="device">xhand1</param>
-            <param name="side">${side}</param>
-            <param name="bus">usb_rs485://${serial_port}?baud=${baudrate}</param>
-            <param name="host_id">${host_id}</param>
-            <param name="hand_id">${hand_id}</param>
-            <param name="torque">0.8</param>
-            <param name="velocity">0</param>
-          </hardware>
-          <xacro:xhand1_interfaces name="${side}_hand" commands="position"/>
-        </contents>
-      </xacro:side_ros2_control_system>
-    </xacro:if>
-    <xacro:unless value="${end_effector_driver == 'bus'}">
     <xacro:side_ros2_control_system name="${side}_end_effector" rw_rate="${rw_rate}">
       <contents>
         <hardware>
-          <plugin>end_effector_hardware/XHand1Rs485Hardware</plugin>
-          <param name="serial_port">${serial_port}</param>
-          <param name="baudrate">${baudrate}</param>
+          <plugin>end_effector_hardware/EndEffectorHardware</plugin>
+          <param name="device">xhand1</param>
+          <param name="side">${side}</param>
+          <param name="bus">usb_rs485://${serial_port}?baud=${baudrate}</param>
           <param name="host_id">${host_id}</param>
           <param name="hand_id">${hand_id}</param>
-          <param name="require_initial_feedback">true</param>
-          <param name="feedback_timeout_ms">50</param>
-          <param name="background_period_ms">12</param>
-          <param name="control_mode">3</param>
+          <param name="torque">0.8</param>
+          <param name="velocity">0</param>
         </hardware>
-        <xacro:xhand1_interfaces name="${side}_hand"/>
+        <xacro:xhand1_interfaces name="${side}_hand" commands="position"/>
       </contents>
     </xacro:side_ros2_control_system>
-    </xacro:unless>
   </xacro:macro>
 
 </robot>

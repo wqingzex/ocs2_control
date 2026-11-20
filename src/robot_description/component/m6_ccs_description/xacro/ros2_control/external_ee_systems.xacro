@@ -5,40 +5,16 @@
 	<xacro:include filename="$(find linkerhand_description)/xacro/ros2_control/side_systems.xacro"/>
 	<xacro:include filename="$(find wuji_description)/xacro/ros2_control/side_systems.xacro"/>
 
-	<!-- end_effector_driver: legacy (default) = the per-model plugins below, and the arm driver for arm_rs485;
-	     bus = end_effector_hardware/EndEffectorHardware on a robot_comm bus (not yet verified on the robot).
-	     On the robot: robot.local.yaml hardware: {end_effector_driver: bus}; otherwise the launch argument
-	     xacro_end_effector_driver:=bus. Declared again in the ros2_control robot.xacro files (drive of arm_rs485). -->
-	<xacro:arg name="end_effector_driver" default="legacy"/>
-	<xacro:property name="end_effector_driver" value="$(arg end_effector_driver)"/>
-	<xacro:unless value="${end_effector_driver in ['legacy', 'bus']}">
-		${xacro.fatal('end_effector_driver must be legacy or bus, got ' + end_effector_driver)}
-	</xacro:unless>
-
 	<xacro:macro name="side_usb_hand_system" params="side hand_type serial_port">
-		<xacro:if value="${end_effector_driver == 'bus'}">
-			<ros2_control name="${side}_end_effector" type="system">
-				<hardware>
-					<plugin>end_effector_hardware/EndEffectorHardware</plugin>
-					<param name="device">${hand_type}</param>
-					<param name="side">${side}</param>
-					<param name="bus">usb_rs485://${serial_port}?baud=115200</param>
-				</hardware>
-				<xacro:side_hand_interfaces side="${side}" hand_type="${hand_type}"/>
-			</ros2_control>
-		</xacro:if>
-		<xacro:unless value="${end_effector_driver == 'bus'}">
-			<ros2_control name="${side}_end_effector" type="system">
-				<hardware>
-					<plugin>end_effector_hardware/LinkerHandRs485Hardware</plugin>
-					<param name="serial_port">${serial_port}</param>
-					<param name="hand_type">${hand_type}</param>
-					<param name="hand_side">${side}</param>
-					<param name="max_speed_ratio">1.0</param>
-				</hardware>
-				<xacro:side_hand_interfaces side="${side}" hand_type="${hand_type}"/>
-			</ros2_control>
-		</xacro:unless>
+		<ros2_control name="${side}_end_effector" type="system">
+			<hardware>
+				<plugin>end_effector_hardware/EndEffectorHardware</plugin>
+				<param name="device">${hand_type}</param>
+				<param name="side">${side}</param>
+				<param name="bus">usb_rs485://${serial_port}?baud=115200</param>
+			</hardware>
+			<xacro:side_hand_interfaces side="${side}" hand_type="${hand_type}"/>
+		</ros2_control>
 	</xacro:macro>
 
 	<!-- An end effector on the arm's flange RS485 (port1, SDK COM1), driven over the arm's bus by

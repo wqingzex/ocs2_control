@@ -8,13 +8,9 @@
 
 | 插件 | 设备 | 接线 | 备注 |
 |---|---|---|---|
-| `GripperModbusHardware` | Jodell RG75 | USB-RS485（Modbus） | `gripper_type:=jodell`（默认，也是唯一支持的类型） |
-| `LinkerHandRs485Hardware` | LinkerHand L6 | USB-RS485（Modbus） | `hand_type:=linkerhand_l6`，6 关节；左手 `0x28`、右手 `0x27` |
 | `LinkerHandCanHardware` | LinkerHand L6 | USB-CAN（经典 CAN 1 Mbit/s） | `hand_type:=linkerhand_l6`；左手 `0x28`、右手 `0x27`；一只手一个 system |
-| `XHand1Rs485Hardware` | XHand1 | USB-RS485（专用协议，3 Mbps） | 12 关节 |
-| `Kwr75ForceTorqueSensor` | KWR75 六轴力传感器 | USB-RS485 | `type="sensor"`，默认 2.5 Mbps；发布 `/left_arm_external_wrench`、`/right_arm_external_wrench` |
-| `Kwr75Sensor`（新，未上真机） | KWR75 六轴力传感器 | 任一 `robot_comm` bus：`usb_rs485://<设备>?baud=`、`arm_rs485://<臂 IP>/<left\|right>/port2` | `type="sensor"`；每次 `read()` 取上一帧回复、发下一次查询（0x48），不等待；`offline_after_ms`（默认 100）内没有好帧就输出 0。xacro 用 `left_ft_bus` / `right_ft_bus` 接，`left_ft_broadcaster` / `right_ft_broadcaster` 发布 `/<side>_ft_broadcaster/wrench` |
-| `EndEffectorHardware`（新，未上真机） | Jodell RG75、LinkerHand L6、XHand1 | 任一 `robot_comm` bus：`usb_rs485://<设备>?baud=`、`arm_rs485://<臂 IP>/<left\|right>/port1` | `device`、`side`、`bus`；`io_mode` async（默认）/ sync；`torque` / `velocity` 也可运行时改。xacro 里 `end_effector_driver: bus` 时启用。在控制循环里异步初始化，接在臂上时可以先于臂激活，臂连上后才开始。`offline_after_ms` 内没有好回复就报离线（HW-004，默认 RG75 / L6 2000 ms、XHand1 200 ms）；RG75 离线后重新激活，应答后保持当时的位置，L6 恢复后继续写位置。XHand1（`device=xhand1`，`usb_rs485://...?baud=3000000`）：先发 0 力矩帧直到手回复，再保持当前位置；每次交换发指令并读回状态，力矩上限 = `torque_limit` × `torque`（xacro 里 0.8）；200 ms 没回复就退回 0 力矩帧，恢复后保持手当时的位置；帧格式和旧 `XHand1Rs485Hardware` 逐字节一致（`test_xhand1_parity`）；只导出 position 命令接口 |
+| `Kwr75Sensor`（未上真机） | KWR75 六轴力传感器 | 任一 `robot_comm` bus：`usb_rs485://<设备>?baud=`、`arm_rs485://<臂 IP>/<left\|right>/port2` | `type="sensor"`；每次 `read()` 取上一帧回复、发下一次查询（0x48），不等待；`offline_after_ms`（默认 100）内没有好帧就输出 0。xacro 用 `left_ft_bus` / `right_ft_bus` 接，`left_ft_broadcaster` / `right_ft_broadcaster` 发布 `/<side>_ft_broadcaster/wrench` |
+| `EndEffectorHardware`（XHand1 已在真机上验证；L6、RG75 和臂体 485 口未上真机） | Jodell RG75、LinkerHand L6、XHand1 | 任一 `robot_comm` bus：`usb_rs485://<设备>?baud=`、`arm_rs485://<臂 IP>/<left\|right>/port1` | `device`、`side`、`bus`；`io_mode` async（默认）/ sync；`torque` / `velocity` 也可运行时改。在控制循环里异步初始化，接在臂上时可以先于臂激活，臂连上后才开始。`offline_after_ms` 内没有好回复就报离线（HW-004，默认 RG75 / L6 2000 ms、XHand1 200 ms）；RG75 离线后重新激活，应答后保持当时的位置，L6 恢复后继续写位置。XHand1（`device=xhand1`，`usb_rs485://...?baud=3000000`）：先发 0 力矩帧直到手回复，再保持当前位置；每次交换发指令并读回状态，力矩上限 = `torque_limit` × `torque`（xacro 里 0.8）；200 ms 没回复就退回 0 力矩帧，恢复后保持手当时的位置；帧格式沿用原来 `XHand1Rs485Hardware` 的协议；只导出 position 命令接口（独立的手描述 `hand.xacro` 的 real 也是它） |
 
 本仓库的描述包只带 LinkerHand L6、XHand1、Wuji Hand 2，其余型号需要对应的 `*_description` 包。
 
@@ -22,13 +18,9 @@
 
 ```text
 include/end_effector_hardware/   src/ 同样分目录
-├─ common/serial_notices.h       串口打开时的提示（低延迟设置等）转成日志
-├─ grippers/                     GripperModbusHardware 和各品牌夹爪
-├─ hands/
-│  ├─ dexterous_hand_base.h, dexterous_hand_wrapper_template.h
-│  ├─ linkerhand/                RS485 与 CAN 两种驱动；CAN 帧协议在 linkerhand_can_protocol.h（纯函数）
-│  ├─ xhand1/
-└─ sensors/kwr75/
+├─ bus/                          EndEffectorHardware、Kwr75Sensor、各设备（jodell_rg75、linkerhand_l6、xhand1）和总线测量
+├─ gripper_protocol/             夹爪 / 灵巧手 Modbus 协议（寄存器表、单位换算、指令构造），header-only；bus 驱动和 marvin_hardware 用
+└─ hands/linkerhand/             USB-CAN 驱动；CAN 帧协议在 linkerhand_can_protocol.h（纯函数）
 ```
 
 ## 使用
@@ -58,13 +50,12 @@ ros2 launch robot_startup hand.launch.py hand:=linkerhand type:=l6 hardware:=rea
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `serial_port` | `/dev/ttyUSB0` | 串口（RS485 插件） |
-| `baudrate` | 各插件不同（多为 115200） | 波特率 |
-| `hand_side` | | `left` / `right` |
-| `slave_id` | 各插件不同 | 从站号 |
-| `left_tool_torque` `left_tool_velocity`（右同） | `1.0` | LinkerHand 力矩、速度比例 `[0, 1]`，运行时可改 |
-| `read_feedback` | `true` | 读回实际位置；关闭则显示命令位置 |
-| `response_timeout_ms` `byte_timeout_ms` | `20` `5` | Modbus 超时 |
+| `device` | | `bus` 驱动（`EndEffectorHardware`）：`jodell_rg75`、`linkerhand_l6`、`xhand1` |
+| `side` | | `left` / `right` |
+| `bus` | | `usb_rs485://<设备>?baud=…` 或 `arm_rs485://<臂 IP>/<left\|right>/port1` |
+| `io_mode` | `async` | `async` / `sync` |
+| `torque` `velocity` | 各设备不同 | 力矩、速度比例，运行时可改 |
+| `host_id` `hand_id` | `0xFE` `0` | XHand1 |
 | `can_interface` `can_bitrate` `can_restart_ms` `can_manage_interface` | `can0`、`1000000`、`100`、`true` | CAN 插件；所有 CAN 驱动共用的参数（`robot_comm::parseCanConfig`）。`can_manage_interface:=true` 时驱动执行 `sudo ip link set ...`，免密规则由 `./scripts/setup.sh host` 写入 |
 | `read_tactile` `tactile_period_ms` `tactile_timeout_ms` | `false`、`20`、`100` | LinkerHand CAN 触觉，发布到 `/<型号>_hand/<side>/tactile/<finger>` |
 
@@ -86,7 +77,7 @@ LinkerHand CAN 驱动的总线读写在单独的线程里，`read()` / `write()`
 colcon test --packages-select end_effector_hardware
 ```
 
-`test_jodell_gripper`；`test_linkerhand_can_protocol`（帧的构造和解析、单位换算）；`test_linkerhand_can_hardware`（驱动跑在 `MockCanBus` 上：参数检查、反馈、指令、限幅、总线错误）；`test_bus_probe`（总线测量跑在 `MockBus` 上：往返时延、限速、设备不应答）。
+`test_bus_devices`（RG75、L6、XHand1 在 `MockBus` 上：初始化、指令帧、状态帧、失败）；`test_end_effector_hardware`；`test_kwr75_sensor`；`test_linkerhand_can_protocol`（帧的构造和解析、单位换算）；`test_linkerhand_can_hardware`（驱动跑在 `MockCanBus` 上：参数检查、反馈、指令、限幅、总线错误）；`test_bus_probe`（总线测量跑在 `MockBus` 上：往返时延、限速、设备不应答）。
 
 ## 总线测量
 
@@ -101,5 +92,4 @@ colcon test --packages-select end_effector_hardware
 
 ## 编译与扩展
 
-依赖 `libmodbus-dev`、`robot_comm_*`。新增夹爪：继承 `ModbusGripperBase` 实现协议，在 `GripperModbusHardware::on_init()` 按 `gripper_type` 实例化，并在 `end_effector_hardware.xml` 注册。新增一种 CAN 手：协议写成纯函数放在 `hands/<型号>/`，驱动持有 `robot_comm::CanBus`（测试里注入 `MockCanBus`），参照 `linkerhand`。
-
+依赖 `robot_comm_*`。新增一种 RS485 设备：在 `bus/` 里实现 `BusDevice`，在 `bus_device.cpp` 按 `device` 实例化。新增一种 CAN 手：协议写成纯函数放在 `hands/<型号>/`，驱动持有 `robot_comm::CanBus`（测试里注入 `MockCanBus`），参照 `linkerhand`。

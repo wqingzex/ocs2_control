@@ -19,11 +19,9 @@
 
 	<xacro:property name="is_real_hardware" value="${'$(arg ros2_control_hardware_type)' == 'real'}"/>
 	<xacro:property name="default_end_effector_bus" value="${'arm_rs485' if '$(arg ros2_control_hardware_type)' == 'real' else ''}"/>
-	<!-- end_effector_driver bus: an end effector on the arm's RS485 is its own component (end_effector_hardware on
-	     arm_rs485://<ip>/<side>/port1) instead of being driven inside the arm driver (legacy). -->
-	<xacro:arg name="end_effector_driver" default="legacy"/>
-	<xacro:property name="arm_rs485_drive" value="${'arm_bus' if '$(arg end_effector_driver)' == 'bus' else 'marvin'}"/>
-	<xacro:property name="bus_to_drive" value="${dict(usb_rs485='usb', arm_rs485=arm_rs485_drive, usb_can='usb_can', ethernet='ethernet')}"/>
+	<!-- An end effector on the arm's RS485 is its own component (end_effector_hardware on
+	     arm_rs485://<ip>/<side>/port1); the arm driver only carries the bytes (arm_bus). -->
+	<xacro:property name="bus_to_drive" value="${dict(usb_rs485='usb', arm_rs485='arm_bus', usb_can='usb_can', ethernet='ethernet')}"/>
 	<xacro:property name="left_end_effector_bus" value="${'$(arg left_end_effector_bus)' or default_end_effector_bus}"/>
 	<xacro:property name="right_end_effector_bus" value="${'$(arg right_end_effector_bus)' or default_end_effector_bus}"/>
 	<xacro:unless value="${left_end_effector_bus in ['', *bus_to_drive] and right_end_effector_bus in ['', *bus_to_drive]}">

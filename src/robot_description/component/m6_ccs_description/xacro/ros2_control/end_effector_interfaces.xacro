@@ -34,7 +34,8 @@
 		</xacro:if>
 	</xacro:macro>
 
-	<!-- mode: sim | real -->
+	<!-- mode: sim | real. On the real robot the end effectors are components of their own (external_ee_systems), the arms
+	     system only has the arm joints. -->
 	<xacro:macro name="dual_arm_ee_block" params="mode">
 		<xacro:m6_interfaces name="left"/>
 		<xacro:m6_interfaces name="right"/>
@@ -54,21 +55,6 @@
 			</xacro:if>
 		</xacro:if>
 
-		<xacro:if value="${mode == 'real'}">
-			<!-- The gripper joint is declared by the block that drives it: marvin / tianji_can -> the arms system -->
-			<xacro:if value="${left_gripper_type != '' and (left_drive_type == 'marvin' or left_drive_type == 'tianji_can')}">
-				<xacro:side_gripper_joint side="left"/>
-			</xacro:if>
-			<xacro:if value="${right_gripper_type != '' and (right_drive_type == 'marvin' or right_drive_type == 'tianji_can')}">
-				<xacro:side_gripper_joint side="right"/>
-			</xacro:if>
-			<xacro:if value="${(left_drive_type == 'marvin' or left_drive_type == 'tianji_can') and left_hand_type != '' and left_hand_type != 'xhand1'}">
-				<xacro:side_hand_interfaces side="left" hand_type="${left_hand_type}"/>
-			</xacro:if>
-			<xacro:if value="${(right_drive_type == 'marvin' or right_drive_type == 'tianji_can') and right_hand_type != '' and right_hand_type != 'xhand1'}">
-				<xacro:side_hand_interfaces side="right" hand_type="${right_hand_type}"/>
-			</xacro:if>
-		</xacro:if>
 	</xacro:macro>
 
 	<!-- Single left arm (m6_ccs type:=left); the single-arm gripper is not wired, gripper_type is ignored -->

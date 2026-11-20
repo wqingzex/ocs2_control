@@ -30,16 +30,10 @@
             </xacro:if>
 
             <xacro:if value="${'$(arg ros2_control_hardware_type)' == 'real'}">
-                <plugin>end_effector_hardware/LinkerHandRs485Hardware</plugin>
-                <param name="serial_port">/dev/ttyUSB0</param>
-                <param name="hand_type">linkerhand_$(arg type)</param>
-                <xacro:if value="${'$(arg direction)' == '1'}">
-                    <param name="hand_side">left</param>
-                </xacro:if>
-                <xacro:unless value="${'$(arg direction)' == '1'}">
-                    <param name="hand_side">right</param>
-                </xacro:unless>
-                <param name="max_speed_ratio">0.8</param>
+                <plugin>end_effector_hardware/EndEffectorHardware</plugin>
+                <param name="device">linkerhand_$(arg type)</param>
+                <param name="side">${'left' if '$(arg direction)' == '1' else 'right'}</param>
+                <param name="bus">usb_rs485:///dev/ttyUSB0?baud=115200</param>
             </xacro:if>
         </hardware>
 

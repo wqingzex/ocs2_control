@@ -50,7 +50,7 @@ namespace end_effector_hardware
     }  // namespace xhand1
 
     /**
-     * XHand1 dexterous hand (12 joints) on a robot_comm bus, as the earlier XHand1Rs485Hardware:
+     * XHand1 dexterous hand (12 joints) on a robot_comm bus, with the protocol of the earlier XHand1Rs485Hardware:
      *
      *  - joints matched by name: thumb_joint1..3, index_joint1..3, middle_joint1..2, ring_joint1..2, pinky_joint1..2
      *    (hand joint ids 0..11 in that order); positions clamped to the hand's limits;

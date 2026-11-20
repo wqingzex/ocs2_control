@@ -22,4 +22,4 @@ Marvin 臂体口（天机 SDK 的异步 485）没有接到 `ModbusMaster`，原�
 
 ## 新加一个串口设备
 
-驱动持有 `std::unique_ptr<robot_comm::SerialPort>`（默认 `PosixSerialPort`），用 `SerialConfig` 打开；`open()` 之后用 `takeNotices()` 取出低延迟设置等提示再写日志（参考 `end_effector_hardware/communicator/serial_notices.h`）；测试里注入 `MockSerialPort`，或者用 pty 测真实的 `PosixSerialPort`。在 `package.xml` 里依赖 `robot_comm_serial`。
+驱动持有 `std::unique_ptr<robot_comm::SerialPort>`（默认 `PosixSerialPort`），用 `SerialConfig` 打开；`open()` 之后用 `takeNotices()` 取出低延迟设置等提示再写日志（参考 `robot_comm_serial` 的 `takeNotices()` 用法）；测试里注入 `MockSerialPort`，或者用 pty 测真实的 `PosixSerialPort`。在 `package.xml` 里依赖 `robot_comm_serial`。
