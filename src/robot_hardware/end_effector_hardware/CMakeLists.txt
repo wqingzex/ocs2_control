@@ -56,7 +56,6 @@ add_library(${PROJECT_NAME} SHARED
         src/bus/linkerhand_l6.cpp
         src/bus/xhand1.cpp
         src/bus/end_effector_hardware.cpp
-        src/bus/kwr75_sensor.cpp
         src/bus/bus_probe.cpp
 )
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
@@ -102,9 +101,6 @@ if(BUILD_TESTING)
   ament_add_gtest(test_end_effector_hardware test/test_end_effector_hardware.cpp)
   target_link_libraries(test_end_effector_hardware ${PROJECT_NAME})
   ament_target_dependencies(test_end_effector_hardware hardware_interface rclcpp rclcpp_lifecycle)
-  ament_add_gtest(test_kwr75_sensor test/test_kwr75_sensor.cpp)
-  target_link_libraries(test_kwr75_sensor ${PROJECT_NAME})
-  ament_target_dependencies(test_kwr75_sensor hardware_interface rclcpp rclcpp_lifecycle)
 
   # The bus measurement on a MockBus with simulated devices: round trips, loss, gaps, failed devices.
   ament_add_gtest(test_bus_probe test/test_bus_probe.cpp)

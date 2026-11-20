@@ -23,7 +23,7 @@ fa_w2 和 M6 的双臂用它（URDF 里的 `arms`）。双臂时左臂走 A 通�
 
 ## 法兰总线
 
-每条臂的法兰口登记成 `robot_comm` bus，供 `end_effector_hardware` 的 `EndEffectorHardware`（RG75、L6）和 `Kwr75Sensor` 使用（见 `m6_ccs_description` 的 `external_ee_systems`、`ft_sensor_systems`）。代码在 `comm/`：`sdk_channels` 是 SDK 通道收发函数的薄封装（左臂 A、右臂 B），`arm_bus` 把它们变成 bus。
+每条臂的法兰口登记成 `robot_comm` bus，供 `end_effector_hardware` 的 `EndEffectorHardware`（RG75、L6）使用（见 `m6_ccs_description` 的 `external_ee_systems`）。代码在 `comm/`：`sdk_channels` 是 SDK 通道收发函数的薄封装（左臂 A、右臂 B），`arm_bus` 把它们变成 bus。
 
 | bus | SDK 通道 |
 |---|---|

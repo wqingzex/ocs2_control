@@ -55,7 +55,6 @@
 	<xacro:include filename="$(find m6_ccs_description)/xacro/ros2_control/marvin_hardware.xacro"/>
 	<xacro:include filename="$(find m6_ccs_description)/xacro/ros2_control/end_effector_interfaces.xacro"/>
 	<xacro:include filename="$(find m6_ccs_description)/xacro/ros2_control/external_ee_systems.xacro"/>
-	<xacro:include filename="$(find m6_ccs_description)/xacro/ros2_control/ft_sensor_systems.xacro"/>
 
 	<xacro:property name="ee_block_mode" value="${'real' if is_real_hardware else 'sim'}"/>
 
@@ -100,7 +99,6 @@
 			left_ee_can_interface="$(arg left_ee_can_interface)"
 			right_ee_can_interface="$(arg right_ee_can_interface)"
 			device_ip="$(arg device_ip)"/>
-		<xacro:ft_sensor_systems device_ip="$(arg device_ip)"/>
 	</xacro:if>
 
 	<xacro:arg name="gazebo" default="false"/>

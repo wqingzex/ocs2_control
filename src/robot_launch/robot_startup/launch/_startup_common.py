@@ -184,7 +184,7 @@ def setup_hand_controllers(
     )
     return detect_and_spawn_controllers(
         ctx.config,
-        ["hand", "gripper", "ft_broadcaster"],  # the FT broadcasters only for the sensors the robot has
+        ["hand", "gripper"],
         robot_description=robot_description,
         use_sim_time=ctx.use_sim_time,
     )

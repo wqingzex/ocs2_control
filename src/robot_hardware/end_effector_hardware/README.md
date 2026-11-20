@@ -2,14 +2,13 @@
 
 外接末端执行器的 ros2_control 驱动：夹爪、灵巧手、六轴力传感器，按设备分目录。原来的 `modbus_hardware`（RS485 / Modbus 上的末端）和 `can_hardware`（CAN 上的末端）合并而来。通信只用 [`comm/`](../comm/README.md)（`robot_comm_serial`、`robot_comm_modbus`、`robot_comm_can`），每个设备的协议在本包；夹爪和灵巧手的协议层（寄存器表、单位换算、指令组装、`GripperBase`）在 `include/end_effector_hardware/gripper_protocol/`，命名空间 `gripper_protocol`，导出成纯头文件目标 `end_effector_hardware::gripper_protocol`：[`marvin_hardware`](../marvin_hardware/README.md) 经臂体 RS485 透传驱动同样的设备，只链接这个目标，不链接插件库。夹爪只支持 Jodell RG75。
 
-接在臂法兰口上的末端（RG75、L6、KWR75）也用本包的 bus 驱动，通信经 [`marvin_hardware`](../marvin_hardware/README.md) 的法兰总线；Wuji Hand 2（以太网、厂家 SDK）走 [`wuji_hardware`](../wuji_hardware/README.md)。
+接在臂法兰口上的末端（RG75、L6）也用本包的 bus 驱动，通信经 [`marvin_hardware`](../marvin_hardware/README.md) 的法兰总线；Wuji Hand 2（以太网、厂家 SDK）走 [`wuji_hardware`](../wuji_hardware/README.md)。
 
 ## 插件
 
 | 插件 | 设备 | 接线 | 备注 |
 |---|---|---|---|
 | `LinkerHandCanHardware` | LinkerHand L6 | USB-CAN（经典 CAN 1 Mbit/s） | `hand_type:=linkerhand_l6`；左手 `0x28`、右手 `0x27`；一只手一个 system |
-| `Kwr75Sensor`（未上真机） | KWR75 六轴力传感器 | 任一 `robot_comm` bus：`usb_rs485://<设备>?baud=`、`arm_rs485://<臂 IP>/<left\|right>/port2` | `type="sensor"`；每次 `read()` 取上一帧回复、发下一次查询（0x48），不等待；`offline_after_ms`（默认 100）内没有好帧就输出 0。xacro 用 `left_ft_bus` / `right_ft_bus` 接，`left_ft_broadcaster` / `right_ft_broadcaster` 发布 `/<side>_ft_broadcaster/wrench` |
 | `EndEffectorHardware`（XHand1 已在真机上验证；L6、RG75 和臂体 485 口未上真机） | Jodell RG75、LinkerHand L6、XHand1 | 任一 `robot_comm` bus：`usb_rs485://<设备>?baud=`、`arm_rs485://<臂 IP>/<left\|right>/port1` | `device`、`side`、`bus`；`io_mode` async（默认）/ sync；`torque` / `velocity` 也可运行时改。在控制循环里异步初始化，接在臂上时可以先于臂激活，臂连上后才开始。`offline_after_ms` 内没有好回复就报离线（HW-004，默认 RG75 / L6 2000 ms、XHand1 200 ms）；RG75 离线后重新激活，应答后保持当时的位置，L6 恢复后继续写位置。XHand1（`device=xhand1`，`usb_rs485://...?baud=3000000`）：先发 0 力矩帧直到手回复，再保持当前位置；每次交换发指令并读回状态，力矩上限 = `torque_limit` × `torque`（xacro 里 0.8）；200 ms 没回复就退回 0 力矩帧，恢复后保持手当时的位置；帧格式沿用原来 `XHand1Rs485Hardware` 的协议；只导出 position 命令接口（独立的手描述 `hand.xacro` 的 real 也是它） |
 
 本仓库的描述包只带 LinkerHand L6、XHand1、Wuji Hand 2，其余型号需要对应的 `*_description` 包。
@@ -18,7 +17,7 @@
 
 ```text
 include/end_effector_hardware/   src/ 同样分目录
-├─ bus/                          EndEffectorHardware、Kwr75Sensor、各设备（jodell_rg75、linkerhand_l6、xhand1）和总线测量
+├─ bus/                          EndEffectorHardware、各设备（jodell_rg75、linkerhand_l6、xhand1）和总线测量
 ├─ gripper_protocol/             夹爪 / 灵巧手 Modbus 协议（寄存器表、单位换算、指令构造），header-only；bus 驱动和 marvin_hardware 用
 └─ hands/linkerhand/             USB-CAN 驱动；CAN 帧协议在 linkerhand_can_protocol.h（纯函数）
 ```
@@ -77,7 +76,7 @@ LinkerHand CAN 驱动的总线读写在单独的线程里，`read()` / `write()`
 colcon test --packages-select end_effector_hardware
 ```
 
-`test_bus_devices`（RG75、L6、XHand1 在 `MockBus` 上：初始化、指令帧、状态帧、失败）；`test_end_effector_hardware`；`test_kwr75_sensor`；`test_linkerhand_can_protocol`（帧的构造和解析、单位换算）；`test_linkerhand_can_hardware`（驱动跑在 `MockCanBus` 上：参数检查、反馈、指令、限幅、总线错误）；`test_bus_probe`（总线测量跑在 `MockBus` 上：往返时延、限速、设备不应答）。
+`test_bus_devices`（RG75、L6、XHand1 在 `MockBus` 上：初始化、指令帧、状态帧、失败）；`test_end_effector_hardware`；`test_linkerhand_can_protocol`（帧的构造和解析、单位换算）；`test_linkerhand_can_hardware`（驱动跑在 `MockCanBus` 上：参数检查、反馈、指令、限幅、总线错误）；`test_bus_probe`（总线测量跑在 `MockBus` 上：往返时延、限速、设备不应答）。
 
 ## 总线测量
 

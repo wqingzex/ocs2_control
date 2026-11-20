@@ -8,14 +8,6 @@
             parameter device: jodell_rg75, linkerhand_l6, xhand1.
         </description>
     </class>
-    <class name="end_effector_hardware/Kwr75Sensor"
-           type="end_effector_hardware::Kwr75Sensor"
-           base_class_type="hardware_interface::SensorInterface">
-        <description>
-            KWR75 six-axis force / torque sensor on a robot_comm bus (parameter bus: usb_rs485://..., arm_rs485://...),
-            polled once per read() without waiting.
-        </description>
-    </class>
     <class name="end_effector_hardware/LinkerHandCanHardware"
            type="end_effector_hardware::LinkerHandCanHardware"
            base_class_type="hardware_interface::SystemInterface">

@@ -189,7 +189,7 @@ robot_launch ──启动──▶ ros2_control_node（进程，ros2_control 自
                 ▼
   robot_hardware/comm 通信层：只管收发，不含设备协议
     robot_comm_can      CAN   → 关节模组（腰、头）
-    robot_comm_serial   串口  → XHand1、KWR75
+    robot_comm_serial   串口  → XHand1
     robot_comm_modbus   485   → Modbus 夹爪、灵巧手
     robot_comm_core     接口（CanBus / SerialPort / ModbusMaster）
 

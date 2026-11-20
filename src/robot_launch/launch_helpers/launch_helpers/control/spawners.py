@@ -76,18 +76,6 @@ def _extract_joints_from_urdf(robot_description):
     return {joint.get("name") for joint in root.findall(".//joint") if joint.get("name")}
 
 
-def _extract_sensors_from_urdf(robot_description):
-    """Names of the <sensor> elements of the ros2_control blocks (e.g. left_ft_sensor).
-
-    A robot_description that is not XML raises (ET.ParseError): it is the same text the controller manager loads, so
-    the launch must stop there instead of silently starting without the FT broadcasters.
-    """
-    if not robot_description:
-        return set()
-    root = ET.fromstring(robot_description)
-    return {s.get("name") for s in root.findall(".//ros2_control/sensor") if s.get("name")}
-
-
 # The MPC controllers are the arm and the whole-body plugin; the joint, hand and gripper plugins are not.
 MPC_CONTROLLER_TYPES = ("arm_controller/ArmController", "whole_body_controller/WholeBodyController")
 
@@ -112,15 +100,6 @@ def _controller_passes_joint_check(
         return False
 
     controller_params = config.get(name, {}).get("ros__parameters", {})
-    sensor_name = controller_params.get("sensor_name")
-    if sensor_name:
-        # A sensor broadcaster (FT): only when the robot has that sensor; without a description it cannot be known.
-        if sensor_name in _extract_sensors_from_urdf(robot_description):
-            print(f"[INFO] Detected controller: {name} with sensor '{sensor_name}' (verified)")
-            return True
-        skipped_controllers.add(name)
-        return False
-
     if not robot_description or not available_joints:
         return True
 
