@@ -9,10 +9,11 @@ from camera_setup.discovery import Device
 from camera_setup.session import CameraPreviews
 
 
-def process(root, pid, args, ticks=500, state='S'):
+def process(root, pid, args, ticks=500, state='S', parent=1):
     directory = root / str(pid)
     directory.mkdir(exist_ok=True)
     fields = [state] + ['0'] * 19
+    fields[1] = str(parent)
     fields[19] = str(ticks)
     (directory / 'stat').write_text(f'{pid} (camera) ' + ' '.join(fields))
     (directory / 'cmdline').write_bytes(b'\0'.join(value.encode() for value in args))
@@ -24,7 +25,7 @@ def cameras(tmp_path, monkeypatch):
     process(tmp_path, 101, ['ros2', 'launch', 'orbbec_camera', 'gemini305.launch.py',
                             'camera_name:=camera_left_wrist', 'serial_number:=SERIAL'])
     process(tmp_path, 102, ['/opt/ros/lib/component_container', '--ros-args',
-                            '__node:=camera_container', '__ns:=/camera_left_wrist'])
+                            '__node:=camera_container', '__ns:=/camera_left_wrist'], parent=101)
     process(tmp_path, 103, ['ros2', 'launch', 'robot_startup', 'split_body.launch.py',
                             'camera_name:=camera_left_wrist', 'serial_number:=SERIAL'])
     process(tmp_path, 104, ['ros2', 'launch', 'orbbec_camera', 'gemini305.launch.py',
@@ -38,17 +39,18 @@ def test_finds_only_camera_launch_and_its_dedicated_driver(cameras):
     assert processes.find_camera_processes(devices, {'camera_left_wrist'}) == []
 
 
-def test_stop_only_signals_approved_camera_processes(cameras, monkeypatch):
+def test_stop_lets_the_approved_launcher_shut_down_its_driver(cameras, monkeypatch):
     root, devices = cameras
     approved = processes.find_camera_processes(devices)
     signals = []
     def kill(pid, number):
         signals.append((pid, number))
-        path = root / str(pid) / 'stat'
-        path.write_text(path.read_text().replace(' S ', ' Z '))
+        for stopped in (101, 102):
+            path = root / str(stopped) / 'stat'
+            path.write_text(path.read_text().replace(' S ', ' Z '))
     monkeypatch.setattr(processes.os, 'kill', kill)
     processes.stop_camera_processes(approved, devices)
-    assert signals == [(101, signal.SIGINT), (102, signal.SIGINT)]
+    assert signals == [(101, signal.SIGINT)]
     assert processes.read_process(root / '103') is not None
 
 

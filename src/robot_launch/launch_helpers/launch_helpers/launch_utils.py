@@ -28,26 +28,14 @@ def is_zenoh_router_running():
         bool: 如果已经有zenoh router在运行则返回True，否则返回False
     """
     try:
-        # 检查是否有rmw_zenohd进程在运行
+        # 按进程名查找可用的路由，排除启动命令本身和退出后的僵尸进程。
         result = subprocess.run(
-            ['pgrep', '-f', 'rmw_zenohd'],
+            ['ps', '-C', 'rmw_zenohd,zenohd', '-o', 'stat='],
             capture_output=True,
             text=True
         )
-        if result.returncode == 0 and result.stdout.strip():
-            return True
-        
-        # 也检查是否有zenohd进程在运行（独立的zenoh router）
-        result = subprocess.run(
-            ['pgrep', '-f', 'zenohd'],
-            capture_output=True,
-            text=True
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return True
-        
-        return False
-    except Exception as e:
+        return any(state[0] not in 'ZX' for state in result.stdout.split())
+    except OSError as e:
         # 如果检测失败（例如pgrep命令不存在），默认返回False，允许启动
         print(f"[WARNING] Failed to check if zenoh router is running: {e}")
         return False

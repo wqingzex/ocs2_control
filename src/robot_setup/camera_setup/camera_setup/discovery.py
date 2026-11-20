@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import os
 import re
-import signal
 import stat
 import subprocess
 import threading
@@ -19,6 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
 from robot_config.config import ROLES
+from robot_runtime.processes import stop_processes
 
 # ---- discovery: one block per device "...]: name: Orbbec Gemini 335Lg", "serial: ...", "connection: ...", "usb port: ..." ----
 
@@ -269,28 +269,13 @@ def stop_camera_processes(approved, devices, excluded_names=()):
     permitted = {(item['pid'], item['start_ticks']) for item in approved}
     if any((item['pid'], item['start_ticks']) not in permitted for item in current):
         raise ValueError('相机进程列表已变化，请重新确认要停止的进程')
-    targets = [item for item in current if (item['pid'], item['start_ticks']) in permitted]
-
-    def alive(item):
-        process = read_process(PROC / str(item['pid']))
-        return process is not None and process[1] == item['start_ticks']
-
-    # A camera killed while it is still streaming can come back without frames: give SIGINT 10 s (like camera_setup).
-    for sig, grace in ((signal.SIGINT, 10), (signal.SIGTERM, 3), (signal.SIGKILL, 1)):
-        for item in targets:
-            if alive(item):
-                try:
-                    os.kill(item['pid'], sig)
-                except ProcessLookupError:
-                    pass
-                except PermissionError as exc:
-                    raise ValueError(f"没有权限停止相机进程 {item['pid']}，请先自行停止原采集程序") from exc
-        deadline = time.monotonic() + grace
-        while any(alive(item) for item in targets) and time.monotonic() < deadline:
-            time.sleep(.05)
-        if not any(alive(item) for item in targets):
-            return
-    raise ValueError('旧相机进程未完全退出，请检查后重试')
+    targets = {item['pid']: item['start_ticks'] for item in current}
+    try:
+        stopped = stop_processes(lambda: targets, proc=PROC)
+    except PermissionError as exc:
+        raise ValueError('没有权限停止相机进程，请先自行停止原采集程序') from exc
+    if not stopped:
+        raise ValueError('旧相机进程未完全退出，请检查后重试')
 
 
 def camera_error(message):
