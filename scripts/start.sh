@@ -15,7 +15,7 @@ robot_control_suite 命令行入口（面向专业人员）
   ./scripts/start.sh up|down|restart|status|logs [模块]   按模块管理（status --hz 看话题频率）
   ./scripts/start.sh diag [--minutes N] [原因]           出问题后用：汇总出错前 N 分钟（默认 10）的各模块日志、故障码、健康情况，
                                                          和各模块最近收发的数据，指出最先出问题的一环；打成一个包，报告同时打印
-  ./scripts/start.sh nav | dyn-identify   导航 / 负载辨识
+  ./scripts/start.sh dyn-identify         负载辨识
   ./scripts/start.sh console              Web 控制台，前台运行（Ctrl+C 停止）
   ./scripts/start.sh console start|stop|restart|status [--port N] [--host H]
                                           后台启动 / 停止 / 重启 / 查看控制台（默认端口 8765）
@@ -282,11 +282,6 @@ cmd_console() {
   fi
 }
 
-cmd_nav() {
-  source_ros --workspace
-  exec python3 -m robot_app.navigation --config "$(resolve_config "${CONFIG_ARG}")" --ws-root "${WS_DIR}" "$@"
-}
-
 cmd_dyn_identify() {
   source_ros --workspace
   [[ -t 0 ]] || die "负载辨识向导是交互式的，请在终端里运行"
@@ -349,7 +344,6 @@ case "${1:-}" in
   build) shift; cmd_build "$@" ;;
   check) shift; cmd_check "${1:-${CONFIG_ARG}}" ;;
   record|play|bags) recording "$@" ;;
-  nav) shift; cmd_nav "$@" ;;
   dyn-identify) shift; cmd_dyn_identify "$@" ;;
   bus_probe) shift; cmd_bus_probe "$@" ;;
   sim) SET_ARGS+=(--set robot.hardware=mock_components); cmd_start ;;

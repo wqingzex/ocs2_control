@@ -32,7 +32,7 @@
 | 路径 | 内容 |
 |---|---|
 | `src/` | C++：`console_launcher`（生成 `robot_control_suite控制台`） |
-| `robot_app/` | Python：配置加载与校验、构造运控和 RViz 单元并汇总各设备包的单元（`units`）、命令行（`units_cli`）、Web 控制台（`console/`，FastAPI）、导航、录制、诊断。进程管理在 [`robot_utils`](../../robot_utils/README.md)，头显配对在 [`xr_teleop`](../../robot_teleop/xr_teleop/README.md) |
+| `robot_app/` | Python：配置加载与校验、构造运控和 RViz 单元并汇总各设备包的单元（`units`）、命令行（`units_cli`）、Web 控制台（`console/`，FastAPI）、录制、诊断。进程管理在 [`robot_utils`](../../robot_utils/README.md)，头显配对在 [`xr_teleop`](../../robot_teleop/xr_teleop/README.md) |
 | `launch/teleop.launch.py` | 旧的"一个 launch 起全部" |
 
 ## 配置

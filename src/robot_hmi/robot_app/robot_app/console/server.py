@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from robot_config import config_file
 from camera_setup import discovery as devices
-from .. import navigation
+from .. import joystick_devices
 from . import health
 from ..diag import make_bundle
 from ..config import JOYSTICK_RE, ConfigError, load, load_lenient
@@ -34,7 +34,7 @@ class Console:
 
     def __init__(self, config_path: str, ws_root: str, probe_factory: Optional[Callable[[], Any]] = None,
                  scanner: Callable[[], List[devices.Device]] = devices.scan,
-                 joysticks: Callable[[], List[Dict[str, Any]]] = navigation.enumerate_joysticks):
+                 joysticks: Callable[[], List[Dict[str, Any]]] = joystick_devices.enumerate_joysticks):
         self.config_path = os.path.abspath(config_path)
         self.ws_root = ws_root
         self.scanner = scanner

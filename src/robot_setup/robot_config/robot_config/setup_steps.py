@@ -381,6 +381,18 @@ def add_missing(local: Any, template: Any, prefix: str = "") -> List[str]:
     return added
 
 
+# Sections the template no longer has: an old file keeps them until `setup.sh config` deletes them.
+RETIRED_KEYS = ("navigation",)
+
+
+def drop_retired(local: Any) -> List[str]:
+    """Delete the retired sections from the mapping; returns the keys deleted."""
+    dropped = [key for key in RETIRED_KEYS if key in local]
+    for key in dropped:
+        del local[key]
+    return dropped
+
+
 def _entry_of(raw: Any, requested: Optional[str], io: Io) -> str:
     entry = requested or ((raw.get("robot") or {}).get("entry") if raw else None)
     if not entry:
@@ -424,14 +436,17 @@ def sync_run(path: str, requested_entry: Optional[str], io: Io) -> bool:
     if "robot" not in raw:
         raw["robot"] = {}
     raw["robot"].setdefault("entry", entry)
+    dropped = drop_retired(raw)
     added = add_missing(raw, template)
     unknown = unknown_keys(raw, template)
-    if added:
+    if added or dropped:
         shutil.copy2(path, path + ".bak")
         config_file.save_rt(path, yaml_rt, raw)
-        io.info(f"已补上 {len(added)} 个缺的键（原文件备份为 {path}.bak）：")
+        io.info(f"已改动配置（原文件备份为 {path}.bak）：补上 {len(added)} 个缺的键，删掉 {len(dropped)} 个已退役的段")
         for item in added:
             io.info(f"  + {item}")
+        for item in dropped:
+            io.info(f"  - {item}（已退役）")
     else:
         io.info("配置完整，没有要补的键")
     if unknown:

@@ -34,7 +34,6 @@
   <exec_depend>xr_teleop</exec_depend>
   <exec_depend>robot_control_msgs</exec_depend>
   <exec_depend>robot_visualize</exec_depend>
-  <exec_depend>robot_navigation</exec_depend>
 
   <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>python3-pytest</test_depend>

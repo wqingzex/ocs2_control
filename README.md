@@ -15,7 +15,7 @@ cd robot_control_suite
 
 - 想用网页操作：编译后双击仓库根目录的控制台启动器（`robot_control_suite控制台`），它会在后台启动并打开浏览器，见 [`docs/使用手册.md`](docs/使用手册.md) 第 4 节。
 - 容器里同样运行 `./scripts/setup.sh`，只是不执行物理机的 udev 和 CAN 操作。
-- 全部命令（单步重试、模块启停、导航、录制、诊断）见 [`scripts/README.md`](scripts/README.md)；遥操作按键、坐标对齐、故障排查、真机验证见 [`docs/使用手册.md`](docs/使用手册.md)。
+- 全部命令（单步重试、模块启停、录制、诊断）见 [`scripts/README.md`](scripts/README.md)；遥操作按键、坐标对齐、故障排查、真机验证见 [`docs/使用手册.md`](docs/使用手册.md)。
 
 ## 配置
 

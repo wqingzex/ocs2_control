@@ -10,7 +10,6 @@
   <maintainer email="TODO@email.com"/>
   <license>BSD</license>
 
-  <exec_depend>nav2_smac_planner</exec_depend>
   <exec_depend>linkhou_s2_description</exec_depend>
   <exec_depend>fa_w2_body_description</exec_depend>
   <exec_depend>fa_w2_head_description</exec_depend>

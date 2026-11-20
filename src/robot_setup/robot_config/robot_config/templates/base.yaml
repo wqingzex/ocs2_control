@@ -7,7 +7,7 @@
 # 新机器先看这 5 项：
 #   robot.entry   robot.hardware   robot.base.type   robot.end_effector.type   robot.end_effector.interface.bus
 #
-# 分组：1 机器 robot | 2 控制 control | 3 遥操作输入 xr、joystick | 4 感知 cameras | 5 运行时 log、record、navigation | 6 自动写入 setup
+# 分组：1 机器 robot | 2 控制 control | 3 遥操作输入 xr、joystick | 4 感知 cameras | 5 运行时 log、record | 6 自动写入 setup
 # ======================================================================================================
 
 
@@ -156,13 +156,6 @@ log:
 record:
   dir: ""                        # 录包目录，空 = <工作区>/bags
   extra_topics: []               # 每次录制额外加入的话题，如 ["/tf"]
-
-navigation:
-  robot: fa_w2
-  map: ""                        # 空 = 标了 default 的地图
-  map_only: false                # true：只用静态地图，不处理点云
-  map_config_package: ""         # 空 = 按标准顺序查找
-  nav_config_package: ""
 
 
 # ======================================================================================================

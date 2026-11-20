@@ -1,6 +1,6 @@
 # fa_w2_description
 
-第五纪 fa_w2（轮式人形）整机描述：xacro 模型、`ros2_control` 配置、OCS2 配置、导航路由。
+第五纪 fa_w2（轮式人形）整机描述：xacro 模型、`ros2_control` 配置、OCS2 配置。
 
 ![FiveAges W2](../../../docs/images/fa_w2_description/fa_w2.png)
 
@@ -40,7 +40,6 @@ ros2 launch robot_startup head_body.launch.py    robot:=fa_w2                   
 | `config/ros2_control/common.yaml` | 控制器参数：`whole_body_controller`（全身）、`arm_controller`（双臂）、`body_joint_controller`、`head_joint_controller` 等 |
 | `config/ocs2/*.info` | MPC 配置，命名和可选值见下方 [`.info` 命名](#info-命名)；改关节速度惩罚、限速在这里 |
 | `xacro/ros2_control/body.xacro` | 腰和头的 Juxie 硬件接口 |
-| `config/maps/`、`config/nav2/` | 导航地图（`siemens`、`siemens_task2`、`wind_turbo_task1`）、Nav2 参数和行为树 |
 
 ### `.info` 命名
 
@@ -83,6 +82,3 @@ hardware:
 
 启动时可用 `hardware_<键>:=…` 覆盖，如 `hardware_device_ip:=…`、`hardware_usb_left_port:=…`。
 
-## 导航
-
-`./scripts/start.sh nav` 或 `ros2 launch robot_navigation navigation_isaac_gt.launch.py robot:=fa_w2 map:=siemens_task2`。点云话题 `/fl_lidar/point_cloud`、`/rr_lidar/point_cloud`（见 `nav2_params_isaac_gt.yaml`）。地图和参数在本包的 `config/maps/`、`config/nav2/`，`map` 可写文件夹名、绝对路径或 `文件夹/map`，`./scripts/start.sh nav --list` 列出地图，不指定时用第一张。详见 [`robot_navigation`](../../robot_launch/robot_navigation/README.md)。

@@ -24,7 +24,6 @@
 ./scripts/start.sh sim | isaac     # 硬件改为 mock_components / Isaac
 ./scripts/start.sh viz             # 只在 RViz 看模型，带关节滑块，不启动控制
 ./scripts/start.sh up|down|restart|status|logs [模块]   # 按模块管理，status --hz 看话题频率；up control 等控制器全部激活（失败会报错）并默认带 RViz（--no-rviz 不带）；up xr 等头显发来数据，没连上给警告
-./scripts/start.sh nav [--list] [--map ID] [--map-only]  # 导航
 ./scripts/start.sh dyn-identify    # 机械臂负载辨识向导，需要终端
 ./scripts/start.sh bus_probe [--side left|right] [--duration S] [--cycle-hz N]   # 测末端 USB 总线的往返时延、丢帧、请求频率；先停运控
 ./scripts/start.sh console         # Web 控制台，前台运行（Ctrl+C 停止）

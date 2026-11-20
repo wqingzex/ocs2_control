@@ -5,7 +5,7 @@
 | 目录 | 内容 |
 |---|---|
 | [`robot_control/`](robot_control/README.md) | 控制栈：末端目标节点（遥操作和推理都用）、控制器插件（臂、全身、关节、末端）、控制器核心、共用库、消息 |
-| [`robot_launch/`](robot_launch/README.md) | 启动：URDF 生成、控制器拼装、整机启动文件、导航、RViz 看模型 |
+| [`robot_launch/`](robot_launch/README.md) | 启动：URDF 生成、控制器拼装、整机启动文件、RViz 看模型 |
 | [`robot_hmi/`](robot_hmi/README.md) | 人机界面：RViz 面板，遥操作应用（模块管理、Web 控制台、录制、诊断） |
 | [`robot_description/`](robot_description/README.md) | 机器人模型：xacro、`ros2_control` 配置、OCS2 配置 |
 | [`robot_hardware/`](robot_hardware/README.md) | 硬件插件（`hardware_interface::SystemInterface`），包平铺：Marvin、JX 电机、Modbus 末端、话题桥接、Rokae，通信层单独放在 `comm/` |

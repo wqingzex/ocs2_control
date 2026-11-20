@@ -4,7 +4,7 @@
 
 | 位置 | 内容 |
 |---|---|
-| [`fa_w2_description`](fa_w2_description/README.md) | fa_w2 整机：组装、控制器配置、OCS2 `.info`、导航地图和 Nav2 参数 |
+| [`fa_w2_description`](fa_w2_description/README.md) | fa_w2 整机：组装、控制器配置、OCS2 `.info` |
 | [`component/`](component/README.md) | 可复用部件：臂、灵巧手、底盘、立柱、躯干、头、传感器，每个部件一个包 |
 
 整机包直接放在本目录，部件包都放在 `component/` 里。

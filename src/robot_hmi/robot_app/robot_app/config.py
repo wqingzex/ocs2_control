@@ -1,4 +1,4 @@
-"""Teleop configuration: the xr / joystick / navigation sections and robot.entry on top of robot_config's."""
+"""Teleop configuration: the xr / joystick sections and robot.entry on top of robot_config's."""
 from __future__ import annotations
 
 import re
@@ -9,7 +9,6 @@ from robot_config.config import ConfigError, Extension, expect
 from xr_teleop.config import EXTENSION as XR_EXTENSION
 
 JOYSTICK_RE = re.compile(r"^(/dev/input/js\d+)?$")
-NAME_RE = re.compile(r"^[A-Za-z0-9_.-]*$")  # map ids and ROS package names
 
 # entry -> (whole-robot launch file in robot_startup, robot name); same entries as the former quick_start menu
 ENTRIES = {
@@ -43,9 +42,6 @@ def _check_teleop(cfg: Dict[str, Any]) -> None:
            f"'robot.arm.type' {arm!r} has no robot model for 'robot.entry' {entry!r} (supported: {list(ENTRY_ARM_TYPES[entry])})")
     device = cfg["joystick"]["device"]
     expect(bool(JOYSTICK_RE.match(device)), f"'joystick.device' must be empty or /dev/input/jsN, got {device!r}")
-    for key in ("robot", "map", "map_config_package", "nav_config_package"):
-        value = cfg["navigation"][key]
-        expect(bool(NAME_RE.match(value)), f"'navigation.{key}' has invalid characters: {value!r}")
     _check_log(cfg["log"])
     _check_record(cfg["record"])
 

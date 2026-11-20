@@ -57,6 +57,21 @@ def test_missing_keys_are_added_and_nothing_else_changes(tmp_path):
     assert not setup_steps.sync_status(str(path))[0]
 
 
+def test_a_retired_section_is_deleted_with_a_backup(tmp_path):
+    path = tmp_path / "robot.local.yaml"
+    setup_steps.sync_run(str(path), "whole_body", Quiet())
+    old_section = ("navigation:\n  robot: fa_w2\n  map: \"\"\n  map_only: false\n"
+                   "  map_config_package: \"\"\n  nav_config_package: \"\"\n")
+    path.write_text(path.read_text(encoding="utf-8") + old_section, encoding="utf-8")
+    assert setup_steps.sync_status(str(path))[0]
+
+    assert setup_steps.sync_run(str(path), None, Quiet())
+
+    assert "navigation" not in read(path)
+    assert "navigation:" in (tmp_path / "robot.local.yaml.bak").read_text(encoding="utf-8")
+    assert not setup_steps.sync_status(str(path))[0]
+
+
 def test_a_complete_file_is_left_alone(tmp_path):
     path = tmp_path / "robot.local.yaml"
     setup_steps.sync_run(str(path), "whole_body", Quiet())
