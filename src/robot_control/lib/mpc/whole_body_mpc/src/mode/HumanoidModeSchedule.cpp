@@ -33,8 +33,6 @@ std::string bodyModeToString(BodyConstraintMode mode) {
             return "HEAD_COUPLED";
         case BodyConstraintMode::CUSTOM_LOCKED:
             return "CUSTOM_LOCKED";
-        case BodyConstraintMode::HEAD_TRACKING:
-            return "HEAD_TRACKING";
         default:
             return "UNKNOWN";
     }

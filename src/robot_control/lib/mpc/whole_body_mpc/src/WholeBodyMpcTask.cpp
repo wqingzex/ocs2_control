@@ -95,10 +95,6 @@ FrameOverrides loadInfoFrameDefaults(const std::string& task_file)
     loadData::loadPtreeValue<std::string>(pt, frames.eeFrame1, "model_information.eeFrame1", false);
     if (const auto configuredBodyFrame = pt.get_optional<std::string>("model_information.bodyFrame")) {
         frames.bodyFrame = *configuredBodyFrame;
-    } else if (const auto legacyBodyFrame = pt.get_optional<std::string>("bodyRelative.bodyLinkName")) {
-        frames.bodyFrame = *legacyBodyFrame;
-        RCLCPP_WARN_STREAM(rclcpp::get_logger("WholeBodyMpcTask"), "Deprecated config key bodyRelative.bodyLinkName; "
-                     "use model_information.bodyFrame instead.");
     }
     if (const auto configuredHeadFrame = pt.get_optional<std::string>("model_information.headFrame")) {
         frames.headFrame = *configuredHeadFrame;

@@ -169,10 +169,6 @@ WholeBodyInterface::WholeBodyInterface(
     loadData::loadPtreeValue<std::string>(pt, eeFrame1, "model_information.eeFrame1", false);
     if (const auto configuredBodyFrame = pt.get_optional<std::string>("model_information.bodyFrame")) {
         bodyFrame = *configuredBodyFrame;
-    } else if (const auto legacyBodyFrame = pt.get_optional<std::string>("bodyRelative.bodyLinkName")) {
-        bodyFrame = *legacyBodyFrame;
-        RCLCPP_WARN_STREAM(rclcpp::get_logger("WholeBodyInterface"), "Deprecated config key bodyRelative.bodyLinkName; "
-                     "use model_information.bodyFrame instead.");
     } else {
         throw std::invalid_argument(
             "[WholeBodyInterface] Missing required model_information.bodyFrame");

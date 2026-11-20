@@ -28,9 +28,7 @@ enum class BodyConstraintMode : uint8_t {
      *  Requires headCoupling.activate=true in task file (see HeadCouplingConstraint). */
     HEAD_COUPLED = 4,
     /** Arbitrary joint indices are velocity-locked by customJointLock.lockedJointIndices. */
-    CUSTOM_LOCKED = 5,
-    /** Deprecated wire value: normalized to FREE + head TRACKING. */
-    HEAD_TRACKING = 6
+    CUSTOM_LOCKED = 5
 };
 
 // Head task, selected independently from the stored body mode.
@@ -120,9 +118,6 @@ struct HumanoidMode {
         if (body == BodyConstraintMode::HEAD_COUPLED) {
             body = BodyConstraintMode::FREE;
             head = HeadMode::FORWARD;
-        } else if (body == BodyConstraintMode::HEAD_TRACKING) {
-            body = BodyConstraintMode::FREE;
-            head = HeadMode::TRACKING;
         }
         if (static_cast<size_t>(body) > 5 || static_cast<size_t>(head) > 3 ||
             static_cast<size_t>(bimanualMode) > 1) {
@@ -137,7 +132,7 @@ struct HumanoidMode {
     }
 
     static constexpr HumanoidMode decode(size_t mode) {
-        if (mode > 511 || (mode & 0x07) == 7) {
+        if (mode > 511 || (mode & 0x07) > 5) {
             throw std::invalid_argument("Invalid humanoid mode bits");
         }
         HumanoidMode m;
@@ -153,9 +148,6 @@ struct HumanoidMode {
             }
             m.bodyMode = BodyConstraintMode::FREE;
             m.headMode = HeadMode::FORWARD;
-        } else if (m.bodyMode == BodyConstraintMode::HEAD_TRACKING) {
-            m.bodyMode = BodyConstraintMode::FREE;
-            m.headMode = HeadMode::TRACKING;
         }
         return m;
     }

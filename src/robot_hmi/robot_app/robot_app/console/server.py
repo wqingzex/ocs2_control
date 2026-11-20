@@ -226,15 +226,6 @@ class Console:
             self._sequence("重启", steps)
             return sup.status(name).to_dict()
 
-    def restart_all(self, confirm: bool) -> List[Dict]:
-        """Stop everything that runs, then start it again (the controller goes through HOLD like any stop)."""
-        with self.lock:
-            sup = self.supervisor
-            self._check_control_stop(sup.units.names(), confirm)
-            running = [n for n in sup.units.names() if sup.is_running(n)]
-            steps = self._stop_steps(running) + self._start_steps(None)
-            return self._sequence("全部重启", steps)
-
     def scan_cameras(self) -> Dict[str, Any]:
         with self.lock:
             sup = self.supervisor
@@ -341,10 +332,6 @@ def create_app(console: Console, static_dir: Optional[str]) -> FastAPI:
     @app.post("/api/all/stop")
     def stop_all(confirm: bool = Body(False, embed=True)):
         return run(lambda: console.stop(None, confirm))
-
-    @app.post("/api/all/restart")
-    def restart_all(confirm: bool = Body(False, embed=True)):
-        return run(lambda: console.restart_all(confirm))
 
     @app.post("/api/fsm/{action}")
     def fsm_command(action: str):

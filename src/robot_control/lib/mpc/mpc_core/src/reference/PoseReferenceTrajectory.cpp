@@ -143,10 +143,6 @@ namespace ocs2::mpc_core
         {
             return target_context_.wholeBodyTargetStateDim();
         }
-        if (target_context_.reference_target_state_dim > 0)
-        {
-            return target_context_.reference_target_state_dim;
-        }
         return dual_arm_mode_ ? 14 : 7;
     }
 

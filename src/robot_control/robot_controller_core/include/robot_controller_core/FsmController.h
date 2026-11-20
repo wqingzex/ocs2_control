@@ -119,7 +119,6 @@ namespace robot_controller_core
         void onEnterState(FSMStateName entered) override;
 
         StateList states_;
-        std::vector<double> home_pos_;
         std::vector<double> rest_pos_;
         WaistCommands::Config waist_config_;
         WaistCommands waist_commands_;

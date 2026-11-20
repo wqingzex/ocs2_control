@@ -331,11 +331,11 @@ def _is_single_arm_robot_for_compose(
 
 
 def _gripper_joint_name(params: Dict[str, Any], default: str = "") -> str:
-    """Joint of a gripper controller: ``joints: [x]`` (GripperController) or the legacy ``joint: x``."""
+    """Joint of a gripper controller: ``joints: [x]``."""
     joints = params.get("joints")
     if isinstance(joints, (list, tuple)) and joints:
         return str(joints[0])
-    return params.get("joint") or default
+    return default
 
 
 def normalize_single_arm_compose(

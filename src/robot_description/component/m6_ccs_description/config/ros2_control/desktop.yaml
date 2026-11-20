@@ -25,5 +25,5 @@ left_gripper_controller:
 
 right_gripper_controller:
   ros__parameters:
-    joint: right_gripper_joint
+    joints: [right_gripper_joint]
     use_effort_interface: false

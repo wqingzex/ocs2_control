@@ -7,8 +7,9 @@ def test_joint_name_comes_from_joints_list():
     assert compose._gripper_joint_name(params, "fallback") == "left_gripper_joint"
 
 
-def test_joint_name_falls_back_to_the_legacy_joint_parameter():
-    assert compose._gripper_joint_name({"joint": "gripper_joint"}, "fallback") == "gripper_joint"
+def test_the_joints_list_gives_the_joint_name_and_the_old_joint_parameter_is_not_read_any_more():
+    assert compose._gripper_joint_name({"joints": ["gripper_joint"]}, "fallback") == "gripper_joint"
+    assert compose._gripper_joint_name({"joint": "gripper_joint"}, "fallback") == "fallback"
 
 
 def test_joint_name_uses_the_default_when_nothing_is_configured():

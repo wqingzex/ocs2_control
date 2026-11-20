@@ -166,7 +166,6 @@ def detect_controllers(
     control_right="",
     control_patch=None,
     ros2_control_config=None,
-    include_legacy_sections=False,
 ):
     """
     Detect controllers from ROS2 controller configuration.
@@ -260,29 +259,6 @@ def detect_controllers(
             }
         )
 
-    if include_legacy_sections:
-        for section_name, section_config in config.items():
-            if section_name in [c["name"] for c in controllers] or section_name in skipped_controllers:
-                continue
-            if not _controller_passes_joint_check(
-                section_name,
-                config,
-                patterns,
-                robot_description,
-                available_joints,
-                skipped_controllers,
-            ):
-                continue
-            if not (robot_description and available_joints):
-                print(f"[INFO] Detected controller section: {section_name}")
-            controllers.append(
-                {
-                    "name": section_name,
-                    "type": "unknown",
-                    "config": section_config,
-                }
-            )
-
     print(f"[INFO] Total controllers detected: {len(controllers)}")
     return controllers
 
@@ -293,7 +269,6 @@ def detect_and_spawn_controllers(
     *,
     robot_description=None,
     use_sim_time=False,
-    include_legacy_sections=False,
 ):
     """Detect controllers from preloaded config and return spawner nodes."""
     if config is None:
@@ -303,7 +278,6 @@ def detect_and_spawn_controllers(
         patterns=patterns,
         robot_description=robot_description,
         ros2_control_config=config,
-        include_legacy_sections=include_legacy_sections,
     )
     return controllers, create_controller_spawners(controllers, use_sim_time)
 

@@ -163,17 +163,6 @@ def test_the_activity_is_cleared_when_a_step_fails(setup):
     assert console.activity is None
 
 
-def test_restart_all_stops_what_runs_and_starts_everything_again(setup):
-    client, console, probe, _ = setup
-    assert client.post("/api/units/xr/start").status_code == 200
-    before = next(u for u in client.get("/api/state").json()["units"] if u["name"] == "xr")["pid"]
-    assert client.post("/api/all/restart", json={"confirm": False}).status_code == 200
-    units = {u["name"]: u for u in client.get("/api/state").json()["units"]}
-    assert units["xr"]["running"] and units["xr"]["pid"] != before
-    assert units["control"]["running"]            # started by "all" even though it was stopped before
-    assert not units["rviz"]["running"]            # on-demand units stay out of "all"
-
-
 def test_restarting_the_controller_brings_back_rviz_and_the_gamepad_it_took_down(setup):
     client, *_ = setup
     assert client.post("/api/units/control/start").status_code == 200
@@ -191,17 +180,6 @@ def test_restarting_a_unit_does_not_start_dependents_that_were_not_running(setup
     assert client.post("/api/units/control/restart", json={"confirm": False}).status_code == 200
     after = {u["name"]: u for u in client.get("/api/state").json()["units"]}
     assert after["control"]["running"] and not after["rviz"]["running"] and not after["joystick"]["running"]
-
-
-def test_restart_all_outside_hold_asks_first(setup):
-    client, console, probe, _ = setup
-    assert client.post("/api/units/control/start").status_code == 200
-    probe.fsm_state = 3
-    response = client.post("/api/all/restart", json={"confirm": False})
-    assert response.status_code == 409 and response.json()["detail"]["need_confirm"]
-    assert probe.hold_requests == 0
-    assert client.post("/api/all/restart", json={"confirm": True}).status_code == 200
-    assert probe.hold_requests == 1
 
 
 def test_stopping_control_outside_hold_needs_confirmation(setup):

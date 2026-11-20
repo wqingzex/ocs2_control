@@ -91,6 +91,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_base_velocity_reference ${PROJECT_NAME})
   ament_add_gtest(test_body_frame_target test/test_body_frame_target.cpp)
   target_link_libraries(test_body_frame_target ${PROJECT_NAME})
+  ament_add_gtest(test_humanoid_mode test/test_humanoid_mode.cpp)
+  target_link_libraries(test_humanoid_mode ${PROJECT_NAME})
 endif()
 
 ament_package()

@@ -14,9 +14,6 @@ struct OCS2ReferenceTargetContext {
     std::string base_frame;
     int input_dim{0};
 
-    /// Optional legacy override for non-wheel-humanoid users. Wheel-humanoid layout is derived from capabilities below.
-    int reference_target_state_dim{0};
-
     /// When the body capability is enabled, fill its block from setBodyPoseReference() each cycle
     /// (typically FK). If false, the block uses zero translation + identity quaternion.
     bool body_pose_from_current_state{true};

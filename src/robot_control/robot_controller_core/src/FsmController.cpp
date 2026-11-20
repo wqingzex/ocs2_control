@@ -48,7 +48,6 @@ namespace robot_controller_core
             declareHardwareParameters();
 
             // State machine parameters
-            home_pos_ = auto_declare<std::vector<double>>("home_pos", home_pos_);
             rest_pos_ = auto_declare<std::vector<double>>("rest_pos", rest_pos_);
 
             // Force control parameters
@@ -77,17 +76,12 @@ namespace robot_controller_core
             auto_declare<int>("switch_command_base", 100);
             states_.home = std::make_shared<StateHome>(ctrl_interfaces_, gravity_compensation, get_node(), flavor());
 
-            const bool configs_loaded = states_.home->init(
+            // home_1 ... home_10; StateHome warns when there is none
+            states_.home->init(
                 [this](const std::string& name, const std::vector<double>& default_value)
                 {
                     return this->auto_declare<std::vector<double>>(name, default_value);
                 });
-
-            // Fallback to legacy single home_pos configuration if no multi-home configs were loaded
-            if (!configs_loaded && !home_pos_.empty())
-            {
-                states_.home->setHomePosition(home_pos_);
-            }
 
             // Configure rest pose if available
             if (!rest_pos_.empty())

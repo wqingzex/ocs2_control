@@ -22,6 +22,9 @@ model_information
     ; eeFrame1: 右臂末端执行器坐标系名
     eeFrame1                "right_tcp"
 
+    ; bodyFrame: 腰（躯干）末端连杆，躯干约束和躯干跟踪用它
+    bodyFrame               "body_link4"
+
     ; removeJoints: fallback when using static URDF (non-xacro planning).
     ; Dynamic planning URDF sets eef_fixed_joints + base_joints_movable=false in xacro.
     ; Head joints are in MPC; entries below mainly cover legacy static models.
@@ -254,7 +257,6 @@ finalEndEffector
 bodyRelative
 {
     activate                        true
-    bodyLinkName                    "body_link4"
     muPosition                      5.0
     muOrientation                   5.0
 }
