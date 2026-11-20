@@ -33,20 +33,17 @@ def launch_setup(context, *args, **kwargs):
     whole_body_available = False
     mpc_task = ""
     if ctx.config:
-        try:
-            cm_params = ctx.config.get("controller_manager", {}).get("ros__parameters", {})
-            controller_type = cm_params.get("whole_body_controller", {}).get("type", "")
-            if controller_type == "whole_body_controller/WholeBodyController":
-                mpc_task = "whole_body"
-            elif controller_type == "arm_controller/ArmController":
-                mpc_task = "arm"
-            whole_body_available = mpc_task == "whole_body"
-            print(
-                f"[INFO] whole_body_controller: type = {controller_type}, mpc_task = {mpc_task!r}, "
-                f"whole_body_available = {whole_body_available}"
-            )
-        except Exception as exc:
-            print(f"[WARN] Failed to parse whole_body_controller from config: {exc}")
+        cm_params = ctx.config.get("controller_manager", {}).get("ros__parameters", {})
+        controller_type = cm_params.get("whole_body_controller", {}).get("type", "")
+        if controller_type == "whole_body_controller/WholeBodyController":
+            mpc_task = "whole_body"
+        elif controller_type == "arm_controller/ArmController":
+            mpc_task = "arm"
+        whole_body_available = mpc_task == "whole_body"
+        print(
+            f"[INFO] whole_body_controller: type = {controller_type}, mpc_task = {mpc_task!r}, "
+            f"whole_body_available = {whole_body_available}"
+        )
 
     planning_urdf_params = common.validate_planning_urdf(
         planning_robot_name,
@@ -126,22 +123,19 @@ def launch_setup(context, *args, **kwargs):
 
     rviz_config_path = common.resolve_rviz_config(ctx.robot_name, "whole_body.rviz")
     if is_arm_controller_type and marker_fixed_frame:
-        try:
-            with open(rviz_config_path, "r", encoding="utf-8") as handle:
-                rviz_content = handle.read()
-            patched_content = rviz_content.replace(
-                "Fixed Frame: world", f"Fixed Frame: {marker_fixed_frame}"
-            )
-            tmp_name = f"whole_body_{ctx.robot_name}_{ctx.robot_type or 'default'}_arm_fixedframe.rviz"
-            tmp_rviz_config_path = os.path.join(tempfile.gettempdir(), tmp_name)
-            with open(tmp_rviz_config_path, "w", encoding="utf-8") as handle:
-                handle.write(patched_content)
-            rviz_config_path = tmp_rviz_config_path
-            print(
-                f"[INFO] ARM type: RViz Fixed Frame={marker_fixed_frame}: {rviz_config_path}"
-            )
-        except Exception as exc:
-            print(f"[WARN] Failed to patch RViz Fixed Frame for ARM type: {exc}")
+        with open(rviz_config_path, "r", encoding="utf-8") as handle:
+            rviz_content = handle.read()
+        patched_content = rviz_content.replace(
+            "Fixed Frame: world", f"Fixed Frame: {marker_fixed_frame}"
+        )
+        tmp_name = f"whole_body_{ctx.robot_name}_{ctx.robot_type or 'default'}_arm_fixedframe.rviz"
+        tmp_rviz_config_path = os.path.join(tempfile.gettempdir(), tmp_name)
+        with open(tmp_rviz_config_path, "w", encoding="utf-8") as handle:
+            handle.write(patched_content)
+        rviz_config_path = tmp_rviz_config_path
+        print(
+            f"[INFO] ARM type: RViz Fixed Frame={marker_fixed_frame}: {rviz_config_path}"
+        )
 
     rviz_node = common.build_rviz_node(
         ctx,

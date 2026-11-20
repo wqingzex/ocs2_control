@@ -26,16 +26,11 @@ def get_default_type_from_xacro(xacro_file):
     Returns:
         str: 默认的 type 值，如果找不到则返回 None
     """
-    try:
-        with open(xacro_file, 'r') as f:
-            content = f.read()
-            # 查找 xacro:arg name="type" default="..." 的模式
-            match = re.search(r'xacro:arg\s+name=["\']type["\']\s+default=["\']([^"\']+)["\']', content)
-            if match:
-                return match.group(1)
-    except Exception as e:
-        print(f"Warning: Could not read default type from {xacro_file}: {e}")
-    return None
+    with open(xacro_file, 'r') as f:  # an unreadable file raises
+        content = f.read()
+    # 查找 xacro:arg name="type" default="..." 的模式
+    match = re.search(r'xacro:arg\s+name=["\']type["\']\s+default=["\']([^"\']+)["\']', content)
+    return match.group(1) if match else None
 
 
 def process_xacro(robot_name, xacro_filename="robot.xacro", **kwargs):

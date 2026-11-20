@@ -322,12 +322,6 @@ def load_robot_config(
 
 
 
-DEFAULT_INFO_FILE_NAME = {
-    "whole_body_controller": "whole_body_fixed_eef_l6",
-    "arm_controller": "dual_arm_eef",
-}
-
-
 def _info_controller_order(launch_mode):
     mode = (launch_mode or "").strip()
     if mode == "whole_body":
@@ -343,8 +337,8 @@ def resolve_info_file_path(config, launch_mode, robot_name):
     Path of the OCS2 .info the controller of this launch mode loads, resolved the same way as the
     controller (ArmMpcTask / WholeBodyMpcTask):
     <info_package or <robot_name>_description>/config/ocs2/<info_file_name>.info, where robot_name is the
-    controller's robot_name parameter (falling back to the launch robot) and info_file_name falls back to
-    the controller default. A missing description package raises.
+    controller's robot_name parameter (falling back to the launch robot). A controller without info_file_name and
+    a missing description package raise.
     """
     order = _info_controller_order(launch_mode)
     controller_key = order[0]
@@ -361,61 +355,9 @@ def resolve_info_file_path(config, launch_mode, robot_name):
 
     info_file_name = str(params.get("info_file_name", "") or "").strip().removesuffix(".info")
     if not info_file_name:
-        info_file_name = DEFAULT_INFO_FILE_NAME[controller_key]
+        raise ValueError(f"'{controller_key}' has no info_file_name in the ros2_control config of '{robot_name}'")
     package = str(params.get("info_package", "") or "").strip()
     if not package:
         package = str(params.get("robot_name", "") or robot_name).strip() + "_description"
     share = get_package_share_directory(package)
     return os.path.join(share, "config", "ocs2", f"{info_file_name}.info")
-
-
-def extract_info_file_name_from_config(config, launch_mode=None, default="dual_arm_eef"):
-    """
-    Read OCS2 task .info stem from merged ros2_control config.
-
-    launch_mode: whole_body → whole_body_controller; split_body / dual_arm → arm; None → wbc then arm.
-    """
-    if not isinstance(config, dict):
-        return default
-
-    mode = (launch_mode or "").strip()
-    if mode == "whole_body":
-        order = ("whole_body_controller", "arm_controller")
-    elif mode in ("split_body", "dual_arm"):
-        # Do not fall back to whole_body_controller (e. fixed_base on humanoid); planning uses arm .info only.
-        order = ("arm_controller",)
-    else:
-        order = ("whole_body_controller", "arm_controller")
-
-    for controller_key in order:
-        params = config.get(controller_key, {}).get("ros__parameters", {})
-        if not isinstance(params, dict):
-            continue
-        name = str(params.get("info_file_name", "") or "").strip()
-        if name:
-            return name.removesuffix(".info")
-    return default
-
-
-def get_info_file_name(
-    robot_name,
-    robot_type="",
-    config_type="ros2_control",
-    control_left="",
-    control_right="",
-    control_patch=None,
-):
-    """
-    Get info_file_name from merged ROS2 controller configuration, fallback to 'dual_arm_eef'.
-
-    Uses the same merge order as load_robot_config (compose + control.patch).
-    """
-    config, _, _meta = load_robot_config(
-        robot_name,
-        config_type,
-        robot_type,
-        control_left=control_left,
-        control_right=control_right,
-        control_patch=control_patch,
-    )
-    return extract_info_file_name_from_config(config, launch_mode=None)

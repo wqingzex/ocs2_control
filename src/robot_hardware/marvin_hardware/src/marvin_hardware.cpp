@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 #include <thread>
 #include <sstream>
 #include <iomanip>
@@ -104,31 +105,25 @@ namespace marvin_hardware
     template<>
     constexpr rclcpp::ParameterType paramTypeOf<std::vector<double>>() { return rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY; }
 
-    // hardware_parameters arrive as text. A value that is not a number, or is out of range, used to turn into the
-    // default without any message (std::stoi / std::stod inside try { } catch (...) { return def; }), which for
-    // max_joint_speed / max_joint_acceleration silently changes a safety limit. These report it and still fall back,
-    // so the plugin keeps starting with the documented default.
-    static rclcpp::Logger paramLogger() { return rclcpp::get_logger("MarvinHardware"); }
+    // hardware_parameters arrive as text. A value that is not a number, is out of range or is not a recognized word
+    // makes on_init fail with a [HW-005] message (ros2_control logs it and the component does not activate): a limit
+    // such as max_joint_speed must never silently become another value.
+    [[noreturn]] static void failParameter(const std::string& what)
+    {
+        throw std::invalid_argument("[HW-005] hardware parameter " + what);
+    }
 
     static auto intParser(const char* name, int lo = std::numeric_limits<int>::min(),
-                          int hi = std::numeric_limits<int>::max(), bool clamp_to_range = false)
+                          int hi = std::numeric_limits<int>::max())
     {
-        return [name, lo, hi, clamp_to_range](const std::string& s, int def) {
+        return [name, lo, hi](const std::string& s, int) {
             int value = 0;
             if (!param_parsing::parseInt(s, value)) {
-                RCLCPP_ERROR(paramLogger(), "[HW-005] hardware parameter '%s' = '%s' is not an integer, using the default %d",
-                             name, s.c_str(), def);
-                return def;
+                failParameter("'" + std::string(name) + "' = '" + s + "' is not an integer");
             }
             if (value < lo || value > hi) {
-                if (clamp_to_range) {
-                    RCLCPP_WARN(paramLogger(), "[HW-005] hardware parameter '%s' = %d is outside [%d, %d], clamped",
-                                name, value, lo, hi);
-                    return std::clamp(value, lo, hi);
-                }
-                RCLCPP_ERROR(paramLogger(), "[HW-005] hardware parameter '%s' = %d is outside [%d, %d], using the default %d",
-                             name, value, lo, hi, def);
-                return def;
+                failParameter("'" + std::string(name) + "' = " + std::to_string(value) + " is outside [" +
+                              std::to_string(lo) + ", " + std::to_string(hi) + "]");
             }
             return value;
         };
@@ -136,28 +131,26 @@ namespace marvin_hardware
 
     static auto doubleParser(const char* name, bool must_be_positive = false)
     {
-        return [name, must_be_positive](const std::string& s, double def) {
+        return [name, must_be_positive](const std::string& s, double) {
             double value = 0.0;
             if (!param_parsing::parseDouble(s, value)) {
-                RCLCPP_ERROR(paramLogger(), "[HW-005] hardware parameter '%s' = '%s' is not a finite number, using the default %g",
-                             name, s.c_str(), def);
-                return def;
+                failParameter("'" + std::string(name) + "' = '" + s + "' is not a finite number");
             }
             if (must_be_positive && value <= 0.0) {
-                RCLCPP_ERROR(paramLogger(), "[HW-005] hardware parameter '%s' = %g must be > 0, using the default %g",
-                             name, value, def);
-                return def;
+                failParameter("'" + std::string(name) + "' = " + s + " must be > 0");
             }
             return value;
         };
     }
 
-    static bool parseBoolLoose(const std::string& str, bool default_val)
+    static auto boolParser(const char* name)
     {
-        const std::string s = normalizeString(str);
-        if (s == "TRUE" || s == "1" || s == "YES" || s == "ON") return true;
-        if (s == "FALSE" || s == "0" || s == "NO" || s == "OFF") return false;
-        return default_val;
+        return [name](const std::string& str, bool) {
+            const std::string s = normalizeString(str);
+            if (s == "TRUE" || s == "1" || s == "YES" || s == "ON") return true;
+            if (s == "FALSE" || s == "0" || s == "NO" || s == "OFF") return false;
+            failParameter("'" + std::string(name) + "' = '" + str + "' is not true/false (1/0, yes/no, on/off)");
+        };
     }
 
     void MarvinHardware::declare_node_parameters()
@@ -182,7 +175,7 @@ namespace marvin_hardware
             using T = std::decay_t<decltype(default_val)>;
             if (node_->has_parameter(name)) {
                 if (node_->get_parameter(name).get_type() != paramTypeOf<T>()) {
-                    try { node_->undeclare_parameter(name); } catch (...) {}
+                    node_->undeclare_parameter(name);  // declared with another type: declare it again as ours
                 } else {
                     return; // 已存在且类型正确：尊重现有值
                 }
@@ -202,18 +195,14 @@ namespace marvin_hardware
 
             if (node_->has_parameter(name)) {
                 if (node_->get_parameter(name).get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY) {
-                    try { node_->undeclare_parameter(name); } catch (...) {}
+                    node_->undeclare_parameter(name);  // declared with another type: declare it again as ours
                 } else {
-                    // 类型正确，校验长度
-                    try {
-                        const auto current = node_->get_parameter(name).get_value<std::vector<double>>();
-                        if (current.size() == expected_size) {
-                            return; // 已存在且长度正确：尊重现有值
-                        }
-                    } catch (...) {
-                        // fallthrough: undeclare + redeclare
+                    const auto current = node_->get_parameter(name).get_value<std::vector<double>>();
+                    if (current.size() != expected_size) {
+                        failParameter("'" + name + "' already declared with " + std::to_string(current.size()) +
+                                      " numbers, needs exactly " + std::to_string(expected_size));
                     }
-                    try { node_->undeclare_parameter(name); } catch (...) {}
+                    return; // 已存在且长度正确：尊重现有值
                 }
             }
 
@@ -221,13 +210,12 @@ namespace marvin_hardware
                 std::vector<double> val = default_val;
                 if (hw_val && !param_parsing::trimmed(*hw_val).empty()) {  // an empty value means "use the default"
                     std::vector<double> parsed = parseDoubleArrayLoose(*hw_val, {});
-                    if (parsed.size() == expected_size) {
-                        val = std::move(parsed);
-                    } else {
-                        RCLCPP_ERROR(paramLogger(), "[HW-005] hardware parameter '%s' = '%s' must hold exactly %zu numbers "
-                                     "(got %zu), using the default", name.c_str(), hw_val->c_str(), expected_size,
-                                     parsed.size());
+                    if (parsed.size() != expected_size) {
+                        failParameter("'" + name + "' = '" + *hw_val + "' must hold exactly " +
+                                      std::to_string(expected_size) + " numbers (got " +
+                                      std::to_string(parsed.size()) + ")");
                     }
+                    val = std::move(parsed);
                 }
                 node_->declare_parameter<std::vector<double>>(name, val);
             }
@@ -262,19 +250,19 @@ namespace marvin_hardware
         ensure_double_array_sized("pd_d_gains", kDefaultPDDGains, 7);
         // PD 速度前馈周期 ms：0~20（<1 不添加前馈；建议 5）
         ensure_param("pd_control_period_ms", 5, hw_find("pd_control_period_ms"),
-                     intParser("pd_control_period_ms", 0, 20, true));
+                     intParser("pd_control_period_ms", 0, 20));
         // Joint speed and acceleration limits
         ensure_param("max_joint_speed", 10.0, hw_find("max_joint_speed"),
                      doubleParser("max_joint_speed", true));
         ensure_param("max_joint_acceleration", 10.0, hw_find("max_joint_acceleration"),
                      doubleParser("max_joint_acceleration", true));
         ensure_param("use_drag_mode", false, hw_find("use_drag_mode"),
-                     [](const std::string& s, bool def) { return parseBoolLoose(s, def); });
+                     boolParser("use_drag_mode"));
         // Per-arm brake: true=force brake release (松闸); false=engage brake (抱闸)
         ensure_param("left_brake_release", false, hw_find("left_brake_release"),
-                     [](const std::string& s, bool def) { return parseBoolLoose(s, def); });
+                     boolParser("left_brake_release"));
         ensure_param("right_brake_release", false, hw_find("right_brake_release"),
-                     [](const std::string& s, bool def) { return parseBoolLoose(s, def); });
+                     boolParser("right_brake_release"));
         // Tool (payload) parameters - declared as std::vector<double> (array of doubles)
         // kineParam: kinematic parameters (6 values), dynPara: dynamic parameters (10 values)
         ensure_double_array_sized("left_kine_param", kDefaultLeftKineParam, 6);

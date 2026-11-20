@@ -50,12 +50,7 @@ def launch_setup(context, *args, **kwargs):
         mappings["direction"] = direction
 
     # 处理 xacro 文件
-    try:
-        robot_description_config = xacro.process_file(hand_xacro_path, mappings=mappings)
-        robot_description = robot_description_config.toxml()
-    except Exception as e:
-        print(f"[ERROR] Failed to process hand xacro file: {e}")
-        return []
+    robot_description = xacro.process_file(hand_xacro_path, mappings=mappings).toxml()
 
     # Robot State Publisher
     robot_state_publisher = Node(

@@ -6,10 +6,8 @@ from .control.manager import create_controller_manager_nodes
 from .robot.config import (
     get_robot_package_path,
     load_robot_config,
-    get_info_file_name,
     clear_config_cache,
     write_temp_ros2_control_yaml,
-    extract_info_file_name_from_config,
     resolve_info_file_path,
     RobotConfigMeta,
     EMPTY_ROBOT_CONFIG_META,
@@ -62,7 +60,6 @@ from .launch_utils import (
 __all__ = [
     'get_robot_package_path',
     'load_robot_config',
-    'get_info_file_name',
     'clear_config_cache',
     'clear_robot_description_cache',
     'get_ros2_control_robot_description',
@@ -90,7 +87,6 @@ __all__ = [
     'resolve_compose_type_key',
     'parse_task_info',
     'prepare_target_generator_parameters',
-    'extract_info_file_name_from_config',
     'resolve_info_file_path',
     'detect_controllers',
     'detect_and_spawn_controllers',

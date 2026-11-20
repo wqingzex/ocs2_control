@@ -126,16 +126,11 @@ def prepare_target_generator_parameters(
     
     # 如果还没有找到，使用默认配置文件
     if not config_path:
-        try:
-            package_dir = get_package_share_directory('target_generator')
-            default_config = os.path.join(package_dir, 'config', 'default.yaml')
-            if os.path.exists(default_config):
-                config_path = default_config
-                print(f"[INFO] Using default config file: {config_path}")
-            else:
-                print(f"[WARN] Default config file not found: {default_config}, using default parameters")
-        except Exception as e:
-            print(f"[WARN] Failed to get default config file: {e}")
+        default_config = os.path.join(get_package_share_directory('target_generator'), 'config', 'default.yaml')
+        if not os.path.exists(default_config):
+            raise FileNotFoundError(f"default target_generator config not found: {default_config}")
+        config_path = default_config
+        print(f"[INFO] Using default config file: {config_path}")
     
     # 构建参数列表：先加载 YAML 配置，然后用 launch 参数覆盖
     parameters = []
