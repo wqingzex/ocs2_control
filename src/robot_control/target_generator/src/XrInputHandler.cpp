@@ -124,7 +124,7 @@ namespace target_generator
         }
         if (chassis_enabled_)
         {
-            base_velocity_publisher_ = node_->create_publisher<geometry_msgs::msg::Twist>("/base_velocity_command", 10);
+            base_velocity_publisher_ = node_->create_publisher<geometry_msgs::msg::Twist>("base_velocity_target", 10);
             sub_thumbstick_ = node_->create_subscription<geometry_msgs::msg::Twist>(
                 "/teleop/thumbstick_axes", 10,
                 [this](geometry_msgs::msg::Twist::SharedPtr msg) { thumbstickCallback(msg); });
@@ -631,26 +631,11 @@ namespace target_generator
         {
             stopHeadTracking();
         }
-
-        base_state_.store(msg->base_state);
-        base_state_known_.store(true);
-        if (chassis_drive_.load() && msg->base_state != robot_control_msgs::msg::WholeBodyCurrentState::BASE_LOCKED)
-        {
-            stopChassisDrive("the base was unlocked: the whole body controller drives it now", true);
-        }
     }
 
     std::string XrInputHandler::whyChassisDriveBlocked() const
     {
         if (current_fsm_state_.load() != kFsmOcs2) { return "not in OCS2"; }
-        if (!base_state_known_.load())
-        {
-            return "no state from the whole body controller yet (is it running?)";
-        }
-        if (base_state_.load() != robot_control_msgs::msg::WholeBodyCurrentState::BASE_LOCKED)
-        {
-            return "the base is unlocked: the whole body controller drives it and publishes the same velocity topic";
-        }
         return {};
     }
 

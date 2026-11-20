@@ -85,4 +85,10 @@ ament_export_dependencies(ament_index_cpp geometry_msgs rclcpp_lifecycle std_msg
     ocs2_mobile_manipulator mpc_core robot_controller_core)
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_base_velocity_reference test/test_base_velocity_reference.cpp)
+  target_link_libraries(test_base_velocity_reference ${PROJECT_NAME})
+endif()
+
 ament_package()

@@ -42,8 +42,8 @@ namespace target_generator
      * 扳机按比例控制手/夹爪开合（/teleop/trigger_values → <controller>/target_percent）。
      * 头部：跟随中（UPDATE）且全身控制器的头部任务是 HEAD_TRACKING 时，头显的位移和转动叠加到机器人头当前位姿上，
      * 发布到 head_target；不需要新的按键，头部任务由全身控制器的模式决定。
-     * 底盘遥控：左摇杆按下开 / 关；开着时摇杆变成底盘速度（/base_velocity_command）。只在 OCS2 且底盘锁定时能开，
-     * 条件不再满足或摇杆帧超时就发零速度并退出（见 [TEL-004]）。
+     * 底盘遥控：左摇杆按下开 / 关；开着时摇杆变成底盘速度参考（base_velocity_target），由全身控制器统一输出底盘速度。
+     * 只在 OCS2 能开，不再满足或摇杆帧超时就发零速度并退出（见 [TEL-004]）。
      */
     class XrInputHandler
     {
@@ -323,8 +323,6 @@ namespace target_generator
         rclcpp::TimerBase::SharedPtr chassis_watchdog_timer_;
         bool chassis_enabled_ = false;                     ///< xr_base，默认关：关着时没有速度发布者，左摇杆按键无效
         std::atomic<bool> chassis_drive_{false};
-        std::atomic<bool> base_state_known_{false};  ///< 收到过全身控制器的状态；BASE_LOCKED 是 0，没收到不能当作锁定
-        std::atomic<std::uint8_t> base_state_{robot_control_msgs::msg::WholeBodyCurrentState::BASE_UNLOCKED};
         std::atomic<std::int64_t> last_thumbstick_ns_{0};  ///< steady clock，上一帧摇杆什么时候到的
         double chassis_linear_scale_ = 0.1;                ///< m/s，摇杆推满
         double chassis_angular_scale_ = 0.2;               ///< rad/s，摇杆推满

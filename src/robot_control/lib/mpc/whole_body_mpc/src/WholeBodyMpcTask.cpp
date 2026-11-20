@@ -1130,6 +1130,39 @@ void WholeBodyMpcTask::setupPublisher() {
     base_velocity_publisher_ = node_->create_publisher<geometry_msgs::msg::Twist>("base_velocity_command", 10);
 }
 
+void WholeBodyMpcTask::setupBaseVelocityTarget(double timeout_sec) {
+    if (!(timeout_sec > 0.0)) {
+        throw std::invalid_argument("base_velocity_target_timeout_sec must be > 0");
+    }
+    if (base_input_dim_ != 2 && base_input_dim_ != 3) {
+        throw std::invalid_argument("base velocity target needs a base input of 2 (v, omega) or 3 (vx, vy, omega)");
+    }
+    auto manager = interface_->getReferenceManagerPtr();
+    manager->setBaseInputDim(base_input_dim_);
+    manager->setBaseVelocityReferenceTimeout(timeout_sec);
+    // Relative → /<ns>/base_velocity_target, like left_target / right_target / head_target.
+    base_velocity_target_sub_ = node_->create_subscription<geometry_msgs::msg::Twist>(
+        "base_velocity_target", rclcpp::QoS(10),
+        [this](const geometry_msgs::msg::Twist::SharedPtr msg) {
+            vector_t velocity(base_input_dim_);
+            if (base_input_dim_ == 3) {
+                velocity << msg->linear.x, msg->linear.y, msg->angular.z;
+            } else {
+                velocity << msg->linear.x, msg->angular.z;
+            }
+            if (!velocity.allFinite()) {
+                RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                     "base_velocity_target is not finite: treated as zero");
+                velocity.setZero();
+            }
+            interface_->getReferenceManagerPtr()->setBaseVelocityReference(velocity);
+        });
+    RCLCPP_INFO(node_->get_logger(),
+                "Base velocity target: base_velocity_target (timeout %.2f s); the MPC pulls the base towards it "
+                "while the base is unlocked",
+                timeout_sec);
+}
+
 void WholeBodyMpcTask::updateObservation(const rclcpp::Time& time) {
     if (!mpc_mrt_interface_) {
         return;

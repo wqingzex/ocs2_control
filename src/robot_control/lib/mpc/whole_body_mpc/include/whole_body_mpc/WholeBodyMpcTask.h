@@ -155,6 +155,7 @@ public:
                         base_input_dim_,
                         base_input_dim_ == 3 ? "omni vx,vy,omega" : "diff v,omega");
             loadBaseCmdVelocityLimits(task_file);
+            setupBaseVelocityTarget(auto_declare("base_velocity_target_timeout_sec", 0.2));
         }
 
         setupPublisher();
@@ -397,6 +398,8 @@ private:
     /** Load base_velocity_command hard clamps from task.info jointVelocityLimits.*.base.<modelType>. */
     void loadBaseCmdVelocityLimits(const std::string& task_file);
     void setupPublisher();
+    /** The operator's base velocity (XrInputHandler): becomes the desired base input of the MPC. */
+    void setupBaseVelocityTarget(double timeout_sec);
     void setupHumanoidModeSubscription(const std::string& topic);
     void humanoidModeCallback(const std_msgs::msg::String::SharedPtr msg);
     void setupTfBuffer(const std::string& topic);
@@ -460,6 +463,7 @@ private:
     rclcpp::Publisher<ocs2_msgs::msg::MpcObservation>::SharedPtr mpc_observation_publisher_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr base_velocity_publisher_;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr humanoid_mode_sub_;
+    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr base_velocity_target_sub_;
     rclcpp::Publisher<robot_control_msgs::msg::WholeBodyCapability>::SharedPtr capability_pub_;
     mutable bool capabilities_info_logged_{false};
     rclcpp::Publisher<robot_control_msgs::msg::WholeBodyCurrentState>::SharedPtr current_state_pub_;

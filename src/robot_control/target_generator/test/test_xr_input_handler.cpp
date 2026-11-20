@@ -98,7 +98,7 @@ namespace
                 "head_target", 10, [this](Pose::SharedPtr m) { head_targets_.push_back(*m); });
             thumbstick_pub_ = probe_->create_publisher<geometry_msgs::msg::Twist>("/teleop/thumbstick_axes", 10);
             base_velocity_sub_ = probe_->create_subscription<geometry_msgs::msg::Twist>(
-                "/base_velocity_command", 10,
+                "base_velocity_target", 10,
                 [this](geometry_msgs::msg::Twist::SharedPtr m) { base_velocities_.push_back(*m); });
             left_hand_sub_ = probe_->create_subscription<std_msgs::msg::Float64>(
                 "/left_hand_controller/target_percent", 10,
@@ -220,14 +220,6 @@ namespace
 
         void moveHead(double x, double y, double z) { moveHead(pose(x, y, z)); }
 
-        /// The whole body controller reports its base: WholeBodyCurrentState::BASE_LOCKED / BASE_UNLOCKED.
-        void baseIs(std::uint8_t base_state)
-        {
-            robot_control_msgs::msg::WholeBodyCurrentState m;
-            m.base_state = base_state;
-            whole_body_state_pub_->publish(m);
-            spinFor(100ms);
-        }
 
         /// One /teleop/thumbstick_axes frame as xr_teleop publishes it (forward = negative y).
         void sticks(double left_x, double left_y, double right_x, double right_y)
@@ -245,7 +237,6 @@ namespace
         void startChassisDrive()
         {
             fsmIs(kOcs2);
-            baseIs(robot_control_msgs::msg::WholeBodyCurrentState::BASE_LOCKED);
             sticks(0.0, 0.0, 0.0, 0.0);
             press(kToggleChassisDrive);
         }
@@ -694,7 +685,6 @@ namespace
 TEST_F(XrInputHandlerTest, theSticksDoNothingUntilChassisDriveIsOn)
 {
     fsmIs(kOcs2);
-    baseIs(WholeBodyState::BASE_LOCKED);
     sticks(0.0, -1.0, 1.0, 0.0);
     EXPECT_TRUE(base_velocities_.empty());
 }
@@ -702,36 +692,15 @@ TEST_F(XrInputHandlerTest, theSticksDoNothingUntilChassisDriveIsOn)
 TEST_F(XrInputHandlerTest, chassisDriveIsRefusedOutsideOcs2)
 {
     fsmIs(kHold);
-    baseIs(WholeBodyState::BASE_LOCKED);
     sticks(0.0, 0.0, 0.0, 0.0);
     press(kToggleChassisDrive);
     sticks(0.0, -1.0, 0.0, 0.0);
     EXPECT_TRUE(base_velocities_.empty()) << "drove the base outside OCS2";
 }
 
-TEST_F(XrInputHandlerTest, chassisDriveIsRefusedUntilTheBaseStateIsKnown)
-{
-    fsmIs(kOcs2);  // no WholeBodyCurrentState yet: BASE_LOCKED is 0, an unknown state must not count as locked
-    sticks(0.0, 0.0, 0.0, 0.0);
-    press(kToggleChassisDrive);
-    sticks(0.0, -1.0, 0.0, 0.0);
-    EXPECT_TRUE(base_velocities_.empty());
-}
-
-TEST_F(XrInputHandlerTest, chassisDriveIsRefusedWhileTheBaseIsUnlocked)
-{
-    fsmIs(kOcs2);
-    baseIs(WholeBodyState::BASE_UNLOCKED);  // the whole body controller drives the base itself
-    sticks(0.0, 0.0, 0.0, 0.0);
-    press(kToggleChassisDrive);
-    sticks(0.0, -1.0, 0.0, 0.0);
-    EXPECT_TRUE(base_velocities_.empty()) << "two publishers on the base velocity topic";
-}
-
 TEST_F(XrInputHandlerTest, chassisDriveIsRefusedWithoutFreshStickInput)
 {
     fsmIs(kOcs2);
-    baseIs(WholeBodyState::BASE_LOCKED);
     spinFor(800ms);  // no stick frame for longer than xr_chassis.stale_ms
     press(kToggleChassisDrive);
     sticks(0.0, -1.0, 0.0, 0.0);
@@ -808,23 +777,6 @@ TEST_F(XrInputHandlerTest, leavingOcs2StopsTheBase)
     EXPECT_EQ(base_velocities_.size(), sent);
 }
 
-TEST_F(XrInputHandlerTest, theBaseBeingUnlockedStopsTheDriveAtOnce)
-{
-    startChassisDrive();
-    sticks(0.0, -1.0, 0.0, 0.0);
-    ASSERT_FALSE(isStopped(lastBaseVelocity()));
-
-    baseIs(WholeBodyState::BASE_UNLOCKED);  // the whole body controller takes the base over
-    EXPECT_TRUE(isStopped(lastBaseVelocity()));
-    const auto sent = base_velocities_.size();
-    sticks(0.0, -1.0, 0.0, 0.0);
-    EXPECT_EQ(base_velocities_.size(), sent);
-
-    baseIs(WholeBodyState::BASE_LOCKED);  // locked again: still off until the key is pressed
-    sticks(0.0, -1.0, 0.0, 0.0);
-    EXPECT_EQ(base_velocities_.size(), sent);
-}
-
 // The headset drops out or the bridge dies: no more stick frames, so no zero frame either. The base must not keep the
 // last velocity.
 TEST_F(XrInputHandlerTest, noStickInputForTooLongStopsTheBase)
@@ -843,7 +795,6 @@ TEST_F(XrInputHandlerTest, noStickInputForTooLongStopsTheBase)
 TEST_F(XrInputHandlerTest, enteringChassisDriveStopsTheArmsFromFollowing)
 {
     fsmIs(kOcs2);
-    baseIs(WholeBodyState::BASE_LOCKED);
     moveLeftController(0.0, 0.0, 0.0);
     press(kToggleFollow);
     moveLeftController(0.03, 0.0, 0.0);
@@ -879,13 +830,12 @@ namespace
 TEST_F(XrInputHandlerChassisOffTest, thereIsNoPublisherOnTheBaseVelocityTopic)
 {
     spinFor(300ms);  // discovery
-    EXPECT_EQ(probe_->count_publishers("/base_velocity_command"), 0u);
+    EXPECT_EQ(probe_->count_publishers("base_velocity_target"), 0u);
 }
 
 TEST_F(XrInputHandlerChassisOffTest, theLeftStickKeyDoesNothingAndTheArmsKeepFollowing)
 {
     fsmIs(kOcs2);
-    baseIs(WholeBodyState::BASE_LOCKED);  // every condition of chassis drive is met except the parameter
     moveLeftController(0.0, 0.0, 0.0);
     press(kToggleFollow);
     moveLeftController(0.03, 0.0, 0.0);

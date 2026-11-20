@@ -246,9 +246,21 @@ void SwitchedHumanoidReferenceManager::modifyReferences(
     
     for (const auto mode : modeSchedule.modeSequence) validateMode(mode);
 
-    // Base implementation does nothing special
-    // Can be overridden for task-specific logic (e.g., automatic mode transitions)
-    
+    // The operator's base velocity is the desired base input of every solve, whichever code rebuilt the targets.
+    // Only the base entries change; the coupling parameters in the following entries stay as they are.
+    if (baseInputDim_ > 0) {
+        const vector_t reference = currentBaseVelocityReference();
+        for (auto& input : targetTrajectories.inputTrajectory) {
+            if (input.size() < reference.size()) {
+                RCLCPP_WARN_STREAM(rclcpp::get_logger("SwitchedHumanoidReferenceManager"),
+                                   "Desired input (" << input.size() << ") is shorter than the base input ("
+                                                     << reference.size() << "): base velocity reference not applied");
+                break;
+            }
+            input.head(reference.size()) = reference;
+        }
+    }
+
     if (!targetTrajectories.empty()) {
         for (const auto& state : targetTrajectories.stateTrajectory) {
             if (state.size() != targetStateDim_) {
@@ -259,6 +271,31 @@ void SwitchedHumanoidReferenceManager::modifyReferences(
             }
         }
     }
+}
+
+void SwitchedHumanoidReferenceManager::setBaseInputDim(size_t dim) {
+    std::lock_guard<std::mutex> lock(baseVelocityMutex_);
+    baseInputDim_ = dim;
+}
+
+void SwitchedHumanoidReferenceManager::setBaseVelocityReferenceTimeout(scalar_t seconds) {
+    std::lock_guard<std::mutex> lock(baseVelocityMutex_);
+    baseVelocityTimeout_ = seconds;
+}
+
+void SwitchedHumanoidReferenceManager::setBaseVelocityReference(const vector_t& velocity) {
+    std::lock_guard<std::mutex> lock(baseVelocityMutex_);
+    baseVelocityReference_ = velocity;
+    baseVelocityStamp_ = std::chrono::steady_clock::now();
+}
+
+vector_t SwitchedHumanoidReferenceManager::currentBaseVelocityReference() const {
+    std::lock_guard<std::mutex> lock(baseVelocityMutex_);
+    const auto age = std::chrono::duration<scalar_t>(std::chrono::steady_clock::now() - baseVelocityStamp_).count();
+    if (baseVelocityReference_.size() == static_cast<Eigen::Index>(baseInputDim_) && age <= baseVelocityTimeout_) {
+        return baseVelocityReference_;
+    }
+    return vector_t::Zero(static_cast<Eigen::Index>(baseInputDim_));
 }
 
 } // namespace ocs2::whole_body_mpc

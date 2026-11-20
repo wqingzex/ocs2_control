@@ -49,9 +49,9 @@ XR 输入来自 `/teleop/*` 话题（桥节点或 `xr_stub.py` 发布）。
 
 ## 底盘遥控
 
-**默认关**（`xr_base: false`）：关着时不创建 `/base_velocity_command` 的发布者、不订阅摇杆、没有看门狗，左摇杆按下只记一条 INFO，手臂照常跟随，误按没有任何效果。要用时在 `target_generator` 配置里改成 `true`。
+**默认关**（`xr_base: false`）：关着时不创建 `base_velocity_target` 的发布者、不订阅摇杆、没有看门狗，左摇杆按下只记一条 INFO，手臂照常跟随，误按没有任何效果。要用时在 `target_generator` 配置里改成 `true`。
 
-左摇杆按下开 / 关。开着时 `/teleop/thumbstick_axes`（`Twist`：`linear.x/y` 左摇杆，`angular.x/y` 右摇杆，前推是负数）的每一帧都变成底盘速度发到 `/base_velocity_command`：
+左摇杆按下开 / 关。开着时 `/teleop/thumbstick_axes`（`Twist`：`linear.x/y` 左摇杆，`angular.x/y` 右摇杆，前推是负数）的每一帧都变成底盘速度**参考**发到 `base_velocity_target`（相对名，和 `left_target` 一样落在控制器命名空间下）：
 
 ```
 linear.x  = −左摇杆y × linear_scale      前进
@@ -59,20 +59,22 @@ linear.y  = −左摇杆x × linear_scale      向左平移（摇杆往右推 �
 angular.z = −右摇杆x × angular_scale     逆时针为正（摇杆往右推 → 顺时针）
 ```
 
-每个轴先限幅到 [−1, 1]；一帧里有非有限值，整帧按 0 发。摇杆回中就持续发 0。这条路径不经过全身控制器的速度限幅，`xr_chassis.linear_scale` / `angular_scale` 就是上限。
+每个轴先限幅到 [−1, 1]；一帧里有非有限值，整帧按 0 发。摇杆回中就持续发 0。
 
-**为什么只在底盘锁定时可用**：底盘未锁时 `WholeBodyMpcTask` 自己往同一个话题发速度（`isMobileBasePlanningEnabled() && !baseLocked`），两个发布者会互相覆盖。`base_state` 取自 `/whole_body_controller/current_state`；`BASE_LOCKED` 的值是 0，所以**没收到过状态不能当作锁定**（用 `base_state_known_` 区分）。
+**这个速度不直接给底盘**：全身控制器（MPC）订阅 `base_velocity_target`，在每次求解前把它写进目标轨迹的底盘输入（`SwitchedHumanoidReferenceManager::modifyReferences`），底盘输入代价把底盘拉向这个速度，和手臂跟踪、速度限幅一起折中，最后由 MPC 往 `/base_velocity_command` 发速度。所以这是**偏好**，推满摇杆不保证达到 `linear_scale`；要更“听话”就调小 `.info` 里底盘输入的 R。MPC 侧 `base_velocity_target_timeout_sec`（默认 0.2 s）内没有新帧就当 0。
 
-**能开**（`[TEL-004]`）：在 OCS2、已收到全身控制器状态、`BASE_LOCKED`、200 ms 内有摇杆帧。**立刻发零速度并退出**：再按一次左摇杆、离开 OCS2、底盘被解锁、摇杆帧停了超过 `xr_chassis.stale_ms`（50 ms 一次的看门狗，头显断线和桥掉了都不会再有零帧）。退出后要重新按左摇杆。进入时如果手臂在跟随，先 `stopFollowing()`（头部一起停）。
+**什么时候底盘才会动**：底盘必须被解锁（`BASE_*` 模式），而解锁要有外部 `world→base` TF，没有时底盘被硬锁，参考速度没有效果。去掉对 TF 的依赖见 `docs/待办.md`。
 
-没做：腰的升降 / 旋转（`waist_*_command` 只在 `body_joint_controller` 的 MoveJ 里响应，OCS2 里没作用）；节点自己挂掉时底盘保持最后一个速度，要靠底盘驱动的指令超时（仓库外，没核实）。方案 B（走 MPC 参考）见 `docs/待办.md`。
+**能开**（`[TEL-004]`）：在 OCS2、200 ms 内有摇杆帧。**立刻发零速度参考并退出**：再按一次左摇杆、离开 OCS2、摇杆帧停了超过 `xr_chassis.stale_ms`（50 ms 一次的看门狗，头显断线和桥掉了都不会再有零帧）。退出后要重新按左摇杆。进入时如果手臂在跟随，先 `stopFollowing()`（头部一起停）。
+
+没做：腰的升降 / 旋转（`waist_*_command` 只在 `body_joint_controller` 的 MoveJ 里响应，OCS2 里没作用）；节点自己挂掉时 MPC 侧超时后参考回到 0，但底盘驱动本身的指令超时在仓库外，没核实。
 
 ## 话题
 
 | 方向 | 话题 | 说明 |
 |---|---|---|
 | 订阅 | `/teleop/thumbstick_axes` | 摇杆帧，只用于底盘遥控 |
-| 发布 | `/base_velocity_command` | 底盘速度（`Twist`），底盘遥控开着时每帧都发，退出时发 0 |
+| 发布 | `base_velocity_target` | 底盘速度参考（`Twist`），底盘遥控开着时每帧都发，退出时发 0；全身控制器订阅它 |
 | 订阅 | `/teleop/head_pose` | 头显位姿，只用于头部跟随 |
 | 订阅 | `head_current_pose` | 机器人头当前位姿（模型有 `headFrame` 才发） |
 | 订阅 | `/whole_body_controller/current_state` | 只用 `head_state` |

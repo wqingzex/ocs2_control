@@ -8,6 +8,8 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
+#include <mutex>
 
 #include <ocs2_core/Types.h>
 #include <mpc_core/reference/BimanualCouplingSource.h>
@@ -224,6 +226,15 @@ public:
 
     [[nodiscard]] const vector_t& getHomeJointReference() const { return homeJointReference_; }
 
+    /**
+     * Base velocity the operator asks for (diff base: [v, omega]; omni base: [vx, vy, omega]).
+     * modifyReferences writes it into the desired base input of every solve, so the input cost pulls the base
+     * towards it. A request older than the timeout (or none yet) counts as zero.
+     */
+    void setBaseInputDim(size_t dim);
+    void setBaseVelocityReferenceTimeout(scalar_t seconds);
+    void setBaseVelocityReference(const vector_t& velocity);
+
 protected:
     /**
      * @brief Override to add custom reference modification logic
@@ -249,6 +260,14 @@ private:
 
     std::atomic<bool> homeJointReferenceEnabled_{false};
     vector_t homeJointReference_;
+
+    // The operator's base velocity: set from a ROS callback, read by the solver thread.
+    mutable std::mutex baseVelocityMutex_;
+    size_t baseInputDim_{0};  // 0 = fixed base
+    vector_t baseVelocityReference_;
+    std::chrono::steady_clock::time_point baseVelocityStamp_{};
+    scalar_t baseVelocityTimeout_{0.2};
+    [[nodiscard]] vector_t currentBaseVelocityReference() const;
 
     bool headMidpointGazeEnabled_{false};
     bool bodyTargetEnabled_{false};
