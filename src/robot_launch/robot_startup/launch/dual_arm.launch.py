@@ -51,8 +51,6 @@ def launch_setup(context, *args, **kwargs):
 
     # Same .info the arm_controller loads (info_package / robot_name + info_file_name).
     task_file_path = resolve_info_file_path(ctx.config, "dual_arm", ctx.robot_name)
-    if task_file_path is None:
-        return []
     print(f"[INFO] Using task file for TargetGenerator: {task_file_path}")
 
     target_generator = None

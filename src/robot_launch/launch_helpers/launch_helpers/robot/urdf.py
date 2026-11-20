@@ -12,7 +12,7 @@ import os
 import re
 import stat
 import tempfile
-from typing import Optional, Sequence
+from typing import Sequence
 
 import xacro
 
@@ -29,28 +29,17 @@ PLANNING_SCOPE_FULL = "full"
 
 # --- xacro rendering shared by both views ---------------------------------------------------------
 
-def resolve_robot_xacro(robot_name: str, xacro_relpath: Sequence[str]) -> Optional[str]:
-    """Absolute path of <robot_name>_description/<xacro_relpath>, or None when package or file is missing."""
-    robot_pkg_path = get_robot_package_path(robot_name)
-    if robot_pkg_path is None:
-        return None
-    xacro_file = os.path.join(robot_pkg_path, *xacro_relpath)
+def resolve_robot_xacro(robot_name: str, xacro_relpath: Sequence[str]) -> str:
+    """Absolute path of <robot_name>_description/<xacro_relpath>; a missing package or file raises."""
+    xacro_file = os.path.join(get_robot_package_path(robot_name), *xacro_relpath)
     if not os.path.isfile(xacro_file):
-        print(f"[WARN] xacro file not found: {xacro_file}")
-        return None
+        raise FileNotFoundError(f"xacro file of robot '{robot_name}' not found: {xacro_file}")
     return xacro_file
 
 
-def render_robot_xacro(robot_name: str, xacro_relpath: Sequence[str], mappings: dict) -> Optional[str]:
-    """Process the robot's xacro with mappings and return the URDF XML; None after logging on any failure."""
-    xacro_file = resolve_robot_xacro(robot_name, xacro_relpath)
-    if xacro_file is None:
-        return None
-    try:
-        return xacro.process_file(xacro_file, mappings=mappings).toxml()
-    except Exception as error:
-        print(f"[ERROR] Failed to render {xacro_file} for '{robot_name}': {error}")
-        return None
+def render_robot_xacro(robot_name: str, xacro_relpath: Sequence[str], mappings: dict) -> str:
+    """Process the robot's xacro with mappings and return the URDF XML; a xacro error propagates."""
+    return xacro.process_file(resolve_robot_xacro(robot_name, xacro_relpath), mappings=mappings).toxml()
 
 
 # --- ros2_control view ----------------------------------------------------------------------------
@@ -100,8 +89,6 @@ def get_ros2_control_robot_description(
         return _robot_description_cache[cache_key]
 
     robot_description = render_robot_xacro(robot_name, CONTROL_XACRO, mappings)
-    if robot_description is None:
-        return None
     _robot_description_cache[cache_key] = robot_description
     return robot_description
 
@@ -203,20 +190,11 @@ def _planning_xacro_supports_side_eef(robot_name: str) -> bool:
     if robot_name in _XACRO_SIDE_EEF_SUPPORT_CACHE:
         return _XACRO_SIDE_EEF_SUPPORT_CACHE[robot_name]
 
-    planning_xacro = resolve_robot_xacro(robot_name, PLANNING_XACRO)
-    if planning_xacro is None:
-        _XACRO_SIDE_EEF_SUPPORT_CACHE[robot_name] = False
-        return False
-
-    try:
-        with open(planning_xacro, "r", encoding="utf-8") as xacro_file:
-            declared = {
-                match.group("name")
-                for match in _XACRO_SIDE_EEF_ARG_PATTERN.finditer(xacro_file.read())
-            }
-    except OSError:
-        _XACRO_SIDE_EEF_SUPPORT_CACHE[robot_name] = False
-        return False
+    with open(resolve_robot_xacro(robot_name, PLANNING_XACRO), "r", encoding="utf-8") as xacro_file:
+        declared = {
+            match.group("name")
+            for match in _XACRO_SIDE_EEF_ARG_PATTERN.finditer(xacro_file.read())
+        }
 
     supported = declared.issuperset({"left_end_effector", "right_end_effector"})
     _XACRO_SIDE_EEF_SUPPORT_CACHE[robot_name] = supported
@@ -310,8 +288,7 @@ def build_planning_urdf_launch_params(
         planning_scope=scope,
     )
     if not urdf_xml:
-        print(f"[WARN] Failed to generate planning URDF from xacro for '{effective_robot_name}'")
-        return {}
+        raise RuntimeError(f"the planning xacro of '{effective_robot_name}' rendered an empty URDF")
 
     written_path = write_planning_urdf_cache(effective_robot_name, urdf_xml)
     if not written_path:

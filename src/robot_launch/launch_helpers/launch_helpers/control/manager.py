@@ -23,14 +23,13 @@ from ..launch_utils import create_rmw_zenohd_node
 
 def _parse_remappings(remappings_str: str) -> List[tuple]:
     additional = []
-    if remappings_str and remappings_str.strip():
-        try:
-            for remap_pair in remappings_str.split(";"):
-                if ":" in remap_pair:
-                    from_topic, to_topic = remap_pair.split(":", 1)
-                    additional.append((from_topic.strip(), to_topic.strip()))
-        except Exception as exc:
-            print(f"[WARN] Failed to parse remappings '{remappings_str}': {exc}")
+    for remap_pair in (remappings_str or "").split(";"):
+        if not remap_pair.strip():
+            continue
+        if ":" not in remap_pair:
+            raise ValueError(f"remapping '{remap_pair}' of '{remappings_str}' is not <from>:<to>")
+        from_topic, to_topic = remap_pair.split(":", 1)
+        additional.append((from_topic.strip(), to_topic.strip()))
     return additional
 
 
@@ -55,15 +54,12 @@ def _build_ros2_control_node_parameters(
 
     config_has_robot_type = False
     if isinstance(ros2_controllers_config, dict):
-        try:
-            config_robot_type = (
-                ros2_controllers_config.get("arm_controller", {})
-                .get("ros__parameters", {})
-                .get("robot_type")
-            )
-            config_has_robot_type = config_robot_type is not None
-        except Exception:
-            pass
+        config_robot_type = (
+            ros2_controllers_config.get("arm_controller", {})
+            .get("ros__parameters", {})
+            .get("robot_type")
+        )
+        config_has_robot_type = config_robot_type is not None
 
     node_parameters: List[Any] = []
     if meta.needs_merged_file and meta.merged_yaml_path:
@@ -134,10 +130,7 @@ def create_controller_manager_nodes(
     robot_variant = resolve_robot_variant(configs, profile)
     asymmetric = is_compose_asymmetric(control_left, control_right)
 
-    robot_pkg_path = get_robot_package_path(robot_name)
-    if robot_pkg_path is None:
-        print(f"[ERROR] Cannot create robot description without package path for robot '{robot_name}'")
-        return []
+    get_robot_package_path(robot_name)  # a missing description package stops the launch here
 
     robot_description = get_ros2_control_robot_description(
         robot_name,

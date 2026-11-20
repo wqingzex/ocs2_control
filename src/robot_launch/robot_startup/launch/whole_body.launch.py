@@ -91,8 +91,6 @@ def launch_setup(context, *args, **kwargs):
 
     # Same .info the whole_body_controller loads (info_package / robot_name + info_file_name).
     task_file_path = resolve_info_file_path(ctx.config, "whole_body", planning_robot_name)
-    if task_file_path is None:
-        return []
     print(f"[INFO] Using task file for TargetGenerator: {task_file_path}")
 
     _dual_arm, _control_base_frame, _auto_marker_frame = parse_task_info(task_file_path)

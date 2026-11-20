@@ -59,19 +59,15 @@ def launch_setup(context, *args, **kwargs):
 
     # Same .info the arm_controller loads (info_package / robot_name + info_file_name).
     task_file_path = resolve_info_file_path(ctx.config, "split_body", planning_robot_name)
-    if task_file_path is None:
-        return []
     print(f"[INFO] Using task file for TargetGenerator: {task_file_path}")
 
     config_file_path = None
-    whole_body_pkg = get_robot_package_path(ctx.robot_name)
-    if whole_body_pkg is not None:
-        candidate = os.path.join(whole_body_pkg, "config", "ocs2", "target_generator.yaml")
-        if os.path.exists(candidate):
-            config_file_path = candidate
-            print(f"[INFO] Using target_generator.yaml from full body robot description: {config_file_path}")
-        else:
-            print(f"[WARN] target_generator.yaml not found at: {candidate}")
+    candidate = os.path.join(get_robot_package_path(ctx.robot_name), "config", "ocs2", "target_generator.yaml")
+    if os.path.exists(candidate):
+        config_file_path = candidate
+        print(f"[INFO] Using target_generator.yaml from full body robot description: {config_file_path}")
+    else:
+        print(f"[WARN] target_generator.yaml not found at: {candidate}")
 
     hand_names = [c["name"] for c in hand_controllers] if enable_gripper else []
     if hand_names:

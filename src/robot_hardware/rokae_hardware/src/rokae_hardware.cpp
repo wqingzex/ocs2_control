@@ -525,8 +525,9 @@ namespace rokae_hardware {
             }
             try {
                 return std::stod(it->second);
-            } catch (...) {
-                return fallback;
+            } catch (const std::exception &) {
+                throw std::invalid_argument("hardware parameter '" + name + "' = '" + it->second +
+                                            "' is not a number");
             }
         };
         const double left_tool_torque =

@@ -211,13 +211,11 @@ def resolve_rviz_config(
     rviz_filename: str,
     fallback_filename: str = "dual_arm.rviz",
 ) -> str:
-    robot_pkg_path = get_robot_package_path(robot_name)
-    if robot_pkg_path is not None:
-        robot_rviz_config = os.path.join(robot_pkg_path, "config", "rviz", rviz_filename)
-        print(f"[INFO] Checking for rviz config in robot description package: {robot_rviz_config}")
-        if os.path.exists(robot_rviz_config):
-            print(f"[INFO] Using rviz config from robot description package: {robot_rviz_config}")
-            return robot_rviz_config
+    robot_rviz_config = os.path.join(get_robot_package_path(robot_name), "config", "rviz", rviz_filename)
+    print(f"[INFO] Checking for rviz config in robot description package: {robot_rviz_config}")
+    if os.path.exists(robot_rviz_config):
+        print(f"[INFO] Using rviz config from robot description package: {robot_rviz_config}")
+        return robot_rviz_config
 
     rviz_base = os.path.join(get_package_share_directory("robot_startup"), "config")
     rviz_config_path = os.path.join(rviz_base, fallback_filename)

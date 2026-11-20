@@ -1,4 +1,4 @@
-"""urdf: one place that finds a robot's xacro and turns it into URDF, failing soft with None."""
+"""urdf: one place that finds a robot's xacro and turns it into URDF, a missing package, file or a xacro error raises."""
 import pytest
 
 from launch_helpers.robot import urdf
@@ -27,14 +27,19 @@ def test_resolves_the_requested_entry_point(fake_robot):
     assert path == str(fake_robot / "xacro" / "robot.xacro")
 
 
-def test_missing_entry_point_resolves_to_none(fake_robot):
-    assert urdf.resolve_robot_xacro("w2", urdf.CONTROL_XACRO) is None
+def test_missing_entry_point_raises(fake_robot):
+    with pytest.raises(FileNotFoundError, match="not found"):
+        urdf.resolve_robot_xacro("w2", urdf.CONTROL_XACRO)
 
 
-def test_unknown_robot_package_resolves_to_none(monkeypatch):
-    monkeypatch.setattr(urdf, "get_robot_package_path", lambda name: None)
+def test_unknown_robot_package_raises(monkeypatch):
+    def missing(name):
+        raise LookupError(name)
 
-    assert urdf.resolve_robot_xacro("nope", urdf.PLANNING_XACRO) is None
+    monkeypatch.setattr(urdf, "get_robot_package_path", missing)
+
+    with pytest.raises(LookupError):
+        urdf.resolve_robot_xacro("nope", urdf.PLANNING_XACRO)
 
 
 def test_render_passes_mappings_and_returns_xml(fake_robot, monkeypatch):
@@ -53,19 +58,21 @@ def test_render_passes_mappings_and_returns_xml(fake_robot, monkeypatch):
     assert seen["path"].endswith("xacro/robot.xacro")
 
 
-def test_render_returns_none_when_xacro_raises(fake_robot, monkeypatch):
+def test_render_lets_a_xacro_error_through(fake_robot, monkeypatch):
     def boom(path, mappings=None):
         raise RuntimeError("undefined macro")
 
     monkeypatch.setattr(urdf.xacro, "process_file", boom)
 
-    assert urdf.render_robot_xacro("w2", urdf.PLANNING_XACRO, {}) is None
+    with pytest.raises(RuntimeError, match="undefined macro"):
+        urdf.render_robot_xacro("w2", urdf.PLANNING_XACRO, {})
 
 
-def test_render_returns_none_without_calling_xacro_when_file_is_missing(fake_robot, monkeypatch):
+def test_render_does_not_call_xacro_when_file_is_missing(fake_robot, monkeypatch):
     def must_not_run(path, mappings=None):
         raise AssertionError("xacro must not run for a missing entry point")
 
     monkeypatch.setattr(urdf.xacro, "process_file", must_not_run)
 
-    assert urdf.render_robot_xacro("w2", urdf.CONTROL_XACRO, {}) is None
+    with pytest.raises(FileNotFoundError):
+        urdf.render_robot_xacro("w2", urdf.CONTROL_XACRO, {})

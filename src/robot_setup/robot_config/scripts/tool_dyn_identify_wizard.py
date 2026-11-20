@@ -24,15 +24,12 @@ def _resolve_sdk_root() -> str:
 
     # 2) 安装后（colcon）：可执行文件在 <prefix>/lib/<pkg>/tool_dyn_identify_wizard
     #    故 prefix = dirname(dirname(CURRENT_DIR))，share 在 <prefix>/share/<pkg>/...
-    try:
-        from ament_index_python.packages import get_package_share_directory  # type: ignore
+    from ament_index_python.packages import get_package_share_directory  # type: ignore
 
-        share_dir = get_package_share_directory("marvin_hardware")
-        cand_ament = os.path.join(share_dir, "TJ_FX_ROBOT_CONTRL_SDK")
-        if _has_sdk_python(cand_ament):
-            return cand_ament
-    except Exception:
-        pass
+    share_dir = get_package_share_directory("marvin_hardware")  # not installed: PackageNotFoundError
+    cand_ament = os.path.join(share_dir, "TJ_FX_ROBOT_CONTRL_SDK")
+    if _has_sdk_python(cand_ament):
+        return cand_ament
 
     # 3) 不依赖 ament 索引时，从安装路径推断 prefix（勿用三级 dirname，否则会指到 workspace 根目录）
     prefix = os.path.dirname(os.path.dirname(CURRENT_DIR))
@@ -63,17 +60,11 @@ def _arm_index(arm: str) -> int:
 
 
 def _check_joints_reached(fb_joints, target_joints, tol_deg: float = 0.5) -> bool:
-    try:
-        return all(abs(float(a) - float(b)) <= tol_deg for a, b in zip(fb_joints, target_joints))
-    except Exception:
-        return False
+    return all(abs(float(a) - float(b)) <= tol_deg for a, b in zip(fb_joints, target_joints))
 
 
 def _max_abs_joint_error_deg(fb_joints, target_joints) -> float:
-    try:
-        return max(abs(float(a) - float(b)) for a, b in zip(fb_joints, target_joints))
-    except Exception:
-        return float("inf")
+    return max(abs(float(a) - float(b)) for a, b in zip(fb_joints, target_joints))
 
 
 def _resolve_ccs_paths(arm: str):
@@ -187,16 +178,9 @@ def _go_to_joint_zero(
             if now - last_clear_t > 1.0:
                 last_clear_t = now
                 clear_attempts += 1
-                try:
-                    robot.clear_error(arm)
-                except Exception:
-                    pass
-                # Try to print servo fault details (hex + decoded) for faster diagnosis.
-                try:
-                    servo_faults = robot.get_servo_error_code(arm, lang="CN")
-                    logger.warning(f"[步骤] arm={arm} err_code={err_code}，已触发清错(第{clear_attempts}次)。伺服故障码: {servo_faults}")
-                except Exception:
-                    logger.warning(f"[步骤] arm={arm} err_code={err_code}，已触发清错(第{clear_attempts}次)。")
+                robot.clear_error(arm)
+                servo_faults = robot.get_servo_error_code(arm, lang="CN")  # hex + decoded, for diagnosis
+                logger.warning(f"[步骤] arm={arm} err_code={err_code}，已触发清错(第{clear_attempts}次)。伺服故障码: {servo_faults}")
 
         # If error is cleared but arm is still in IDLE (0), re-request POSITION mode periodically.
         # After E-stop clear, cabinet often ends up in IDLE (servo down) and needs a fresh state request.
@@ -204,16 +188,13 @@ def _go_to_joint_zero(
             if now - last_pos_state_req_t > 1.0:
                 last_pos_state_req_t = now
                 pos_state_req_attempts += 1
-                try:
-                    robot.clear_set()
-                    robot.set_vel_acc(arm=arm, velRatio=vel_ratio, AccRatio=acc_ratio)
-                    robot.set_state(arm=arm, state=1)  # POSITION
-                    robot.send_cmd()
-                    logger.warning(
-                        f"[步骤] arm={arm} 当前处于下伺服(cur_state=0)，已重新请求进入位置模式(第{pos_state_req_attempts}次)。"
-                    )
-                except Exception as e:
-                    logger.warning(f"[步骤] arm={arm} 重新请求位置模式时异常: {e}")
+                robot.clear_set()
+                robot.set_vel_acc(arm=arm, velRatio=vel_ratio, AccRatio=acc_ratio)
+                robot.set_state(arm=arm, state=1)  # POSITION
+                robot.send_cmd()
+                logger.warning(
+                    f"[步骤] arm={arm} 当前处于下伺服(cur_state=0)，已重新请求进入位置模式(第{pos_state_req_attempts}次)。"
+                )
 
         if _check_joints_reached(fb, target, tol_deg=0.05):
             logger.info(f"[步骤] 手臂 {arm} 已到达关节零位。max_err_deg={max_err:.3f} fb_joint_pos={fb}")
@@ -295,10 +276,7 @@ def collect_identy_data(
     # 采集数据列布局：关节角(7) + 关节电流(7) + 时间标签(1)。
     # 时间标签索引随 SDK 版本变化：43 版(100343007 之后)为 66，以前为 76；
     # B 臂整体 +100。见 DEMO_PYTHON/showcase_identy_tool_dynamic_CCS_B.py。
-    try:
-        sdk_version = robot.SDK_version()
-    except Exception:
-        sdk_version = 0
+    sdk_version = robot.SDK_version()
     tag_idx = 66 if sdk_version > 100343007 else 76
     logger.info(f"SDK 版本={sdk_version}，采集时间标签索引={tag_idx}")
 

@@ -165,14 +165,8 @@ private:
         // Get initial mode from parameter
         std::string initialModeStr;
         get_parameter_or<std::string>("initial_mode", initialModeStr, "HM_DUAL_RELATIVE_MOBILE_BASE");
-        try {
-            currentMode_ = stringToMode(initialModeStr);
-            RCLCPP_INFO(get_logger(), "Initial mode: %s", initialModeStr.c_str());
-        } catch (...) {
-            currentMode_ = Modes::DUAL_INDEPENDENT;
-            RCLCPP_WARN(get_logger(), "Invalid initial_mode '%s', using HM_DUAL_RELATIVE_MOBILE_BASE",
-                initialModeStr.c_str());
-        }
+        currentMode_ = stringToMode(initialModeStr);  // an unknown name throws: the node does not start
+        RCLCPP_INFO(get_logger(), "Initial mode: %s", initialModeStr.c_str());
     }
     
     void setDefaultTargetValues() {

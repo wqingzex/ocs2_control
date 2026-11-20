@@ -87,20 +87,14 @@ def get_robot_package_path(robot_name):
         robot_name (str): Name of the robot (e.g., 'cr5', 'arx5', etc.)
         
     Returns:
-        str: Path to the robot description package, or None if not found
+        str: Path to the robot description package (ament PackageNotFoundError when it is not installed)
         
     Example:
         >>> robot_path = get_robot_package_path('cr5')
         >>> print(robot_path)
         '/opt/ros/humble/share/cr5_description'
     """
-    robot_pkg = robot_name + "_description"
-    try:
-        robot_pkg_path = get_package_share_directory(robot_pkg)
-        return robot_pkg_path
-    except Exception as e:
-        print(f"[ERROR] Failed to get package path for '{robot_pkg}': {e}")
-        return None
+    return get_package_share_directory(robot_name + "_description")
 
 
 def _generate_progressive_type_candidates(robot_type):
@@ -218,125 +212,114 @@ def load_robot_config(
         return _config_cache[cache_key]
 
     robot_pkg_path = get_robot_package_path(robot_name)
-    if robot_pkg_path is None:
-        return None, None, EMPTY_ROBOT_CONFIG_META
 
     compose_applied = False
-    try:
-        if config_type == "ros2_control":
-            config_dir = os.path.join(robot_pkg_path, "config", "ros2_control")
-            default_config_file = "ros2_controllers.yaml"
-        else:
-            config_dir = os.path.join(robot_pkg_path, "config", config_type)
-            default_config_file = f"{config_type}.yaml"
+    if config_type == "ros2_control":
+        config_dir = os.path.join(robot_pkg_path, "config", "ros2_control")
+        default_config_file = "ros2_controllers.yaml"
+    else:
+        config_dir = os.path.join(robot_pkg_path, "config", config_type)
+        default_config_file = f"{config_type}.yaml"
 
-        config_path = None
-        config_file = None
-        type_yaml_found = False
+    config_path = None
+    config_file = None
+    type_yaml_found = False
 
-        if effective_type and effective_type.strip() and not asymmetric:
-            type_candidates = _generate_progressive_type_candidates(effective_type)
-            for candidate_type in type_candidates:
-                candidate_file = f"{candidate_type}.yaml"
-                candidate_path = os.path.join(config_dir, candidate_file)
-                if os.path.exists(candidate_path):
-                    config_path = candidate_path
-                    config_file = candidate_file
-                    type_yaml_found = True
-                    print(f"[INFO] Using {config_type} config file (progressive match): {config_file}")
-                    break
-            if config_path is None:
-                config_file = default_config_file
-                config_path = os.path.join(config_dir, config_file)
-                print(f"[INFO] Progressive type matching failed, using default: {config_file}")
-        else:
+    if effective_type and effective_type.strip() and not asymmetric:
+        type_candidates = _generate_progressive_type_candidates(effective_type)
+        for candidate_type in type_candidates:
+            candidate_file = f"{candidate_type}.yaml"
+            candidate_path = os.path.join(config_dir, candidate_file)
+            if os.path.exists(candidate_path):
+                config_path = candidate_path
+                config_file = candidate_file
+                type_yaml_found = True
+                print(f"[INFO] Using {config_type} config file (progressive match): {config_file}")
+                break
+        if config_path is None:
             config_file = default_config_file
             config_path = os.path.join(config_dir, config_file)
-            if asymmetric:
-                print(f"[INFO] Asymmetric EEF compose: {left} + {right}, base config: {config_file}")
+            print(f"[INFO] Progressive type matching failed, using default: {config_file}")
+    else:
+        config_file = default_config_file
+        config_path = os.path.join(config_dir, config_file)
+        if asymmetric:
+            print(f"[INFO] Asymmetric EEF compose: {left} + {right}, base config: {config_file}")
 
-        common_config_path = os.path.join(config_dir, "common.yaml")
-        common_config = {}
-        if config_type == "ros2_control" and os.path.exists(common_config_path):
-            with open(common_config_path, "r") as file:
-                common_config = yaml.safe_load(file) or {}
+    common_config_path = os.path.join(config_dir, "common.yaml")
+    common_config = {}
+    if config_type == "ros2_control" and os.path.exists(common_config_path):
+        with open(common_config_path, "r") as file:
+            common_config = yaml.safe_load(file) or {}
 
-        if common_config:
+    if common_config:
+        print(
+            f"[INFO] Loaded {config_type} config: {config_path} "
+            f"(+ {common_config_path})"
+        )
+    else:
+        print(f"[INFO] Loaded {config_type} config: {config_path}")
+
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file) or {}
+
+    config = _deep_merge_dicts(common_config, config)
+
+    variant_overlay_applied = False
+    if variant_key:
+        variant_config_path = os.path.join(config_dir, f"{variant_key}.yaml")
+        if os.path.isfile(variant_config_path):
+            with open(variant_config_path, "r") as file:
+                variant_config = yaml.safe_load(file) or {}
+            config = _deep_merge_dicts(config, variant_config)
+            variant_overlay_applied = True
             print(
-                f"[INFO] Loaded {config_type} config: {config_path} "
-                f"(+ {common_config_path})"
+                f"[INFO] Merged {config_type} variant overlay: "
+                f"{os.path.basename(variant_config_path)}"
             )
-        else:
-            print(f"[INFO] Loaded {config_type} config: {config_path}")
 
-        with open(config_path, "r") as file:
-            config = yaml.safe_load(file) or {}
+    use_compose = asymmetric or (
+        not yaml_only
+        and not type_yaml_found
+        and bool(effective_type and effective_type.strip())
+    )
+    if use_compose:
+        _strip_eef_controllers_from_config(config)
 
-        config = _deep_merge_dicts(common_config, config)
-
-        variant_overlay_applied = False
-        if variant_key:
-            variant_config_path = os.path.join(config_dir, f"{variant_key}.yaml")
-            if os.path.isfile(variant_config_path):
-                with open(variant_config_path, "r") as file:
-                    variant_config = yaml.safe_load(file) or {}
-                config = _deep_merge_dicts(config, variant_config)
-                variant_overlay_applied = True
+    if use_compose:
+        composed = compose_control_config(left, right, robot_name, base_config=config)
+        if composed:
+            config = _deep_merge_dicts(config, composed)
+            compose_applied = True
+            if asymmetric:
+                print(f"[INFO] Merged composed control config for {left} + {right}")
+            else:
                 print(
-                    f"[INFO] Merged {config_type} variant overlay: "
-                    f"{os.path.basename(variant_config_path)}"
+                    f"[INFO] Merged symmetric EEF compose (template fallback) "
+                    f"for {effective_type}"
                 )
 
-        use_compose = asymmetric or (
-            not yaml_only
-            and not type_yaml_found
-            and bool(effective_type and effective_type.strip())
-        )
-        if use_compose:
-            _strip_eef_controllers_from_config(config)
+    patch_applied = bool(patch)
+    if patch_applied:
+        config = _deep_merge_dicts(config, patch)
+        print("[INFO] Merged control.patch from robot profile")
 
-        if use_compose:
-            composed = compose_control_config(left, right, robot_name, base_config=config)
-            if composed:
-                config = _deep_merge_dicts(config, composed)
-                compose_applied = True
-                if asymmetric:
-                    print(f"[INFO] Merged composed control config for {left} + {right}")
-                else:
-                    print(
-                        f"[INFO] Merged symmetric EEF compose (template fallback) "
-                        f"for {effective_type}"
-                    )
+    meta = _build_robot_config_meta(
+        compose_applied=compose_applied,
+        type_yaml_found=type_yaml_found,
+        patch_applied=patch_applied,
+        variant_overlay_applied=variant_overlay_applied,
+        config=config,
+        config_path=config_path or "",
+        yaml_only=yaml_only,
+    )
 
-        patch_applied = bool(patch)
-        if patch_applied:
-            config = _deep_merge_dicts(config, patch)
-            print("[INFO] Merged control.patch from robot profile")
+    result = (config, config_path, meta)
+    if not yaml_only:
+        _config_cache[cache_key] = result
+    return result
 
-        meta = _build_robot_config_meta(
-            compose_applied=compose_applied,
-            type_yaml_found=type_yaml_found,
-            patch_applied=patch_applied,
-            variant_overlay_applied=variant_overlay_applied,
-            config=config,
-            config_path=config_path or "",
-            yaml_only=yaml_only,
-        )
 
-        result = (config, config_path, meta)
-        if not yaml_only:
-            _config_cache[cache_key] = result
-        return result
-
-    except FileNotFoundError:
-        print(f"[WARN] {config_type} config file not found for robot '{robot_name}'")
-        return None, None, EMPTY_ROBOT_CONFIG_META
-    except yaml.YAMLError as e:
-        print(f"[ERROR] Failed to parse YAML config for robot '{robot_name}': {e}")
-        return None, None, EMPTY_ROBOT_CONFIG_META
-    except Exception as e:
-        print(f"[ERROR] Unexpected error reading config for robot '{robot_name}': {e}")
-        return None, None, EMPTY_ROBOT_CONFIG_META
 
 
 DEFAULT_INFO_FILE_NAME = {
@@ -361,7 +344,7 @@ def resolve_info_file_path(config, launch_mode, robot_name):
     controller (ArmMpcTask / WholeBodyMpcTask):
     <info_package or <robot_name>_description>/config/ocs2/<info_file_name>.info, where robot_name is the
     controller's robot_name parameter (falling back to the launch robot) and info_file_name falls back to
-    the controller default. Returns None when the package cannot be found.
+    the controller default. A missing description package raises.
     """
     order = _info_controller_order(launch_mode)
     controller_key = order[0]
@@ -382,11 +365,7 @@ def resolve_info_file_path(config, launch_mode, robot_name):
     package = str(params.get("info_package", "") or "").strip()
     if not package:
         package = str(params.get("robot_name", "") or robot_name).strip() + "_description"
-    try:
-        share = get_package_share_directory(package)
-    except Exception as e:
-        print(f"[ERROR] Failed to get package path for '{package}': {e}")
-        return None
+    share = get_package_share_directory(package)
     return os.path.join(share, "config", "ocs2", f"{info_file_name}.info")
 
 

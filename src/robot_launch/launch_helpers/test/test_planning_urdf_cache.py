@@ -77,10 +77,11 @@ def test_unchanged_xacro_keeps_the_path_stable(cache_root, monkeypatch):
     assert before["planning_urdf_variant"] == "xacro"
 
 
-def test_generation_failure_returns_empty_params(cache_root, monkeypatch):
+def test_an_empty_urdf_raises(cache_root, monkeypatch):
     _stub_generation(monkeypatch, cache_root, [None])
 
-    assert urdf.build_planning_urdf_launch_params("w2", {}, planning_scope="full") == {}
+    with pytest.raises(RuntimeError, match="empty URDF"):
+        urdf.build_planning_urdf_launch_params("w2", {}, planning_scope="full")
 
 
 def test_cache_directory_is_private_to_the_current_user(cache_root):
