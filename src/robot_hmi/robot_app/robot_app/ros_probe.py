@@ -16,6 +16,8 @@ FSM_HOLD = 2
 FSM_COMMANDS = {"HOME": 1, "HOLD": 2, "OCS2": 3, "MOVEJ": 4, "SWITCH_POSE": 100}
 FSM_ACTIONS = {1: ("HOLD", "SWITCH_POSE"), 2: ("HOME", "OCS2", "MOVEJ"), 3: ("HOLD",), 4: ("HOLD",)}
 SWITCH_POSE_PULSE_S = 0.1  # SWITCH_POSE is 100 followed by 0 (panel: button press / release)
+CONTROLLER_POLL_S = 0.5
+CONTROLLER_STATE_TIMEOUT_S = 2.0
 
 
 # Body modes of the RViz FSM panel's combo box: (state in /whole_body_controller/current_state.body_state,
@@ -51,7 +53,7 @@ def fsm_name(state: Optional[int]) -> str:
 class RosProbe:
     """One background rclpy node: latest /fsm_state, /teleop/connection_status and message rates."""
 
-    def __init__(self, node_name: str = "robot_app_probe"):
+    def __init__(self, node_name: str = "robot_app_probe", *, monitor_controllers: bool = False):
         import rclpy
         from rclpy.executors import SingleThreadedExecutor
         from rclpy.qos import DurabilityPolicy, QoSProfile
@@ -79,6 +81,8 @@ class RosProbe:
         self._subscribe_whole_body(latched)
         self._Int32 = Int32
         self._executor = SingleThreadedExecutor()
+        if monitor_controllers:
+            self._start_controller_monitor()
         self._executor.add_node(self.node)
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._spin, daemon=True)
@@ -96,7 +100,8 @@ class RosProbe:
         except ImportError:
             return
         self.node.create_subscription(WholeBodyCapability, WHOLE_BODY_CAPABILITY_TOPIC, self._on_capability, latched)
-        self.node.create_subscription(WholeBodyCurrentState, WHOLE_BODY_STATE_TOPIC, self._on_whole_body_state, 10)
+        # Read the controller's last mode even when the console starts after it.
+        self.node.create_subscription(WholeBodyCurrentState, WHOLE_BODY_STATE_TOPIC, self._on_whole_body_state, latched)
 
     def _on_capability(self, msg) -> None:
         self.whole_body_capability = {name: bool(getattr(msg, name)) for name in
@@ -116,6 +121,40 @@ class RosProbe:
 
     def _on_xr_device(self, msg) -> None:
         self.xr_device_id = msg.data
+
+    def _start_controller_monitor(self) -> None:
+        from controller_manager_msgs.srv import ListControllers
+
+        self._controller_client = self.node.create_client(ListControllers, "/controller_manager/list_controllers")
+        self._controller_service_type = ListControllers
+        self._controller_request = None
+        self._controller_snapshot = None
+        self.node.create_timer(CONTROLLER_POLL_S, self._poll_controllers)
+
+    def _poll_controllers(self) -> None:
+        now = time.monotonic()
+        if self._controller_request is not None:
+            sent, future = self._controller_request
+            if future.done():
+                if not future.cancelled() and future.exception() is None and now - sent < CONTROLLER_STATE_TIMEOUT_S:
+                    states = {c.name: c.state for c in future.result().controller}
+                    with self._lock:
+                        self._controller_snapshot = (sent, states)
+            elif now - sent < CONTROLLER_STATE_TIMEOUT_S:
+                return
+            else:
+                self._controller_client.remove_pending_request(future)
+            self._controller_request = None
+        if self._controller_client.service_is_ready():
+            self._controller_request = (now, self._controller_client.call_async(self._controller_service_type.Request()))
+
+    def controller_states(self) -> Optional[Dict[str, str]]:
+        """A recent lifecycle state from controller_manager, including inactive controllers."""
+        with self._lock:
+            snapshot = getattr(self, "_controller_snapshot", None)
+        if snapshot is not None and time.monotonic() - snapshot[0] < CONTROLLER_STATE_TIMEOUT_S:
+            return snapshot[1]
+        return None
 
     # ---- rates ------------------------------------------------------------------------------------
     def watch(self, topics: Iterable[str]) -> None:

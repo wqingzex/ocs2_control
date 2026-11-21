@@ -368,23 +368,22 @@ async function saveAssignment(devicesFound) {
   } catch (err) { toast(`保存失败：${err.message}`, true); }
 }
 
-// Everything the plain "start all" starts (on-demand RViz excluded): all running -> the button stops.
-// A module on its own is restarted with the ↻ next to its status. Ask first (stopping then asks again outside HOLD).
-function allUnits(state) {
-  return (state.units || []).filter((u) => u.name !== "rviz");
+function hasRunningUnits(state) {
+  return (state.units || []).some((u) => u.running);
 }
 function renderAll(state) {
-  const units = allUnits(state);
-  const running = units.length > 0 && units.every((u) => u.running);
+  const running = hasRunningUnits(state);
   const toggle = document.getElementById("all-toggle");
   toggle.textContent = running ? "全部停止" : "全部启动";
   toggle.className = running ? "danger" : "primary";
 }
 document.getElementById("all-toggle").addEventListener("click", async () => {
-  const units = allUnits(lastState);
-  if (units.length && units.every((u) => u.running)) {
-    const ok = await confirmDialog("全部停止：将停止所有正在运行的模块，包括运控（机械臂会抱闸）。\n"
-      + "运控不在 HOLD 时，下一步还会再确认并先切到 HOLD。继续？");
+  const state = lastState;
+  if (!state) return;
+  if (hasRunningUnits(state)) {
+    const controlRunning = state.units.some((u) => u.name === "control" && u.running);
+    const detail = controlRunning ? "\n运控停止时机械臂会抱闸。运控不在 HOLD 时可能还要确认切到 HOLD。" : "";
+    const ok = await confirmDialog(`将停止所有正在运行的模块。${detail}\n继续？`);
     if (ok) guarded("/api/all/stop", "全部停止");
     return;
   }
@@ -392,21 +391,16 @@ document.getElementById("all-toggle").addEventListener("click", async () => {
     + "请确认急停在手边，机械臂、腰、头周围无人无物。继续？");
   if (ok) action("/api/all/start", "全部启动");
 });
-// Inference = the controllers plus the cameras (no XR, no RViz); the policy itself runs elsewhere. One toggle.
-function inferenceUnits(state) {
-  return (state.units || []).filter((u) => u.name === "control" || u.is_camera);
-}
+// Only an explicit inference start activates this toggle. The policy itself runs elsewhere.
 function renderInference(state) {
-  const units = inferenceUnits(state);
-  const running = units.length > 0 && units.every((u) => u.running);
   const toggle = document.getElementById("inference-toggle");
-  toggle.textContent = running ? "关闭推理" : "启动推理";
-  toggle.className = running ? "danger" : "primary";
-  toggle.hidden = !units.some((u) => u.name === "control");
+  toggle.textContent = state.inference_active ? "关闭推理" : "启动推理";
+  toggle.className = state.inference_active ? "danger" : "primary";
+  toggle.hidden = !state.units.some((u) => u.name === "control");
 }
 document.getElementById("inference-toggle").addEventListener("click", async () => {
-  const units = inferenceUnits(lastState);
-  if (units.length && units.every((u) => u.running)) {
+  if (!lastState) return;
+  if (lastState.inference_active) {
     const ok = await confirmDialog("关闭推理：将停止运控和相机（机械臂会抱闸）。\n运控不在 HOLD 时，下一步还会再确认并先切到 HOLD。继续？");
     if (ok) guarded("/api/inference/stop", "关闭推理");
     return;

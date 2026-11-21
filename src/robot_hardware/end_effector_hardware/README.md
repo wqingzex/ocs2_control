@@ -28,19 +28,20 @@ include/end_effector_hardware/   src/ 同样分目录
 
 ```yaml
 robot:
-  end_effector: linkerhand_l6
-  end_effector_bus: usb_rs485   # usb_rs485（USB-RS485）| usb_can（USB-CAN）
-hardware:
-  usb_left_port: /dev/ttyUSB0          # usb 时
-  usb_right_port: /dev/ttyUSB2
-  # left_ee_can_interface: can1        # usb_can 时；不能用腰、头的 body_can_interface
-  # right_ee_can_interface: can2
+  end_effector:
+    type: linkerhand_l6
+    interface:
+      bus: usb_rs485
+      left: {port: /dev/serial/by-id/usb-LEFT}
+      right: {port: /dev/serial/by-id/usb-RIGHT}
 ```
 
-单手调试：
+用 `./scripts/setup.sh ee` 选择实际的 USB-RS485 适配器。使用 USB-CAN 时，把 `bus` 设为 `usb_can`，配置左右的 `can`，使用与腰部、头部不同的接口。
+
+单手调试前，把 `PORT` 设为该手适配器的 `/dev/serial/by-id/…` 路径。
 
 ```bash
-ros2 launch robot_startup hand.launch.py hand:=linkerhand type:=l6 hardware:=real direction:=1
+ros2 launch robot_startup hand.launch.py hand:=linkerhand type:=l6 hardware:=real direction:=1 serial_port:="$PORT"
 ```
 
 用户要在 `dialout` 组里才能读写串口。

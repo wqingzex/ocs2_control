@@ -11,6 +11,22 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
+
+ament_python_install_package(${PROJECT_NAME})
+install(PROGRAMS scripts/xr_stub.py DESTINATION lib/${PROJECT_NAME} OPTIONAL)
+
+option(XR_TELEOP_BUILD_NATIVE "Build the XR bridge and its native code" ON)
+if(NOT XR_TELEOP_BUILD_NATIVE)
+  # robot_app always uses the Python configuration and network helpers.
+  ament_package()
+  return()
+endif()
+
+enable_language(C)
+add_library(xrt_lan_bind SHARED src/xrt_lan_bind.c)
+target_link_libraries(xrt_lan_bind PRIVATE ${CMAKE_DL_LIBS})
+install(TARGETS xrt_lan_bind LIBRARY DESTINATION lib/${PROJECT_NAME})
+
 find_package(rclcpp REQUIRED)
 find_package(robot_utils REQUIRED)
 find_package(rclcpp_components REQUIRED)
@@ -64,10 +80,7 @@ else()
     "deb or set XRT_SDK_DIR. Core library and tests are still built.")
 endif()
 
-ament_python_install_package(xr_teleop)
-
 install(DIRECTORY include/ DESTINATION include)
-install(PROGRAMS scripts/xr_stub.py DESTINATION lib/${PROJECT_NAME} OPTIONAL)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)

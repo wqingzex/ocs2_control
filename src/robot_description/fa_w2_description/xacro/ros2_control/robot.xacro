@@ -24,8 +24,8 @@
 	<xacro:arg name="body_can_interface" default="can0"/>
 	<!-- 0: print the CAN / control-loop statistics once, when the driver stops; N > 0: also every N seconds -->
 	<xacro:arg name="body_can_stats_period_s" default="0"/>
-	<xacro:arg name="usb_left_port" default="/dev/ttyUSB0"/>
-	<xacro:arg name="usb_right_port" default="/dev/ttyUSB2"/>
+	<xacro:arg name="usb_left_port" default=""/>
+	<xacro:arg name="usb_right_port" default=""/>
 	<!-- Optional ros2_control rw_rate [Hz] of the USB hand systems (XHand1); empty = controller_manager rate -->
 	<xacro:arg name="left_ee_rw_rate" default=""/>
 	<xacro:arg name="right_ee_rw_rate" default=""/>

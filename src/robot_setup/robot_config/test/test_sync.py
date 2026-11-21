@@ -38,6 +38,44 @@ def test_a_new_file_asks_for_the_entry_when_none_is_given(tmp_path):
     assert read(other)["robot"]["entry"] == "whole_body"
 
 
+def test_component_selection_saves_dexcap_ports_before_build(tmp_path):
+    path = tmp_path / "robot.local.yaml"
+    answers = ("real", "marvin", "PD", "linkerhand_l6", "usb_rs485", "n", "dexcap",
+               "/dev/ttyACM0", "none", "/dev/ttyUSB9")
+    assert setup_steps.sync_run(str(path), "dual_arm", Quiet(answers))
+    saved = read(path)
+    assert saved["control"]["arm_mode"] == "PD"
+    assert saved["robot"]["arm"]["type"] == "marvin"
+    cfg = validate(saved)
+    assert cfg["robot"]["entry"] == "dual_arm" and cfg["cameras"]["enable"] is False
+    assert cfg["teleop"]["type"] == "dexcap"
+    assert cfg["teleop"]["dexcap"] == {"upper_body_port": "/dev/ttyACM0", "left_hand_port": "",
+                                       "right_hand_port": "/dev/ttyUSB9"}
+
+
+def test_arm_selection_rejects_a_driver_without_a_robot_model(tmp_path):
+    path = tmp_path / "robot.local.yaml"
+    with pytest.raises(ValueError, match="臂驱动请选择 marvin"):
+        setup_steps.sync_run(str(path), "dual_arm", Quiet(("real", "rokae")))
+    assert not path.exists()
+
+
+def test_legacy_xr_is_migrated_without_losing_network_or_pairing(tmp_path):
+    path = tmp_path / "robot.local.yaml"
+    raw = template_for("split_body")
+    xr = raw.pop("teleop")["xr"]
+    raw["xr"] = {**xr, "enable": False, "device_id": "PICO-OLD", "network_interface": "enx0"}
+    raw["cameras"]["enable"] = False
+    path.write_text(yaml.safe_dump(raw))
+    assert validate(raw)["teleop"]["type"] == "none"
+    assert setup_steps.sync_run(str(path), None, Quiet())
+    migrated = read(path)
+    assert "xr" not in migrated and migrated["teleop"]["type"] == "none"
+    assert migrated["teleop"]["xr"]["device_id"] == "PICO-OLD"
+    assert migrated["teleop"]["xr"]["network_interface"] == "enx0"
+    assert read(path.with_suffix(".yaml.bak")) == raw
+
+
 def test_missing_keys_are_added_and_nothing_else_changes(tmp_path):
     path = tmp_path / "robot.local.yaml"
     setup_steps.sync_run(str(path), "whole_body", Quiet())
@@ -50,8 +88,8 @@ def test_missing_keys_are_added_and_nothing_else_changes(tmp_path):
     assert setup_steps.sync_run(str(path), None, Quiet())
 
     after = read(path)
-    assert after["robot"]["body"]["interface"]["stats_period_s"] == 0 and after["xr"]["reconnect_interval_s"] == 3.0
-    assert after["xr"]["frame_timeout_ms"] == 450  # the value in the file wins
+    assert after["robot"]["body"]["interface"]["stats_period_s"] == 0 and after["teleop"]["xr"]["reconnect_interval_s"] == 3.0
+    assert after["teleop"]["xr"]["frame_timeout_ms"] == 450  # the value in the file wins
     assert "# my own note" in path.read_text(encoding="utf-8")
     assert (tmp_path / "robot.local.yaml.bak").exists()
     assert not setup_steps.sync_status(str(path))[0]

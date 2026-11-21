@@ -33,8 +33,8 @@
 	<xacro:arg name="right_dyn_param" default=""/>
 	<xacro:arg name="max_joint_speed" default="50"/>
 	<xacro:arg name="max_joint_acceleration" default="30"/>
-	<xacro:arg name="usb_left_port" default="/dev/ttyUSB0"/>
-	<xacro:arg name="usb_right_port" default="/dev/ttyUSB2"/>
+	<xacro:arg name="usb_left_port" default=""/>
+	<xacro:arg name="usb_right_port" default=""/>
 	<!-- Optional ros2_control rw_rate [Hz] of the USB hand systems (XHand1); empty = controller_manager rate -->
 	<xacro:arg name="left_ee_rw_rate" default=""/>
 	<xacro:arg name="right_ee_rw_rate" default=""/>

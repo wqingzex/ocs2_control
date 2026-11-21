@@ -56,8 +56,8 @@ ros2 launch robot_startup head_body.launch.py    robot:=fa_w2                   
 
 | 文件 | 控制器 | 说明 |
 |---|---|---|
-| `whole_body_fixed_eef_l6.info` | `whole_body_controller` | 默认值；L6 机台参数 |
-| `whole_body_fixed_tcp_l6.info` | `whole_body_controller` | L6 机台参数，跟踪 TCP |
+| `whole_body_fixed_eef_l6.info` | `whole_body_controller` | L6 机台参数，跟踪 EEF |
+| `whole_body_fixed_tcp_l6.info` | `whole_body_controller` | 默认值，跟踪 TCP |
 | `whole_body_fixed_eef_xhand.info` / `whole_body_fixed_tcp_xhand.info` | `whole_body_controller` | XHand1 机台参数（取自 fa_gen2_ws） |
 | `whole_body_mobile_tcp.info` | `whole_body_controller` | 移动底盘 |
 | `dual_arm_eef.info` / `dual_arm_tcp.info` | `arm_controller` | 双臂 / 分体控制；规划模型是 `m6_ccs` 的双臂 URDF（`robot_name: m6_ccs`），`.info` 用 `info_package: fa_w2_description` 从本包读 |
@@ -68,17 +68,7 @@ ros2 launch robot_startup head_body.launch.py    robot:=fa_w2                   
 
 真机拆成两个 system：臂和末端走 `marvin_hardware`（`arms`），腰和头走 `juxie_hardware`（`juxie_body`，`body_joint1~4`、`head_joint1~2`）；外接 USB 末端走 `end_effector_hardware`。仿真合并为一个 system（mock / isaac）。
 
-`robot.local.yaml` 里的 `hardware:` 段在 `real` 时注入 xacro：
-
-```yaml
-hardware:
-  device_ip: 192.168.1.190
-  arm_ctrl_mode: position
-  max_joint_speed: 50
-  max_joint_acceleration: 30
-  usb_left_port: /dev/ttyUSB0
-  usb_right_port: /dev/ttyUSB2
-```
-
-启动时可用 `hardware_<键>:=…` 覆盖，如 `hardware_device_ip:=…`、`hardware_usb_left_port:=…`。
+真机的臂控制器地址配置在 `robot.arm.interface.ip`，末端接线配置在 `robot.end_effector.interface.bus`。
+USB-RS485 手需要分别配置 `robot.end_effector.interface.left.port` 和 `right.port`。
+运行 `./scripts/setup.sh ee` 按适配器序列号选择 `/dev/serial/by-id/…` 并核对左右手。
 

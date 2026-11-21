@@ -4,6 +4,7 @@ There is no login: whoever can reach the port can control the robot, so the cons
 unless it is started with --host. Closing the console leaves units running."""
 from __future__ import annotations
 
+from dataclasses import replace
 import os
 import re
 import threading
@@ -19,6 +20,7 @@ from . import health
 from ..diag import make_bundle
 from ..config import ConfigError, load, load_lenient
 from ..events import session_info
+from ..robot import MOTION_CONTROLLERS
 from ..ros_probe import BODY_COMMANDS, FSM_ACTIONS, FSM_COMMANDS, FSM_HOLD, SWITCH_POSE_PULSE_S, body_options, fsm_name
 from robot_runtime.supervisor import Supervisor, UnitError
 from ..units import build_units
@@ -39,6 +41,7 @@ class Console:
         self.access_urls: List[str] = []  # set by the entrypoint: what other computers can open
         self.lock = threading.RLock()  # serialises every state-changing action
         self.activity: Optional[Dict[str, Any]] = None  # what a running start / stop / restart is doing now
+        self.inference_requested = False
         self.read_log = health.LogReader()
         self.supervisor: Optional[Supervisor] = None
         self.config_error: Optional[str] = None
@@ -60,6 +63,8 @@ class Console:
                 # Camera serials are often unset before setup: keep everything else usable.
                 cfg, error = load_lenient(self.config_path), str(exc)
             units = build_units(cfg, self.config_path, self.ws_root)
+            self.motion_controllers = MOTION_CONTROLLERS[cfg["robot"]["entry"]]
+            self.required_controllers = (self.motion_controllers[0], "joint_state_broadcaster")
             if self.supervisor is None:
                 self.supervisor = Supervisor(units, os.path.join(self.ws_root, "run"), os.path.join(self.ws_root, "logs"))
                 self.supervisor.events.record("session", source="console", **session_info(self.ws_root, cfg))
@@ -72,6 +77,12 @@ class Console:
                         self.probe.watch_image(unit.topics[0])
 
     # ---- state -----------------------------------------------------------------------------------------
+    def _inactive_controllers(self) -> Optional[Dict[str, str]]:
+        states = self.probe.controller_states() if self.probe is not None else None
+        if states is None:
+            return None
+        return {name: states.get(name, "未加载") for name in self.required_controllers if states.get(name) != "active"}
+
     def state(self) -> Dict[str, Any]:
         sup = self.supervisor
         if self.probe is not None:
@@ -83,18 +94,22 @@ class Console:
             item["rates"] = {t: (self.probe.rate(t) if self.probe else None) for t in unit.topics}
             item["is_camera"] = unit.group == "camera"
             units.append(item)
-        fsm = getattr(self.probe, "fsm_state", None)
+        running = {item["name"] for item in units if item["running"]}
+        inactive = self._inactive_controllers()
+        control_active = "control" in running and inactive == {}
+        fsm = getattr(self.probe, "fsm_state", None) if control_active else None
         xr_connected = getattr(self.probe, "xr_connected", None)
         return {
             "units": units,
-            "summary": health.summary(units, fsm, xr_connected, self.read_log),
+            "summary": health.summary(units, fsm, xr_connected, self.read_log, inactive=inactive),
             "activity": self.activity,
+            "inference_active": self.inference_requested and set(self.inference_names()).issubset(running),
             "fsm": fsm,
             "fsm_name": fsm_name(fsm),
             # mode buttons the page may offer (none while the controllers are down)
-            "fsm_actions": list(FSM_ACTIONS.get(fsm, ())) if "control" in sup.units and sup.is_running("control") else [],
+            "fsm_actions": list(FSM_ACTIONS.get(fsm, ())),
             "xr_connected": xr_connected,
-            "body": self.body_state(),
+            "body": self.body_state(control_active),
             "access_urls": self.access_urls,
             "config_path": self.config_path,
             "config_error": self.config_error,
@@ -104,9 +119,14 @@ class Console:
 
     # ---- actions -------------------------------------------------------------------------------------
     def _check_control_stop(self, names: List[str], confirm: bool) -> None:
-        """Stopping the controllers outside HOLD needs an explicit confirmation, then goes to HOLD."""
+        """Running motion controllers outside HOLD need confirmation, then go to HOLD before stopping."""
         sup = self.supervisor
         if "control" not in sup.units.stop_order(names) or not sup.is_running("control"):
+            return
+        states = self.probe.controller_states() if self.probe is not None else None
+        # An emergency stop can deactivate motion controllers while the probe still has an old FSM value.
+        if states is not None and all(states.get(name) in {"inactive", "unconfigured", "finalized"}
+                                      for name in self.motion_controllers):
             return
         state = getattr(self.probe, "fsm_state", None)
         if state in (None, FSM_HOLD):
@@ -128,6 +148,8 @@ class Console:
                 raise HTTPException(400, {"message": "运控未运行"})
             if self.probe is None:
                 raise HTTPException(503, {"message": "ROS 探针不可用，无法切换模式"})
+            if self._inactive_controllers() != {}:
+                raise HTTPException(409, {"message": "控制器未激活或实时状态不可用，无法切换模式"})
             state = self.probe.fsm_state
             allowed = FSM_ACTIONS.get(state, ())
             if action not in allowed:
@@ -140,11 +162,9 @@ class Console:
             sup.events.record("fsm_command", action=action, **{"from": fsm_name(state)})
             return {"sent": action, "from": fsm_name(state)}
 
-    def body_state(self) -> Dict[str, Any]:
+    def body_state(self, control_active: bool) -> Dict[str, Any]:
         """Body modes (自由/竖直/跟随…) the controller offers and the current one, like the RViz panel's combo box."""
-        sup = self.supervisor
-        running = "control" in sup.units and sup.is_running("control")
-        options = body_options(getattr(self.probe, "whole_body_capability", None)) if running else []
+        options = body_options(getattr(self.probe, "whole_body_capability", None)) if control_active else []
         return {"options": options, "current": getattr(self.probe, "body_state", None) if options else None}
 
     def body_command(self, action: str) -> Dict[str, Any]:
@@ -153,7 +173,8 @@ class Console:
         with self.lock:
             if self.probe is None:
                 raise HTTPException(503, {"message": "ROS 探针不可用，无法切换机体模式"})
-            if action not in {o["action"] for o in self.body_state()["options"]}:
+            control_active = self.supervisor.is_running("control") and self._inactive_controllers() == {}
+            if action not in {o["action"] for o in self.body_state(control_active)["options"]}:
                 raise HTTPException(409, {"message": f"当前控制器不支持机体模式 {action}（或运控未运行）"})
             self.probe.send_body_mode(action)
             self.supervisor.events.record("body_mode", action=action)
@@ -179,7 +200,21 @@ class Console:
 
     def _start_steps(self, names: Optional[List[str]]) -> List[Tuple[str, Callable[[], Any]]]:
         sup = self.supervisor
-        return [(f"启动{sup.units[n].title}", lambda n=n: sup.start(n).to_dict()) for n in sup.units.launch_order(names)]
+        order = sup.units.launch_order(names)
+        if "xr" in order or "pc_service" in order:
+            # Pairing can change the headset and the LAN interface while the console is running.
+            try:
+                cfg = load_lenient(self.config_path)
+            except (ConfigError, OSError) as exc:
+                raise UnitError(f"无法读取最新 XR 配置：{exc}") from exc
+            updated_units = build_units(cfg, self.config_path, self.ws_root).units
+            if "xr" in order and "xr" not in updated_units:
+                raise UnitError("本机配置未启用 XR")
+            if "xr" in order:
+                sup.units.units["xr"] = replace(sup.units["xr"], cmd=updated_units["xr"].cmd)
+            if "pc_service" in order and "pc_service" in updated_units:
+                sup.units.units["pc_service"] = replace(sup.units["pc_service"], driver=updated_units["pc_service"].driver)
+        return [(f"启动{sup.units[n].title}", lambda n=n: sup.start(n).to_dict()) for n in order]
 
     def _stop_steps(self, names: Optional[List[str]]) -> List[Tuple[str, Callable[[], Any]]]:
         sup = self.supervisor
@@ -191,13 +226,18 @@ class Console:
         units = self.supervisor.units
         return ["control"] + [n for n in units.names() if units[n].group == "camera"]
 
-    def start(self, names: Optional[List[str]]) -> List[Dict]:
+    def start(self, names: Optional[List[str]], *, inference: bool = False) -> List[Dict]:
         with self.lock:
-            return self._sequence("启动", self._start_steps(names))
+            result = self._sequence("启动", self._start_steps(names))
+            if inference or names is None:
+                self.inference_requested = inference
+            return result
 
     def stop(self, names: Optional[List[str]], confirm: bool) -> List[Dict]:
         with self.lock:
             self._check_control_stop(names or self.supervisor.units.names(), confirm)
+            if self.inference_requested and set(self.inference_names()).intersection(self.supervisor.units.stop_order(names)):
+                self.inference_requested = False
             return self._sequence("停止", self._stop_steps(names))
 
     def restart(self, name: str, confirm: bool) -> Dict:
@@ -303,7 +343,7 @@ def create_app(console: Console, static_dir: Optional[str]) -> FastAPI:
 
     @app.post("/api/inference/start")
     def start_inference():
-        return run(lambda: console.start(console.inference_names()))
+        return run(lambda: console.start(console.inference_names(), inference=True))
 
     @app.post("/api/inference/stop")
     def stop_inference(confirm: bool = Body(False, embed=True)):

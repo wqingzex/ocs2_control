@@ -18,7 +18,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(EIGEN3 REQUIRED eigen3)
 pkg_check_modules(OROCOS_KDL REQUIRED orocos-kdl)
 
-# 珞石 xCoreSDK：头文件来自子模块 third_party/xCoreSDK-CPP，预编译库由 ./scripts/setup.sh deps 从官方 Release 下载
+# 珞石 xCoreSDK：头文件来自子模块 third_party/xCoreSDK-CPP，预编译库来自同版本的官方 Release
 set(ROKAE_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/xCoreSDK-CPP" CACHE PATH "xCoreSDK-CPP checkout")
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
     set(ROKAE_LIB_DIR "aarch64")
@@ -27,12 +27,11 @@ else()
 endif()
 set(ROKAE_LIB_PATH "${ROKAE_SDK_DIR}/lib/Linux/${ROKAE_LIB_DIR}")
 if(NOT EXISTS "${ROKAE_SDK_DIR}/include/rokae/robot.h")
-    message(FATAL_ERROR "xCoreSDK-CPP not found in ${ROKAE_SDK_DIR}: run ./scripts/setup.sh deps (git submodule update --init)")
+    message(FATAL_ERROR "xCoreSDK-CPP not found in ${ROKAE_SDK_DIR}: run git submodule update --init src/third_party/xCoreSDK-CPP")
 endif()
 foreach(_rokae_lib libxCoreSDK.a libxMateModel.a)
     if(NOT EXISTS "${ROKAE_LIB_PATH}/${_rokae_lib}")
-        message(FATAL_ERROR "${ROKAE_LIB_PATH}/${_rokae_lib} not found: run ./scripts/setup.sh deps "
-                "(downloads the xCoreSDK release package for ${ROKAE_LIB_DIR})")
+        message(FATAL_ERROR "${ROKAE_LIB_PATH}/${_rokae_lib} not found: extract the matching SDK Release into ${ROKAE_SDK_DIR}")
     endif()
 endforeach()
 

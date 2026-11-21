@@ -34,6 +34,7 @@ class Unit:
     on_demand: bool = False          # skipped by "start everything"; started only when named
     ready_log: str = ""              # start() returns once the log has this text (or the unit exited, or the timeout passed)
     ready_timeout_s: float = 0.0
+    launcher_shutdown: bool = False  # the launcher forwards the first shutdown signal to its children
 
 
 @dataclass

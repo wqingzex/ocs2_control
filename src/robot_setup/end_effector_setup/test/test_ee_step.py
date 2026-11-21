@@ -9,6 +9,8 @@ from robot_config import config_file
 from robot_config.testing import full_config
 from robot_config.setup_steps import Io
 
+from conftest import LEFT_BY_ID, RIGHT_BY_ID
+
 SCAN = """\
 [INFO] [1.0] [list_device_node]: SDK file log enabled: false
 [INFO] [1.1] [list_device_node]: name: Orbbec Gemini 305
@@ -30,7 +32,7 @@ SCAN = """\
 CONFIG = "# 本机配置（注释必须保留）\n" + yaml.safe_dump(full_config(
     "split_body", cameras={"enable": False},
     robot={"end_effector": {"type": "linkerhand_l6", "interface": {
-        "bus": "usb_rs485", "left": {"port": "/dev/ttyUSB0"}, "right": {"port": "/dev/ttyUSB2"}}}}), sort_keys=False)
+        "bus": "usb_rs485", "left": {"port": RIGHT_BY_ID}, "right": {"port": LEFT_BY_ID}}}}), sort_keys=False)
 
 
 class ScriptedIo(Io):
@@ -59,11 +61,11 @@ def test_hand_step_uses_window_and_preserves_cancelled_config(ws_root):
     def window(session, io):
         seen.append(session.draft)
         return False
-    assert not ee_setup.step_ee(path, str(ws_root), answers, ports=lambda: ["/dev/ttyUSB1", "/dev/ttyUSB3"], runner=window)
+    assert not ee_setup.step_ee(path, str(ws_root), answers, ports=lambda: [LEFT_BY_ID, RIGHT_BY_ID], runner=window)
     _, prof = config_file.load_rt(path)
     interface = prof["robot"]["end_effector"]["interface"]
-    assert interface["left"]["port"] == "/dev/ttyUSB0" and interface["right"]["port"] == "/dev/ttyUSB2"
-    assert seen[0]['left_port'] == '/dev/ttyUSB1' and seen[0]['right_port'] == '/dev/ttyUSB3'
+    assert interface["left"]["port"] == RIGHT_BY_ID and interface["right"]["port"] == LEFT_BY_ID
+    assert seen[0]['left_port'] == RIGHT_BY_ID and seen[0]['right_port'] == LEFT_BY_ID
     text = (ws_root / "config" / "robot.local.yaml").read_text(encoding="utf-8")
     assert "# 本机配置（注释必须保留）" in text  # the setup keeps the comments of the file
 

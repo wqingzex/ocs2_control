@@ -41,7 +41,6 @@ endif()
 set(HEADER_KINE_DIR "${_TJ_SDK_ROOT}/kinematicsSDK/")
 set(HEADER_CONTROL_DIR "${_TJ_SDK_ROOT}/${MARVIN_CONTROL_SDK_DIR}/")
 set(LIB_KINE_DIR "${_TJ_SDK_ROOT}/kinematicsSDK/")
-set(LIB_CONTROL_DIR "${_TJ_SDK_ROOT}/${MARVIN_CONTROL_SDK_DIR}/")
 
 # Build kinematics SDK (libKine.so) if missing, and auto-rebuild if format is invalid.
 set(KINE_SO_PATH "${LIB_KINE_DIR}/libKine.so")
@@ -117,29 +116,28 @@ if(MARVIN_AUTO_REBUILD_KINE AND EXISTS "${KINE_SO_PATH}")
     endif()
 endif()
 
-# build controlSDK
-add_custom_command(
-    OUTPUT ${LIB_CONTROL_DIR}/libMarvinSDK.so
-    COMMAND ${CMAKE_COMMAND} -E env --unset=MAKEFLAGS
-            ${CMAKE_MAKE_PROGRAM} -f makefile libMarvinSDK.so
-    WORKING_DIRECTORY ${LIB_CONTROL_DIR}
-    COMMENT "Building Marvin SDK with Makefile"
-)
-add_custom_target(build_marvin_sdk ALL DEPENDS ${LIB_CONTROL_DIR}/libMarvinSDK.so)
-
-set(EXTERNAL_KINEMATICSO "${KINE_SO_PATH}")
-#
-# NOTE:
-# Do not hard-fail at *configure time* if libKine.so is missing.
-# We deliberately allow building from sources via the build_kine_sdk target,
-# so repos can avoid tracking prebuilt .so binaries in git.
-
-## Note: libMarvinSDK.so is built during compilation, so we link it directly via target_link_directories
-## instead of using find_library which runs at configure time
-
 ## contrlSDK100343 的 CmplOpt.h 仅在 #ifdef CMPL_LIN 下提供 Linux 平台类型定义（SOCKET/LOOPHANDLE 等），
 ## 因此需要显式定义 CMPL_LIN 宏。
 add_compile_definitions(CMPL_LIN)
+
+# Build the selected control SDK from source. The vendor .so can differ from the SDK source in the same checkout.
+add_library(marvin_control_sdk SHARED
+    ${HEADER_CONTROL_DIR}/ACB.cpp
+    ${HEADER_CONTROL_DIR}/CAxisSpPln.cpp
+    ${HEADER_CONTROL_DIR}/FXDG.cpp
+    ${HEADER_CONTROL_DIR}/FileOP.cpp
+    ${HEADER_CONTROL_DIR}/FilePortal.cpp
+    ${HEADER_CONTROL_DIR}/MarvinSDK.cpp
+    ${HEADER_CONTROL_DIR}/Parser.cpp
+    ${HEADER_CONTROL_DIR}/PointSet.cpp
+    ${HEADER_CONTROL_DIR}/Robot.cpp
+    ${HEADER_CONTROL_DIR}/ShMem.cpp
+    ${HEADER_CONTROL_DIR}/TCPAgent.cpp
+    ${HEADER_CONTROL_DIR}/TCPFileClient.cpp
+)
+set_target_properties(marvin_control_sdk PROPERTIES OUTPUT_NAME MarvinSDK)
+target_compile_options(marvin_control_sdk PRIVATE -O2 -w)
+target_link_libraries(marvin_control_sdk PRIVATE pthread rt)
 
 # Create library
 add_library(${PROJECT_NAME} SHARED
@@ -148,10 +146,10 @@ add_library(${PROJECT_NAME} SHARED
         src/comm/arm_bus.cpp
 )
 
-add_dependencies(${PROJECT_NAME} build_kine_sdk build_marvin_sdk)
+add_dependencies(${PROJECT_NAME} build_kine_sdk)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    BUILD_RPATH "${LIB_KINE_DIR};${LIB_CONTROL_DIR}"
+    BUILD_RPATH "${LIB_KINE_DIR}"
     INSTALL_RPATH "$ORIGIN"
     INSTALL_RPATH_USE_LINK_PATH TRUE
 )
@@ -170,7 +168,6 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 # Add library directories for linking
 target_link_directories(${PROJECT_NAME} PRIVATE
     ${LIB_KINE_DIR}
-    ${LIB_CONTROL_DIR}
 )
 
 # # Detect architecture and set library path
@@ -188,10 +185,10 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
         ${rclcpp_lifecycle_TARGETS}
         ${pluginlib_TARGETS}
         robot_comm_core::robot_comm_bus
-        ${EXTERNAL_KINEMATICSO}
-        MarvinSDK
+        ${KINE_SO_PATH}
         pthread
         rt
+    PRIVATE marvin_control_sdk
 )
 
 pluginlib_export_plugin_description_file(hardware_interface marvin_hardware.xml)
@@ -221,12 +218,10 @@ install(
 )
 
 install(FILES
-    ${LIB_KINE_DIR}/libKine.so
-    ${LIB_CONTROL_DIR}/libMarvinSDK.so
+    ${KINE_SO_PATH}
     DESTINATION lib
     OPTIONAL
 )
-
 # Install SDK Python bindings and identification template data.
 if(EXISTS "${_TJ_SDK_ROOT}/SDK_PYTHON")
     install(
@@ -235,14 +230,16 @@ if(EXISTS "${_TJ_SDK_ROOT}/SDK_PYTHON")
         # Upstream vendors MarvinPlatform_* (desktop GUI ELF, ~27MB) next to the Python
         # bindings; it is not required at runtime and must not be installed into the prefix.
         PATTERN "MarvinPlatform*" EXCLUDE
+        PATTERN "libMarvinSDK.so" EXCLUDE
     )
-    # Keep SDK_PYTHON unmodified (upstream behavior loads .so next to the .py files),
-    # but do NOT track binaries in git: we install the freshly built .so here.
+    # The Python bindings load the shared libraries next to the .py files.
     install(FILES
-        ${LIB_KINE_DIR}/libKine.so
-        ${LIB_CONTROL_DIR}/libMarvinSDK.so
+        ${KINE_SO_PATH}
         DESTINATION share/${PROJECT_NAME}/TJ_FX_ROBOT_CONTRL_SDK/SDK_PYTHON
         OPTIONAL
+    )
+    install(TARGETS marvin_control_sdk
+        LIBRARY DESTINATION share/${PROJECT_NAME}/TJ_FX_ROBOT_CONTRL_SDK/SDK_PYTHON
     )
 endif()
 # 负载辨识模板数据（上游 CommonConfig/LoadData_ccs；wizard 脚本通过 CommonConfig 读取）。
@@ -255,7 +252,7 @@ if(EXISTS "${_TJ_SDK_ROOT}/CommonConfig/LoadData_ccs/LoadData/CfgFile")
 endif()
 
 install(
-        TARGETS ${PROJECT_NAME}
+        TARGETS ${PROJECT_NAME} marvin_control_sdk
         EXPORT export_${PROJECT_NAME}
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib

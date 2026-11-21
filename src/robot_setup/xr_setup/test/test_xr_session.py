@@ -82,16 +82,16 @@ def connected_xr(monkeypatch):
     return ConnectedProbe, events
 
 
-def test_xr_step_can_enable_and_verify_pairing(ws_root, connected_xr):
+def test_xr_step_verifies_pairing_for_the_selected_input(ws_root, connected_xr):
     ConnectedProbe, events = connected_xr
     path = ws_root / "config/robot.local.yaml"
-    path.write_text(config_text(enable=False, start_pc_service=False), encoding="utf-8")
-    assert pairing.step_xr(str(path), str(ws_root), ScriptedIo(["y"]), probe_factory=ConnectedProbe)
+    path.write_text(config_text(start_pc_service=False), encoding="utf-8")
+    assert pairing.step_xr(str(path), str(ws_root), ScriptedIo([]), probe_factory=ConnectedProbe)
     _, data = config_file.load_rt(str(path))
-    assert data["xr"]["enable"] is True
-    assert data["xr"]["network_mode"] == "ethernet"
-    assert data["xr"]["network_interface"] == "eth0"
-    assert data["xr"]["device_id"] == "PICO-001"
+    assert data["teleop"]["type"] == "xr"
+    assert data["teleop"]["xr"]["network_mode"] == "ethernet"
+    assert data["teleop"]["xr"]["network_interface"] == "eth0"
+    assert data["teleop"]["xr"]["device_id"] == "PICO-001"
     assert events == [("start", "xr"), "probe_closed", ("stop", "xr")]
 
 
@@ -148,7 +148,7 @@ def test_xr_does_not_pair_without_device_identity(ws_root, connected_xr, monkeyp
     path.write_text(config_text(start_pc_service=False), encoding="utf-8")
     assert not pairing.step_xr(str(path), str(ws_root), ScriptedIo([]), timeout_s=0.01, probe_factory=probe)
     _, raw = config_file.load_rt(str(path))
-    assert not raw["xr"].get("device_id")
+    assert not raw["teleop"]["xr"].get("device_id")
 
 
 def test_failed_rebinding_preserves_previous_headset(ws_root, connected_xr, monkeypatch):
@@ -160,13 +160,13 @@ def test_failed_rebinding_preserves_previous_headset(ws_root, connected_xr, monk
     assert not pairing.step_xr(str(path), str(ws_root), ScriptedIo(["ethernet", "y"]),
                                  timeout_s=0.01, probe_factory=probe)
     _, raw = config_file.load_rt(str(path))
-    assert raw["xr"]["device_id"] == "PICO-OLD"
+    assert raw["teleop"]["xr"]["device_id"] == "PICO-OLD"
 
 
 def test_xr_network_can_select_wifi(ws_root, monkeypatch):
     from xr_teleop.xr_network import NetworkAddress
     path = str(ws_root / "config/robot.local.yaml")
-    xr = section_defaults("xr")
+    xr = section_defaults("teleop")["xr"]
     modes = []
 
     def addresses(mode):
@@ -177,8 +177,8 @@ def test_xr_network_can_select_wifi(ws_root, monkeypatch):
     assert pairing._xr_network(path, xr, ScriptedIo(["wifi"]))
     _, raw = config_file.load_rt(path)
     assert modes == ["wifi"]
-    assert raw["xr"]["network_mode"] == "wifi"
-    assert raw["xr"]["network_interface"] == "wlan0"
+    assert raw["teleop"]["xr"]["network_mode"] == "wifi"
+    assert raw["teleop"]["xr"]["network_interface"] == "wlan0"
 
 
 def test_the_cable_to_the_arm_is_not_offered_and_the_only_other_adapter_is_taken(ws_root, monkeypatch):
@@ -188,17 +188,17 @@ def test_the_cable_to_the_arm_is_not_offered_and_the_only_other_adapter_is_taken
         NetworkAddress("enp4s0", "192.168.1.100", "ethernet", "192.168.1.0/24"),
         NetworkAddress("enx1", "192.168.10.101", "ethernet", "192.168.10.0/24")])
     io = ScriptedIo([])
-    assert pairing._xr_network(path, section_defaults("xr"), io)
+    assert pairing._xr_network(path, section_defaults("teleop")["xr"], io)
     assert "enp4s0" not in io.out.getvalue()
     assert not any("网卡编号" in question for question, _ in io.questions)  # one adapter left: no question
     _, raw = config_file.load_rt(path)
-    assert raw["xr"]["network_interface"] == "enx1"
+    assert raw["teleop"]["xr"]["network_interface"] == "enx1"
 
 
 def test_xr_network_missing_address_does_not_wait_silently(ws_root, monkeypatch):
     monkeypatch.setattr(pairing, "network_addresses", lambda mode="": [])
     out = ScriptedIo([])
-    assert not pairing._xr_network(str(ws_root / "config/robot.local.yaml"), section_defaults("xr"), out)
+    assert not pairing._xr_network(str(ws_root / "config/robot.local.yaml"), section_defaults("teleop")["xr"], out)
     assert "没有找到可用的有线 IPv4 地址" in out.out.getvalue()
 
 

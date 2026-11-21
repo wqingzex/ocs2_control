@@ -23,13 +23,15 @@ class CameraSpec:
     config_yaml: Dict[str, Any] = field(default_factory=dict)  # written to config_file_path (wrist)
 
 
-def wrist_eye(rotation: int) -> str:
-    """Gemini 305 has two color eyes; camera_setup uses the right eye, the left one at 90/270°."""
+def wrist_eye(rotation: int, selection: str = "auto") -> str:
+    """Resolve the selected eye, with the previous angle-based rule for older configs."""
+    if selection != "auto":
+        return selection
     return "left" if rotation in (90, 270) else "right"
 
 
 def _wrist_yaml(eye: str, rotation: int, fps: int) -> Dict[str, Any]:
-    """Keys gemini305.launch.py does not take as launch args (camera_setup gemini305_*_wrist.yaml)."""
+    """Configure the color sensors and the publish profile for a Gemini 305."""
     other = "left" if eye == "right" else "right"
     return {
         "device_preset": "Dual Color Streams",
@@ -45,12 +47,13 @@ def _wrist_yaml(eye: str, rotation: int, fps: int) -> Dict[str, Any]:
         f"{eye}_color_format": "YUYV",
         f"{eye}_color_rotation": rotation,
         f"{eye}_color.image_raw.enable_pub_plugins": ["image_transport/compressed"],
-        # The preset forces both eyes on; keep the unused one minimal so the USB 2 link is not saturated.
+        # The preset starts both eyes. A 5 Hz secondary eye can also throttle the selected eye to 5 Hz.
         f"enable_{other}_color": False,
         f"{other}_color_width": WIDTH,
         f"{other}_color_height": HEIGHT,
-        f"{other}_color_fps": 5,
-        f"{other}_color.image_raw.enable_pub_plugins": ["image_transport/compressed"],  # not raw, theora, zstd
+        f"{other}_color_fps": fps,
+        f"{other}_color_format": "MJPG" if other == "left" else "YUYV",
+        f"{other}_color.image_raw.enable_pub_plugins": ["image_transport/compressed"],
     }
 
 
@@ -79,8 +82,8 @@ def _device_args(name: str, cam: Dict[str, Any]) -> Dict[str, str]:
     return args
 
 
-def camera_specs(cfg: Dict[str, Any]) -> List[CameraSpec]:
-    """Specs for every enabled camera in a validated config."""
+def camera_specs(cfg: Dict[str, Any], *, upright_preview: bool = False) -> List[CameraSpec]:
+    """Specs for each enabled camera. A preview keeps the runtime eye/profile and rotates in Qt."""
     cams = cfg["cameras"]
     if not cams["enable"]:
         return []
@@ -92,7 +95,8 @@ def camera_specs(cfg: Dict[str, Any]) -> List[CameraSpec]:
         if not cam["enable"]:
             continue
         name = f"camera_{side}_wrist"
-        eye = wrist_eye(int(cam["rotation"]))
+        rotation = int(cam["rotation"])
+        eye = wrist_eye(rotation, cam.get("color_eye", "auto"))
         args = _device_args(name, cam)
         args.update(_common_color_args(cam))
         args.update({
@@ -108,7 +112,7 @@ def camera_specs(cfg: Dict[str, Any]) -> List[CameraSpec]:
                 (f"/{name}/{eye}_color/image_raw/compressed", f"/{name}/color/image_raw/compressed"),
                 (f"/{name}/{eye}_color/camera_info", f"/{name}/color/camera_info"),
             ],
-            config_yaml=_wrist_yaml(eye, int(cam["rotation"]), fps),
+            config_yaml=_wrist_yaml(eye, 0 if upright_preview else rotation, fps),
         ))
 
     head = cams["head"]
@@ -122,7 +126,7 @@ def camera_specs(cfg: Dict[str, Any]) -> List[CameraSpec]:
             "color_width": str(WIDTH),
             "color_height": str(HEIGHT),
             "color_format": "YUYV",
-            "color_rotation": str(head["rotation"]),
+            "color_rotation": "0" if upright_preview else str(head["rotation"]),
             "color_fps": str(fps),
             "color.image_raw.enable_pub_plugins": '["image_transport/compressed"]',
             "enable_depth": "false",
@@ -163,5 +167,6 @@ def camera_units(cfg: Dict[str, Any], config_path: str) -> Dict[str, Unit]:
             group=GROUP,
             ready_log=DRIVER_READY_LOG,       # the drivers share one device lock: one camera is initialized at a time
             ready_timeout_s=DRIVER_READY_TIMEOUT_S,
+            launcher_shutdown=True,  # let ROS launch stop the Orbbec driver once
         )
     return units

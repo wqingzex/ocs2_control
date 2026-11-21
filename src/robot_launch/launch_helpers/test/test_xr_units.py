@@ -68,6 +68,38 @@ def test_the_bridge_does_not_inherit_a_proxy():
     assert {"http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"} <= set(units["xr"].unset_env)
 
 
+def test_configured_pc_service_waits_for_the_selected_lan_listener(monkeypatch, tmp_path):
+    import os
+    from types import SimpleNamespace
+    from launch_helpers.devices import xr as pc_service
+    from xr_teleop.xr_network import NetworkAddress
+
+    script = tmp_path / "runService.sh"
+    script.touch()
+    (tmp_path / "setting.ini").write_text("[TCP]\nTcpBindPort=64000\n")
+    library = tmp_path / "lib/xr_teleop/libxrt_lan_bind.so"
+    library.parent.mkdir(parents=True)
+    library.touch()
+    monkeypatch.setattr(pc_service, "get_package_prefix", lambda _: str(tmp_path))
+    monkeypatch.setattr(pc_service, "network_addresses", lambda: [NetworkAddress("eth1", "192.168.10.101", "ethernet")])
+    processes = iter([set(), {42}, {42}])
+    monkeypatch.setattr(pc_service, "running_pids", lambda: next(processes))
+    endpoints = iter(["*:64000", "[::ffff:192.168.10.101]%eth1:64000"])
+    monkeypatch.setattr(pc_service.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(
+        stdout=f'LISTEN 0 50 {next(endpoints)} *:* users:(("RoboticsService",pid=42,fd=7))\n'))
+    monkeypatch.setattr(pc_service.time, "sleep", lambda _: None)
+
+    def spawn(*args, env, pass_fds, **kwargs):
+        assert env["FA_XRT_LAN_IP"] == "192.168.10.101"
+        assert env["FA_XRT_LAN_INTERFACE"] == "eth1"
+        assert env["FA_XRT_PICO_TCP_PORT"] == "64000"
+        assert os.path.samefile(env["LD_PRELOAD"].split(":")[0], library)
+        assert len(pass_fds) == 1
+
+    monkeypatch.setattr(pc_service.subprocess, "Popen", spawn)
+    assert PcServiceDriver(str(script), "eth1").start(str(tmp_path / "pc.log")) == [42]
+
+
 def test_the_bridge_gets_no_key_scheme_parameter():
     """One key table: the bridge has no control_scheme parameter any more."""
     from launch_helpers.devices.xr import xr_units

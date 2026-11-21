@@ -34,8 +34,8 @@ def test_malformed_assignments_are_rejected(text):
 
 @pytest.mark.parametrize("text", [
     "cameras.head.serial=ABC", "cameras.left_wrist.usb_port=2-1", "cameras.right_wrist.rotation=90",
-    "xr.device_id=PICO", "control.limits.max_joint_speed=1", "robot.end_effector.interface.left.port=/dev/ttyUSB0",
-    "robot.end_effector.interface.right.port=/dev/ttyUSB2",
+    "xr.device_id=PICO", "control.limits.max_joint_speed=1", "robot.end_effector.interface.left.port=/dev/serial/by-id/usb-LEFT",
+    "robot.end_effector.interface.right.port=/dev/serial/by-id/usb-RIGHT",
 ])
 def test_device_mappings_and_profile_sections_cannot_be_overridden(text):
     with pytest.raises(ConfigError, match="cannot change"):

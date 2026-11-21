@@ -40,7 +40,7 @@ def test_an_overlay_only_changes_values():
     assert dual["control"]["limits"] == {"max_joint_speed": 50, "max_joint_acceleration": 30}
     assert base["control"]["limits"] == {"max_joint_speed": 100, "max_joint_acceleration": 100}
     assert dual["robot"]["base"] == {"type": "", "joints_movable": None}
-    assert dual["xr"] == base["xr"]
+    assert dual["teleop"] == base["teleop"]
 
 
 def test_an_unknown_entry_has_no_template():

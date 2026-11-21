@@ -29,7 +29,7 @@ class FakePreviews:
         self.configured = []
         self.closed = False
 
-    def configure(self, device, rotation):
+    def configure(self, device, rotation, imaging=None, *, color_eye="auto"):
         self.configured.append((device.serial, rotation))
         self.fresh.discard(device.serial)
 

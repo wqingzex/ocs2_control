@@ -49,6 +49,10 @@ def launch_setup(context, *args, **kwargs):
     if direction and direction.strip():
         mappings["direction"] = direction
 
+    serial_port = context.launch_configurations['serial_port']
+    if serial_port:
+        mappings['serial_port'] = serial_port
+
     # 处理 xacro 文件
     robot_description = xacro.process_file(hand_xacro_path, mappings=mappings).toxml()
 
@@ -215,11 +219,18 @@ def generate_launch_description():
         description='Whether to launch RViz visualization'
     )
 
+    serial_port_arg = DeclareLaunchArgument(
+        'serial_port',
+        default_value='',
+        description='USB-RS485 adapter path for a real hand, e.g. /dev/serial/by-id/<adapter>',
+    )
+
     return LaunchDescription([
         hand_arg,
         type_arg,
         direction_arg,
         hardware_arg,
         use_rviz_arg,
+        serial_port_arg,
         OpaqueFunction(function=launch_setup),
     ])

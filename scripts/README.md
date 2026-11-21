@@ -4,18 +4,21 @@
 
 ## setup.sh：初始化
 
-依次完成依赖、主机 / SDK、天机臂 SDK 版本、编译、相机配置、手配置、负载辨识、XR 配对、最终检查。已配置（有确认记录）或默认值可用的步骤自动跳过，开头列出每步状态。
+先在本机配置选择组件，再装依赖、准备 SDK、编译，最后确认设备。安装和编译读取所选配置，按控制入口、硬件模式、末端、相机和遥操作输入选择依赖。已确认或默认值可用的设备步骤会跳过。
 
 ```bash
 ./scripts/setup.sh                 # 完整初始化
-./scripts/setup.sh config          # 生成或补全 config/robot.local.yaml（--entry 选入口；完整初始化的第 2 步，模板加了键之后单独跑它补键）
-./scripts/setup.sh cam             # 单步重试：cam 相机、ee 末端、xr 头显配对、dyn 负载辨识、deps 依赖、host 主机 / SDK、marvin 天机臂 SDK 版本、build 编译、check 检查
+./scripts/setup.sh clean           # 按编号选择清理 build/、install/ 或本机配置
+./scripts/setup.sh config          # 生成或补全 config/robot.local.yaml（--entry 选入口；完整初始化的第 1 步，模板加了键之后单独跑它补键）
+./scripts/setup.sh cam             # 单步重试：home HOME 位姿、cam 相机、ee 末端、teleop 遥操作输入、dyn 负载辨识、deps 依赖、host 主机 / SDK、marvin 天机臂 SDK 版本、build 编译、check 检查
 ./scripts/setup.sh cam --from      # 从相机步骤继续到最后，其他步骤同样支持 --from
 ./scripts/setup.sh marvin          # 选择天机臂 SDK 版本（338 / 343，要和臂的控制器固件一致），写入配置
-./scripts/setup.sh build           # 增量编译整个工作区，不做设备配置
+./scripts/setup.sh build           # 按本机配置增量编译
 ```
 
-选项：`--force` 全部重新配置，`--yes` 使用建议值，`--minimal` 只编译遥操作必需的包，`-c` 指定配置文件，`dyn --reset` 恢复默认负载。相机和手会弹出本地窗口，确认后写入 `config/robot.local.yaml`；容器里不执行 udev 和 CAN 操作。
+完整向导和 `--from` 在每一步开始前询问是否执行。已配置或有可用默认值时，回车跳过，输入 `y` 可以重新配置。单步命令直接进入指定步骤。`--force` 让向导每步默认执行，`--yes` 自动采用建议选项，`-c` 指定配置文件，`dyn --reset` 恢复默认负载。相机和手会弹出本地窗口，确认后写入 `config/robot.local.yaml`。容器里的主机配置步骤只准备所需的 XR 组件。
+
+`clean` 支持空格分隔的多选，直接回车取消。选择本机配置时，当前文件会移到旁边的 `.before-clean.*` 备份。日志会保留。清理后可以用 `./scripts/setup.sh build` 重编译。
 
 ## start.sh：启动和日常操作
 

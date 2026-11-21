@@ -15,13 +15,13 @@ def config(**sections):
 
 def test_a_complete_config_is_valid_and_comes_back_without_control_and_setup():
     cfg = validate(config())
-    assert "control" not in cfg and "setup" not in cfg and "robot" in cfg and "xr" in cfg
+    assert "control" not in cfg and "setup" not in cfg and "robot" in cfg and "teleop" in cfg
 
 
 @pytest.mark.parametrize("path, expected", [
     (("robot", "arm", "interface", "ip"), "missing field 'robot.arm.interface.ip'"),
     (("robot", "base"), "missing field 'robot.base'"),
-    (("xr",), "missing field 'xr'"),
+    (("teleop",), "missing field 'teleop'"),
     (("control", "limits", "max_joint_speed"), "missing field 'control.limits.max_joint_speed'"),
     (("setup",), "missing field 'setup'"),
     (("cameras", "head", "rotation"), "missing field 'cameras.head.rotation'"),
@@ -51,7 +51,7 @@ def test_a_key_that_is_not_in_the_template_is_an_error(section, expected):
 
 def test_no_default_is_filled_in():
     cfg = config()
-    del cfg["xr"]["frame_timeout_ms"]
+    del cfg["teleop"]["xr"]["frame_timeout_ms"]
     with pytest.raises(ConfigError, match="frame_timeout_ms"):
         validate(cfg)
 
@@ -105,7 +105,7 @@ def test_control_patch_and_setup_are_free_form():
 
 def test_extension_adds_checks_of_its_own_sections():
     def check(cfg):
-        expect(cfg["xr"]["frame_timeout_ms"] == 300, "'xr.frame_timeout_ms' must stay 300 here")
+        expect(cfg["teleop"]["xr"]["frame_timeout_ms"] == 300, "'xr.frame_timeout_ms' must stay 300 here")
 
     ext = Extension(checks=(check,))
     validate(config(), ext)

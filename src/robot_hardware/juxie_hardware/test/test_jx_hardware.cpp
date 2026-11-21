@@ -85,7 +85,9 @@ protected:
 
     void TearDown() override
     {
-        hw_->on_deactivate(rclcpp_lifecycle::State());
+        if (hw_) {
+            hw_->on_deactivate(rclcpp_lifecycle::State());
+        }
     }
 
     CallbackReturn init(const std::unordered_map<std::string, std::string>& overrides = {}, int joints = 2)
@@ -123,6 +125,16 @@ protected:
     {
         mock_->pushReceived(feedback(1, pos1));
         mock_->pushReceived(feedback(2, pos2));
+    }
+
+    void queueUndervoltage()
+    {
+        CanFrame emergency;
+        emergency.id = p::kEmergencyBase + 2;
+        emergency.fd = true;
+        emergency.len = 8;
+        emergency.data[0] = 0x02; // 欠压
+        mock_->pushReceived(emergency);
     }
 
     CallbackReturn activate() { return hw_->on_activate(rclcpp_lifecycle::State()); }
@@ -301,20 +313,37 @@ TEST_F(JxHardwareTest, ReadFailsWhenAMotorReportsAFault)
     EXPECT_EQ(hw_->read(rclcpp::Time(), rclcpp::Duration(0, 0)), hardware_interface::return_type::ERROR);
 }
 
-TEST_F(JxHardwareTest, ReadFailsOnAnEmergencyFrameOfOneOfTheMotors)
+TEST_F(JxHardwareTest, ErrorTransitionClosesTheBusAfterUndervoltage)
 {
     ASSERT_EQ(init(), CallbackReturn::SUCCESS);
     queueFeedback(0, 0);
     ASSERT_EQ(activate(), CallbackReturn::SUCCESS);
 
-    CanFrame emergency;
-    emergency.id = p::kEmergencyBase + 1;
-    emergency.fd = true;
-    emergency.len = 8;
-    emergency.data[0] = 0x04; // error word 0x0004: over-temperature
-    mock_->pushReceived(emergency);
+    queueUndervoltage();
+    ASSERT_EQ(hw_->read(rclcpp::Time(), rclcpp::Duration(0, 0)), hardware_interface::return_type::ERROR);
+    EXPECT_EQ(hw_->on_error(rclcpp_lifecycle::State()), CallbackReturn::SUCCESS);
+    EXPECT_FALSE(mock_->isOpen());
+}
 
-    EXPECT_EQ(hw_->read(rclcpp::Time(), rclcpp::Duration(0, 0)), hardware_interface::return_type::ERROR);
+TEST_F(JxHardwareTest, ShutdownClosesTheBusWithoutDeactivate)
+{
+    ASSERT_EQ(init(), CallbackReturn::SUCCESS);
+    queueFeedback(0, 0);
+    ASSERT_EQ(activate(), CallbackReturn::SUCCESS);
+
+    EXPECT_EQ(hw_->on_shutdown(rclcpp_lifecycle::State()), CallbackReturn::SUCCESS);
+    EXPECT_FALSE(mock_->isOpen());
+}
+
+TEST_F(JxHardwareTest, DestructionJoinsTheThreadAfterUndervoltageWithoutALifecycleCallback)
+{
+    ASSERT_EQ(init(), CallbackReturn::SUCCESS);
+    queueFeedback(0, 0);
+    ASSERT_EQ(activate(), CallbackReturn::SUCCESS);
+
+    queueUndervoltage();
+    ASSERT_EQ(hw_->read(rclcpp::Time(), rclcpp::Duration(0, 0)), hardware_interface::return_type::ERROR);
+    hw_.reset();
 }
 
 TEST_F(JxHardwareTest, ReadIgnoresFramesOfOtherDevices)

@@ -16,12 +16,12 @@ from launch_helpers.devices.camera import camera_specs, runtime_dir
 from robot_config.config import load
 
 
-def camera_actions(cfg, only=(), name_prefix=""):
+def camera_actions(cfg, only=(), name_prefix="", *, upright_preview=False):
     if name_prefix and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name_prefix):
         raise ValueError("invalid camera name prefix")
     actions = []
     orbbec_launch_dir = os.path.join(FindPackageShare("orbbec_camera").find("orbbec_camera"), "launch")
-    specs = camera_specs(cfg)
+    specs = camera_specs(cfg, upright_preview=upright_preview)
     unknown = set(only) - {s.name for s in specs}
     if unknown:
         raise RuntimeError(f"only:= names cameras that are not enabled in the config: {sorted(unknown)}")
@@ -53,8 +53,9 @@ def camera_actions(cfg, only=(), name_prefix=""):
 
 def launch_setup(context):
     only = [n for n in LaunchConfiguration("only").perform(context).split(",") if n]
+    upright_preview = LaunchConfiguration("upright_preview").perform(context) == "true"
     return camera_actions(load(LaunchConfiguration("config").perform(context)), only,
-                          LaunchConfiguration("name_prefix").perform(context))
+                          LaunchConfiguration("name_prefix").perform(context), upright_preview=upright_preview)
 
 
 def generate_launch_description():
@@ -63,5 +64,7 @@ def generate_launch_description():
         DeclareLaunchArgument("only", default_value="",
                               description="comma-separated camera names to start (default: all enabled)"),
         DeclareLaunchArgument("name_prefix", default_value="", description="private name prefix for setup previews"),
+        DeclareLaunchArgument("upright_preview", default_value="false", choices=["false", "true"],
+                              description="Keep the selected eye and publish upright frames for the setup window"),
         OpaqueFunction(function=launch_setup),
     ])

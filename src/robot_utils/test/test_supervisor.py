@@ -1,6 +1,7 @@
 """Tests for robot_runtime.units and robot_runtime.supervisor (no ROS needed)."""
 import json
 import os
+import sys
 import time
 
 import pytest
@@ -60,6 +61,39 @@ def test_start_writes_state_and_log_then_stop_cleans_up(make_supervisor, tmp_pat
     assert not sup.stop("a").running
     assert not (tmp_path / "run" / "a.json").exists()
     assert "got-int" in "\n".join(sup.log_tail("a"))  # stopped via SIGINT, cleanly
+
+
+def test_camera_launcher_forwards_one_interrupt_to_its_driver(make_supervisor):
+    driver = """
+import signal
+import time
+
+interrupts = []
+signal.signal(signal.SIGINT, lambda *_: interrupts.append(time.monotonic()))
+print("driver ready", flush=True)
+while not interrupts or time.monotonic() - interrupts[0] < 0.3:
+    time.sleep(0.01)
+print(f"driver interrupts: {len(interrupts)}", flush=True)
+"""
+    launcher = f"""
+import signal
+import subprocess
+import sys
+import time
+
+driver = subprocess.Popen([sys.executable, "-c", {driver!r}])
+def shutdown(*_):
+    time.sleep(0.05)
+    driver.send_signal(signal.SIGINT)
+signal.signal(signal.SIGINT, shutdown)
+driver.wait()
+"""
+    unit = Unit("camera", "camera", (sys.executable, "-c", launcher),
+                ready_log="driver ready", ready_timeout_s=2.0, launcher_shutdown=True)
+    sup = make_supervisor({"camera": unit})
+    assert sup.start("camera").running
+    assert not sup.stop("camera").running
+    assert "driver interrupts: 1" in "\n".join(sup.log_tail("camera"))
 
 
 def test_status_survives_a_new_supervisor_instance(make_supervisor):

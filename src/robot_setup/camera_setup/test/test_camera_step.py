@@ -1,9 +1,12 @@
 """Camera discovery and the camera setup step (no ROS, no cameras)."""
 import io
+from contextlib import nullcontext
+from types import SimpleNamespace
 
 import pytest
 
 from camera_setup import discovery as devices, session as camera_setup
+from launch_helpers import launch_utils
 from robot_config import config_file
 from robot_config.setup_steps import Io
 
@@ -33,8 +36,8 @@ robot:
     type: linkerhand_l6   # 末端
     interface:
       bus: usb_rs485
-      left: {port: /dev/ttyUSB0}   # 左手
-      right: {port: /dev/ttyUSB2}
+      left: {port: /dev/serial/by-id/usb-LEFT}   # 左手
+      right: {port: /dev/serial/by-id/usb-RIGHT}
 
 cameras:
   head:        {serial: ""}   # Gemini 335Lg
@@ -128,8 +131,8 @@ def test_camera_step_releases_own_resources_when_window_fails(ws_root):
     assert config_file.camera_serials(path)["head"] == ""
 
 
-@pytest.mark.parametrize('router_exists', [False, True])
-def test_camera_wizard_has_a_zenoh_router_before_opening(ws_root, monkeypatch, router_exists):
+@pytest.mark.parametrize('router', ['none', 'local', 'host'])
+def test_camera_wizard_has_a_zenoh_router_before_opening(ws_root, monkeypatch, router):
     path = str(ws_root / 'config/robot.local.yaml')
     events = []
 
@@ -157,17 +160,27 @@ def test_camera_wizard_has_a_zenoh_router_before_opening(ws_root, monkeypatch, r
         session.previews = Previews()
         return False
 
+    def connect(address, *, timeout):
+        assert address == ('localhost', 7447)
+        assert timeout > 0
+        if router == 'host':
+            return nullcontext()
+        raise ConnectionRefusedError()
+
     monkeypatch.setenv('RMW_IMPLEMENTATION', 'rmw_zenoh_cpp')
+    monkeypatch.delenv('ZENOH_ROUTER_CONFIG_URI', raising=False)
     monkeypatch.delenv('ZENOH_SESSION_CONFIG_URI', raising=False)
     monkeypatch.delenv('ZENOH_CONFIG_OVERRIDE', raising=False)
-    monkeypatch.setattr(camera_setup, 'is_zenoh_router_running', lambda: router_exists)
+    monkeypatch.setattr(launch_utils, 'subprocess', SimpleNamespace(
+        run=lambda *args, **kwargs: SimpleNamespace(stdout='S+' if router == 'local' else '')))
+    monkeypatch.setattr(launch_utils, 'socket', SimpleNamespace(create_connection=connect))
     monkeypatch.setattr(camera_setup, 'get_package_prefix', lambda _: '/opt/ros')
     monkeypatch.setattr(camera_setup, 'OwnedDrivers', Router)
     monkeypatch.setattr(camera_setup, 'run_wizard', window)
     assert not camera_setup.step_cameras(path, str(ws_root), ScriptedIo([]),
                                          scanner=lambda: devices.parse_list_devices(SCAN))
     expected = ['window opened', 'previews stopped']
-    if not router_exists:
+    if router == 'none':
         expected = ['router ready', *expected, 'router stopped']
     assert events == expected
 
@@ -192,7 +205,6 @@ def test_camera_step_reports_no_devices(ws_root):
 
 
 def test_camera_scan_reports_process_failure(monkeypatch):
-    from types import SimpleNamespace
     monkeypatch.setattr(devices, "_scan_usb_metadata", lambda: [])
     monkeypatch.setattr(devices.subprocess, "run", lambda *args, **kwargs:
                         SimpleNamespace(returncode=1, stdout="", stderr="USB access denied"))
@@ -201,7 +213,6 @@ def test_camera_scan_reports_process_failure(monkeypatch):
 
 
 def test_camera_scan_reports_sdk_error_even_if_tool_returns_zero(monkeypatch):
-    from types import SimpleNamespace
     monkeypatch.setattr(devices, "_scan_usb_metadata", lambda: [])
     monkeypatch.setattr(devices.subprocess, "run", lambda *args, **kwargs:
                         SimpleNamespace(returncode=0, stdout="", stderr="[ERROR] uvc_open failed: -6"))

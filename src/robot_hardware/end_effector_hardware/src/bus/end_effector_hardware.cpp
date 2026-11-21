@@ -39,7 +39,7 @@ namespace end_effector_hardware
         const std::string device = value("device");
         bus_name_ = value("bus");
         if (device.empty()) return fail("parameter 'device' is required (jodell_rg75, linkerhand_l6, xhand1)");
-        if (bus_name_.empty()) return fail("parameter 'bus' is required (e.g. usb_rs485:///dev/ttyUSB0)");
+        if (bus_name_.empty()) return fail("parameter 'bus' is required (e.g. usb_rs485:///dev/serial/by-id/<adapter>)");
         std::string error;
         if (!robot_comm::parseBusName(bus_name_, error)) return fail(error);
 

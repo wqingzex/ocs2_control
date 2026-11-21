@@ -74,7 +74,6 @@ namespace gripper_protocol
             static constexpr uint8_t DEFAULT_SLAVE_ID = 0x01;     // Default slave address (can be configured)
 
             // Default Modbus parameters
-            static constexpr const char* DEFAULT_SERIAL_PORT = "/dev/ttyUSB0";
             static constexpr int DEFAULT_BAUDRATE = 115200;
             static constexpr char DEFAULT_PARITY = 'N';
             static constexpr int DEFAULT_DATA_BITS = 8;

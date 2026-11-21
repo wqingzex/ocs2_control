@@ -14,6 +14,8 @@ from launch_ros.actions import Node
 
 from robot_app import load
 from robot_app.robot import controller_launch
+from robot_app.units import dexcap_launch_args
+from robot_config.config import teleop_type, xr_settings
 from launch_helpers.devices import xr as pc_service
 
 
@@ -28,9 +30,9 @@ def launch_setup(context):
     actions = [LogInfo(msg=f"robot_control_suite teleop bringup: {config_path}")]
 
     # 1. PC Service
-    xr = cfg["xr"]
-    if xr["enable"] and xr["start_pc_service"]:
-        started = pc_service.start_pc_service(xr["pc_service_script"])
+    selected, xr = teleop_type(cfg), xr_settings(cfg)
+    if selected == "xr" and xr["start_pc_service"]:
+        started = pc_service.start_pc_service(xr["pc_service_script"], network_interface=xr["network_interface"])
         if started:
             actions.append(LogInfo(msg=f"XRoboToolkit PC Service started (pid {started})"))
             actions.append(RegisterEventHandler(OnShutdown(
@@ -46,11 +48,11 @@ def launch_setup(context):
         launch_arguments=args.items()))
 
     # 3. XR bridge
-    if xr["enable"]:
+    if selected == "xr":
         if not _xr_bridge_installed():
             raise RuntimeError(
                 "xr_teleop xr_bridge_node is not built: the XRoboToolkit PC Service SDK was not found at "
-                "build time (install the PC Service deb, then rebuild xr_teleop), or set xr.enable: false")
+                "build time. Run setup.sh with teleop.type: xr to prepare the PC Service and bridge")
         actions.append(Node(
             package="xr_teleop",
             executable="xr_bridge_node",
@@ -62,6 +64,10 @@ def launch_setup(context):
                 "device_id": xr["device_id"],
             }],
         ))
+    elif selected == "dexcap":
+        actions.append(IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(controller_dir, "dexcap.launch.py")),
+            launch_arguments=dexcap_launch_args(cfg).items()))
 
     # 4. Cameras
     if cfg["cameras"]["enable"]:

@@ -53,7 +53,8 @@ class LogReader:
         return text
 
 
-def _control(unit: Optional[Item], fsm: Optional[int], read_log: Callable[[Optional[str]], str]) -> Item:
+def _control(unit: Optional[Item], fsm: Optional[int], read_log: Callable[[Optional[str]], str],
+             inactive: Optional[Dict[str, str]]) -> Item:
     if unit is None:
         return item("control", "运控", OFF, "未运行")
     if not unit["running"]:
@@ -61,11 +62,18 @@ def _control(unit: Optional[Item], fsm: Optional[int], read_log: Callable[[Optio
     verdict = judge_control(read_log(unit.get("log")), alive=True)
     if verdict.state == FAILED:
         return item("control", "运控", BAD, "异常", "\n".join(verdict.reasons[:MAX_DETAIL]), unit="control")
-    if fsm is not None:
+    if inactive == {} and fsm is not None:
         return item("control", "运控", OK, "就绪", unit="control")
     uptime = unit.get("uptime_s") or 0.0
-    if verdict.state == READY:
+    if inactive:
+        detail = "，".join(f"{name}（{state}）" for name, state in inactive.items())
+        if verdict.state == READY or uptime >= CONTROL_STARTING_S:
+            return item("control", "运控", BAD, "控制器未激活", detail, unit="control")
+        return item("control", "运控", WARN, "启动中", detail, unit="control")
+    if inactive == {}:
         return item("control", "运控", WARN, "已激活，等待状态", "控制器已激活，还没有收到 /fsm_state", unit="control")
+    if verdict.state == READY:
+        return item("control", "运控", WARN, "状态未确认", "未收到控制器管理器的实时状态", unit="control")
     if uptime < CONTROL_STARTING_S:
         return item("control", "运控", WARN, "启动中", f"已启动 {uptime:.0f} 秒，等待控制器全部激活", unit="control")
     return item("control", "运控", BAD, "没有响应",
@@ -96,9 +104,9 @@ def _camera(unit: Item) -> Item:
 
 
 def summary(units: List[Item], fsm: Optional[int], xr_connected: Optional[bool],
-            read_log: Callable[[Optional[str]], str]) -> List[Item]:
+            read_log: Callable[[Optional[str]], str], *, inactive: Optional[Dict[str, str]] = None) -> List[Item]:
     by_name = {u["name"]: u for u in units}
-    control = _control(by_name.get("control"), fsm, read_log)
+    control = _control(by_name.get("control"), fsm, read_log, inactive)
     pc = by_name.get("pc_service")
     rows = [
         control,

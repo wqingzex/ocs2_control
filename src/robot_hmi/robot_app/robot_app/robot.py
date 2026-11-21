@@ -6,6 +6,13 @@ from typing import Any, Dict, Tuple
 from .config import ENTRIES
 
 
+MOTION_CONTROLLERS = {
+    "whole_body": ("whole_body_controller",),
+    "split_body": ("arm_controller", "body_joint_controller", "head_joint_controller"),
+    "dual_arm": ("arm_controller",),
+}
+
+
 def controller_launch(cfg: Dict[str, Any], profile_path: str) -> Tuple[str, Dict[str, str]]:
     """Return (launch file in robot_startup, launch arguments). RViz is not included (own unit)."""
     robot = cfg["robot"]

@@ -4,7 +4,7 @@
     <xacro:arg name="type" default="xhand1"/>
     <xacro:arg name="direction" default="1"/>
     <xacro:arg name="gazebo" default="false"/>
-    <xacro:arg name="serial_port" default="/dev/ttyUSB0"/>
+    <xacro:arg name="serial_port" default=""/>
     <xacro:arg name="baudrate" default="3000000"/>
     <xacro:arg name="host_id" default="0xFE"/>
     <xacro:arg name="hand_id" default="0"/>
@@ -39,6 +39,9 @@
             </xacro:if>
 
             <xacro:if value="${'$(arg ros2_control_hardware_type)' == 'real'}">
+                <xacro:if value="${not '$(arg serial_port)'.strip()}">
+                    ${xacro.fatal('serial_port is required for a real USB-RS485 hand')}
+                </xacro:if>
                 <plugin>end_effector_hardware/EndEffectorHardware</plugin>
                 <param name="device">xhand1</param>
                 <param name="side">${'left' if '$(arg direction)' == '1' else 'right'}</param>

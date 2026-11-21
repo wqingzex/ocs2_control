@@ -45,7 +45,7 @@ def main(argv=None) -> int:
 
     def probe_factory():
         from ..ros_probe import RosProbe
-        return RosProbe("robot_app_console")
+        return RosProbe("robot_app_console", monitor_controllers=True)
 
     console = Console(args.config, args.ws_root, probe_factory=probe_factory)
     app = create_app(console, static_dir(args.ws_root))

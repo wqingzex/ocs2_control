@@ -18,7 +18,8 @@ from typing import Any, Dict, NamedTuple, Optional, Sequence
 
 import yaml
 
-from .config import DYN_LENGTH, FIELDS, ROLES, ConfigError, ee_bus, ee_side, ee_type, load, validate_camera_assignments
+from .config import (DYN_LENGTH, FIELDS, ROLES, ConfigError, ee_bus, ee_side, ee_type, load, migrate_teleop,
+                     validate_camera_assignments)
 
 # ---- edit the file, confirmation receipts -------------------------------------------------------------------
 
@@ -87,7 +88,7 @@ def set_cameras(path: str, assignments: Dict[str, Dict[str, Any]], *, enabled: O
         cameras["enable"] = enabled
     for role, values in assignments.items():
         entry = _section(cameras, role)
-        for key in ("enable", "serial", "usb_port", "rotation"):
+        for key in ("enable", "serial", "usb_port", "rotation", "color_eye"):
             if key in values and values[key] is not None:
                 entry[key] = values[key]
     save_rt(path, yaml, data)
@@ -96,6 +97,8 @@ def set_cameras(path: str, assignments: Dict[str, Dict[str, Any]], *, enabled: O
 def set_fields(path: str, section: str, values: Dict[str, Any]) -> None:
     """Set scalar fields of one section, dotted for a nested one (e.g. robot.arm.interface)."""
     yaml, data = load_rt(path)
+    if section == "teleop" or section.startswith("teleop."):
+        migrate_teleop(data)
     _apply(_section(data, section), values)
     save_rt(path, yaml, data)
 
@@ -248,6 +251,7 @@ def check(args):
     print(f'配置: {path}')
     robot = cfg['robot']
     print(f"  机器人: {robot['entry']}，硬件模式: {robot['hardware']}")
+    print(f"  遥操作输入: {cfg['teleop']['type']}")
     eef = robot['end_effector']
     print(f"  末端: {eef['type']}，接线: {eef['interface']['bus']}")
     if eef['type'] != 'none' and eef['interface']['bus'] == 'usb_rs485':

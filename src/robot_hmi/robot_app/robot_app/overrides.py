@@ -12,7 +12,8 @@ import yaml
 
 from robot_config.config import PROFILE_SECTIONS, ConfigError
 
-DENIED_FIELDS = re.compile(r"^(cameras\.(head|left_wrist|right_wrist)\.(serial|usb_port|rotation)|xr\.device_id"
+DENIED_FIELDS = re.compile(r"^(cameras\.(head|left_wrist|right_wrist)\.(serial|usb_port|rotation)|(?:teleop\.)?xr\.device_id"
+                           r"|teleop\.dexcap\.(upper_body|left_hand|right_hand)_port"
                            r"|robot\.end_effector\.interface\.(left|right)\.port)$")
 
 
@@ -37,6 +38,12 @@ def apply_overrides(raw: Dict[str, Any], assignments: Iterable[str]) -> Dict[str
     result = copy.deepcopy(raw)
     for text in assignments:
         parts, value = parse_assignment(text)
+        if parts == ["xr", "enable"]:
+            if not isinstance(value, bool):
+                raise ConfigError("'xr.enable' must be true/false")
+            parts, value = ["teleop", "type"], "xr" if value else "none"
+        elif parts[0] == "xr":
+            parts = ["teleop", *parts]
         node = result
         for part in parts[:-1]:
             child = node.get(part)

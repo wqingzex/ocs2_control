@@ -28,7 +28,7 @@ install(DIRECTORY launch DESTINATION share/${PROJECT_NAME} OPTIONAL)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
-  foreach(t test_launch_config test_units test_stop_hook test_console)
+  foreach(t test_launch_config test_units test_stop_hook test_console test_home_setup)
     ament_add_pytest_test(${t} test/${t}.py
       PYTHON_EXECUTABLE python3
       APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_teleop/xr_teleop:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_teleop/joystick_teleop:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_setup/robot_config:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_setup/camera_setup:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_setup/end_effector_setup:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_utils/python:${CMAKE_CURRENT_SOURCE_DIR}/../../robot_launch/launch_helpers)

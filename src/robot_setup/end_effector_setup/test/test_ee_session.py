@@ -23,7 +23,7 @@ def test_hand_requires_feedback_and_manual_confirmation(hand, config):
     assert [call['operation'] for call in hand.calls] == ['test'] * 2 + ['probe'] * 2  # the recheck at save never moves
     raw = yaml.safe_load(config.read_text())
     assert config_file.confirmed(raw, 'ee')
-    assert raw['control']['limits']['max_joint_speed'] == 17 and raw['xr']['device_id'] == 'PICO-BOUND'
+    assert raw['control']['limits']['max_joint_speed'] == 17 and raw['teleop']['xr']['device_id'] == 'PICO-BOUND'
 
 
 def test_hand_swap_invalidates_feedback_and_confirmation(hand, config):
@@ -171,17 +171,30 @@ def test_unattended_setup_cannot_claim_first_hand_confirmation(config):
     assert config.read_text() == CONFIG and '未保存配置' in output.getvalue()
 
 
-def test_native_hand_window_changes_are_drafts_until_both_sides_confirm(hand, config, qt_app, monkeypatch):
+@pytest.mark.parametrize('drive', ['usb', '485'])
+def test_native_hand_window_changes_are_drafts_until_both_sides_confirm(hand, config, qt_app, monkeypatch, drive):
     from robot_config.setup_steps import create_window
-    from PyQt5.QtWidgets import QMessageBox
+    from PyQt5.QtWidgets import QMessageBox, QPushButton
     monkeypatch.setattr(QMessageBox, 'question', lambda *args, **kwargs: QMessageBox.Yes)
     window = create_window(hand)
     window.show()
-    window.apply()
-    wait_qt(qt_app, window)
+    assert window.windowTitle() == 'ee设置'
+    assert all(button.text() != '应用配置' for button in window.findChildren(QPushButton))
+    if drive == 'usb':
+        for side, port_path in [('left', RIGHT_BY_ID), ('right', LEFT_BY_ID)]:
+            port = window.cards[side]['port']
+            port.setCurrentIndex(port.findData(port_path))
+            assert hand.draft[side + '_port'] == port_path
+    else:
+        window.panel.drive.setCurrentIndex(window.panel.drive.findData(drive))
+        window.panel.device_ip.setText('192.168.1.')
+        assert not window.cards['left']['test'].isEnabled()
+        window.panel.device_ip.setText('192.168.1.10')
+        assert hand.draft['device_ip'] == '192.168.1.10'
+    assert not hand.calls
     assert 'probe' not in window.cards['left'] and window.cards['left']['test'].text() == '开合测试'
     for side in ('left', 'right'):
-        window.panel.hand_action(side, 'test')
+        window.cards[side]['test'].click()
         wait_qt(qt_app, window)
         assert window.cards[side]['check'].isEnabled()
         window.cards[side]['check'].setChecked(True)
@@ -213,11 +226,13 @@ def test_native_hand_test_dialog_no_never_moves_a_finger(hand, qt_app, monkeypat
 def test_native_window_close_discards_draft(hand, config, qt_app):
     from robot_config.setup_steps import create_window
     window = create_window(hand)
-    window.panel.hand.setCurrentIndex(window.panel.hand.findData('none'))
-    window.apply()
+    window.swap_button.click()
     wait_qt(qt_app, window)
+    assert hand.draft['left_port'] == RIGHT_BY_ID and hand.draft['right_port'] == LEFT_BY_ID
+    window.panel.hand.setCurrentIndex(window.panel.hand.findData('none'))
+    assert hand.draft['hand'] == 'none' and window.save_button.isEnabled()
     window.close()
-    assert hand.cancelled and config.read_text() == CONFIG
+    assert hand.cancelled and not hand.calls and config.read_text() == CONFIG
 
 
 def test_native_setup_event_loop_closes_without_changing_config(hand, config, qt_app, monkeypatch):

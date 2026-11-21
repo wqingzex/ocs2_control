@@ -28,7 +28,8 @@ from typing import Any, Callable, List, Optional, Sequence, Tuple
 import yaml
 
 from . import config_file
-from .config import FREEFORM, entries, template_document, template_text
+from .config import (ARM_MODES, ARM_TYPES, BASE_TYPES, DEXCAP_PORTS, END_EFFECTORS, END_EFFECTOR_BUSES, FREEFORM, HARDWARE,
+                     TELEOP_TYPES, check_end_effector, check_teleop, entries, migrate_teleop, template_document)
 from .config_file import DYN_LENGTH, DYN_SIDES, confirmed, dyn_status, dyn_values
 
 # ---- shared by every device setup ---------------------------------------------------------------------------
@@ -92,7 +93,7 @@ class SetupSession:
 
 def create_window(session):
     """The window of a session. Its device-specific part is session.create_panel(window), which provides:
-    title, size, hint, swap_label, apply_label, build(grid, options), apply_payload(), swap(), confirmed(), refresh(busy)."""
+    title, size, hint, swap_label, build(grid, options), apply_payload(), swap(), confirmed(), refresh(busy)."""
     from concurrent.futures import ThreadPoolExecutor
     from PyQt5 import QtCore, QtWidgets as Q
 
@@ -137,14 +138,11 @@ def create_window(session):
             self.cancel_button.clicked.connect(self.close)
             self.swap_button = Q.QPushButton(self.panel.swap_label)
             self.swap_button.clicked.connect(self.swap)
-            self.apply_button = Q.QPushButton(self.panel.apply_label)
-            self.apply_button.clicked.connect(self.apply)
-            self.apply_button.setVisible(bool(self.panel.apply_label))  # a panel that applies by itself has no label
             self.save_button = Q.QPushButton('确认并保存')
             self.save_button.setDefault(True)
             self.save_button.clicked.connect(self.save)
-            for button in (self.cancel_button, self.swap_button, self.apply_button):
-                buttons.addWidget(button)
+            buttons.addWidget(self.cancel_button)
+            buttons.addWidget(self.swap_button)
             buttons.addStretch(1)
             buttons.addWidget(self.save_button)
             layout.addLayout(buttons)
@@ -170,7 +168,7 @@ def create_window(session):
             self.dirty = True
             for card in self.cards.values():
                 card['check'].setChecked(False)
-            self.show_message('配置已修改，请先应用，再核对实物并重新确认。')
+            self.show_message('配置已修改，请核对实物并重新确认。')
             self.refresh()
 
         def submit(self, function, payload, success):
@@ -232,10 +230,8 @@ def create_window(session):
 
         def refresh(self):
             busy = self.future is not None or self.closing
-            if hasattr(self, 'apply_button'):
-                for button in (self.apply_button, self.swap_button):
-                    button.setEnabled(not busy)
-                self.save_button.setEnabled(not busy and not self.dirty)
+            self.swap_button.setEnabled(not busy)
+            self.save_button.setEnabled(not busy and not self.dirty)
             self.options.setEnabled(not busy)
             self.panel.refresh(busy)
 
@@ -425,12 +421,61 @@ def sync_status(path: str) -> Tuple[bool, str]:
     return False, f"配置完整（入口 {entry}）"
 
 
+def select_components(raw: Dict[str, Any], io: Io) -> bool:
+    """Choose hardware before installing dependencies. Keep existing choices as the defaults."""
+    robot, cameras, teleop = raw["robot"], raw["cameras"], raw["teleop"]
+    hand = robot["end_effector"]
+    choices = [
+        (robot, "hardware", "运行方式", HARDWARE),
+        (robot["arm"], "type", "臂驱动", ARM_TYPES),
+        (raw["control"], "arm_mode", "臂控制模式", ARM_MODES),
+        (hand, "type", "末端执行器", END_EFFECTORS),
+        (hand["interface"], "bus", "末端接线", END_EFFECTOR_BUSES),
+        (cameras, "enable", "启用相机", ("y", "n")),
+        (teleop, "type", "遥操作输入", TELEOP_TYPES),
+    ]
+    if robot["entry"] != "dual_arm":
+        choices.insert(1, (robot["base"], "type", "底盘", BASE_TYPES))
+    changed = False
+    for section, field, label, options in choices:
+        if field == "arm_mode" and robot["hardware"] != "real":
+            continue
+        if field == "bus" and hand["type"] == "none":
+            continue
+        if field == "bus":
+            options = {
+                "linkerhand_l6": ("usb_rs485", "arm_rs485", "usb_can"),
+                "xhand1": ("usb_rs485",),
+                "wuji_hand2": ("ethernet",),
+                "jodell_rg75": ("arm_rs485",),
+            }[hand["type"]]
+        previous = section[field]
+        default = ("y" if previous else "n") if field == "enable" else previous
+        selected = io.ask(f"{label} {' | '.join(options)}", default if default in options else options[0])
+        if selected not in options:
+            raise ValueError(f"{label}请选择 {' | '.join(options)}")
+        value = selected == "y" if field == "enable" else selected
+        section[field] = value
+        changed |= value != previous
+    check_end_effector(hand["type"], hand["interface"]["bus"])
+    if teleop["type"] == "dexcap":
+        for key, name in zip(DEXCAP_PORTS, ("外骨骼", "左手套", "右手套")):
+            previous = teleop["dexcap"][key]
+            value = io.ask(f"DexCap {name}串口（none 禁用）", previous or "none")
+            value = "" if value == "none" else value
+            teleop["dexcap"][key] = value
+            changed |= value != previous
+    check_teleop(teleop)
+    return changed
+
+
 def sync_run(path: str, requested_entry: Optional[str], io: Io) -> bool:
     if not os.path.isfile(path):
         entry = _entry_of(None, requested_entry, io)
+        raw = template_document(entry)
+        select_components(raw, io)
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(template_text(entry))
+        config_file.save_rt(path, config_file._yaml(), raw)
         io.info(f"已按入口 {entry} 从模板生成 {path}；[必改] 的项请核对，设备相关的项由 ./scripts/setup.sh 后面的步骤写入")
         return True
     yaml_rt, raw = config_file.load_rt(path)
@@ -442,10 +487,12 @@ def sync_run(path: str, requested_entry: Optional[str], io: Io) -> bool:
     if "robot" not in raw:
         raw["robot"] = {}
     raw["robot"].setdefault("entry", entry)
+    migrated = migrate_teleop(raw)
     dropped = drop_retired(raw)
     added = add_missing(raw, template)
     unknown = unknown_keys(raw, template)
-    if added or dropped:
+    changed = select_components(raw, io)
+    if added or dropped or migrated or changed:
         shutil.copy2(path, path + ".bak")
         config_file.save_rt(path, yaml_rt, raw)
         io.info(f"已改动配置（原文件备份为 {path}.bak）：补上 {len(added)} 个缺的键，删掉 {len(dropped)} 个已退役的段")

@@ -23,7 +23,7 @@ namespace end_effector_hardware
      *       <plugin>end_effector_hardware/EndEffectorHardware</plugin>
      *       <param name="device">linkerhand_l6</param>                     jodell_rg75 | linkerhand_l6
      *       <param name="side">left</param>
-     *       <param name="bus">usb_rs485:///dev/ttyUSB0</param>             or arm_rs485://<arm ip>/left/port1
+     *       <param name="bus">usb_rs485:///dev/serial/by-id/usb-ADAPTER</param>             or arm_rs485://<arm ip>/left/port1
      *       <param name="io_mode">async</param>                            async (default) | sync
      *     </hardware>
      *     ... joints

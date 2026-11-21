@@ -4,7 +4,7 @@
 
 ## SDK
 
-xCoreSDK 来自子模块 `src/third_party/xCoreSDK-CPP`（v0.7.1，头文件），预编译库由 `./scripts/setup.sh deps` 从官方 Release 下载并校验（见 `third_party/README.md`）。缺库时 CMake 会报错并给出这个命令。xCore 控制器固件需要满足 SDK 的要求（v0.7.0 起 ≥ v3.2.0）。
+xCoreSDK 来自子模块 `src/third_party/xCoreSDK-CPP`（v0.7.1，头文件），独立编译时，按 [SDK 说明](../../third_party/README.md#xcoresdk-cpp) 下载并校验同版本 Release 的预编译库，解压到子模块后用 `colcon build --packages-up-to rokae_hardware` 编译。xCore 控制器固件需要满足 SDK 的要求（v0.7.0 起 ≥ v3.2.0）。
 
 v0.7.1 删掉了 `setLoopRecvDataTimeout`，驱动不再设置实时接收超时（以前设成 8 ms，SDK 默认 3 ms）。
 

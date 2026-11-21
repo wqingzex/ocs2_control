@@ -7,7 +7,7 @@
 # 新机器先看这 5 项：
 #   robot.entry   robot.hardware   robot.base.type   robot.end_effector.type   robot.end_effector.interface.bus
 #
-# 分组：1 机器 robot | 2 控制 control | 3 遥操作输入 xr | 4 感知 cameras | 5 运行时 log、record | 6 自动写入 setup
+# 分组：1 机器 robot | 2 控制 control | 3 遥操作输入 teleop | 4 感知 cameras | 5 运行时 log、record | 6 自动写入 setup
 # ======================================================================================================
 
 
@@ -86,27 +86,29 @@ control:
 # ======================================================================================================
 # 3. 遥操作输入
 # ======================================================================================================
-xr:                              # XR 头显
-  enable: true                   # 启动 xr_bridge_node（XRoboToolkit -> /teleop/*）
-
-  # ---- 网络和配对 ----
-  network_mode: ethernet         # ethernet（网线）| wifi（无线）
-  network_interface: ""          # [自动写入] 配对时选的电脑网卡
-  device_id: ""                  # [自动写入] 配对后记录的头显 ID
-
-  # ---- PC Service ----
-  start_pc_service: true         # PC Service 没运行时自动启动
-  pc_service_script: /opt/apps/roboticsservice/runService.sh
-
-  # ---- 超时和重连 ----
-  frame_timeout_ms: 300          # 多久没有头显帧就停止发布，/teleop/connection_status=false
-  reconnect_interval_s: 3.0      # PC Service 断开这么久后重新初始化 SDK
+teleop:
+  type: xr                       # [必改] xr（头显）| dexcap（外骨骼/手套）| none
+  xr:
+    # ---- 网络和配对 ----
+    network_mode: ethernet         # ethernet（网线）| wifi（无线）
+    network_interface: ""          # [自动写入] 配对时选的电脑网卡
+    device_id: ""                  # [自动写入] 配对后记录的头显 ID
+    # ---- PC Service ----
+    start_pc_service: true         # PC Service 没运行时自动启动
+    pc_service_script: /opt/apps/roboticsservice/runService.sh
+    # ---- 超时和重连 ----
+    frame_timeout_ms: 300          # 多久没有头显帧就停止发布，/teleop/connection_status=false
+    reconnect_interval_s: 3.0      # PC Service 断开这么久后重新初始化 SDK
+  dexcap:
+    upper_body_port: ""          # 例如 /dev/ttyACM0，空 = 不启用该设备
+    left_hand_port: ""           # 推荐 /dev/serial/by-id/...，空 = 不启用左手套
+    right_hand_port: ""          # 右手套串口，空 = 不启用右手套
 
 
 # ======================================================================================================
 # 4. 感知
 # ======================================================================================================
-cameras:                         # [自动写入] ./scripts/setup.sh cam 确认后写回序列号、USB 口、旋转
+cameras:                         # [自动写入] ./scripts/setup.sh cam 确认后写回序列号、USB 口、彩色眼和旋转
   enable: true
   fps: 30                        # 30 | 60（Gemini 305 上 60 Hz 是实验性的）
 
@@ -127,6 +129,7 @@ cameras:                         # [自动写入] ./scripts/setup.sh cam 确认�
     enable: true
     serial: ""
     usb_port: ""
+    color_eye: auto              # left | right 选择彩色眼；auto 沿用旧配置按角度选眼
     rotation: 0
     white_balance: 5600
     ae_max_exposure: 120
@@ -136,6 +139,7 @@ cameras:                         # [自动写入] ./scripts/setup.sh cam 确认�
     enable: true
     serial: ""
     usb_port: ""
+    color_eye: auto
     rotation: 0
     white_balance: 5600
     ae_max_exposure: 120

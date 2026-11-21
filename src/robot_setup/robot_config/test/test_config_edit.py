@@ -29,8 +29,8 @@ robot:
     type: linkerhand_l6   # 末端
     interface:
       bus: usb_rs485
-      left: {port: /dev/ttyUSB0}   # 左手
-      right: {port: /dev/ttyUSB2}
+      left: {port: /dev/serial/by-id/usb-LEFT}   # 左手
+      right: {port: /dev/serial/by-id/usb-RIGHT}
 
 cameras:
   head:        {serial: ""}   # Gemini 335Lg

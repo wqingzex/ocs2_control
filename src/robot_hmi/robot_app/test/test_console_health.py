@@ -31,8 +31,14 @@ def test_a_controller_launch_without_its_node_is_reported_as_failed_not_running(
 
 def test_a_working_controller_is_ready_when_the_fsm_is_reported():
     rows = by_key(health.summary([unit("control", log="c.log")], 2, True,
-                                 reader({"c.log": STARTED + FINISHED})))
+                                 reader({"c.log": STARTED + FINISHED}), inactive={}))
     assert (rows["control"]["level"], rows["control"]["text"]) == (health.OK, "就绪")
+
+
+def test_a_cached_fsm_and_successful_startup_do_not_count_as_live_controller_state():
+    rows = by_key(health.summary([unit("control", log="c.log")], 1, True,
+                                 reader({"c.log": STARTED + FINISHED})))
+    assert (rows["control"]["level"], rows["control"]["text"]) == (health.WARN, "状态未确认")
 
 
 def test_a_starting_controller_waits_then_turns_into_an_error():
@@ -45,7 +51,7 @@ def test_a_starting_controller_waits_then_turns_into_an_error():
 
 def test_active_controllers_without_a_state_message_are_a_warning():
     rows = by_key(health.summary([unit("control", log="c.log", uptime=30)], None, None,
-                                 reader({"c.log": STARTED + FINISHED})))
+                                 reader({"c.log": STARTED + FINISHED}), inactive={}))
     assert rows["control"]["level"] == health.WARN and "/fsm_state" in rows["control"]["detail"]
 
 

@@ -1,9 +1,10 @@
 """Helpers for tests: a complete config built from the template."""
 from __future__ import annotations
 
+import copy
 from typing import Any, Dict
 
-from .config import _merge, template_for
+from .config import _merge, migrate_teleop, template_for
 
 
 def full_config(entry: str = "whole_body", **sections: Any) -> Dict[str, Any]:
@@ -13,5 +14,8 @@ def full_config(entry: str = "whole_body", **sections: Any) -> Dict[str, Any]:
 
     A dict value is merged into the section, any other value replaces it."""
     config = template_for(entry)
+    if "xr" in sections:
+        sections = copy.deepcopy(sections)
+        migrate_teleop(sections)
     _merge(config, sections)
     return config

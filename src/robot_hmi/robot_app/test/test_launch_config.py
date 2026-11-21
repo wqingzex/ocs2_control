@@ -39,7 +39,7 @@ def make_cfg(entry="whole_body", **sections):
 def test_defaults_are_valid_when_cameras_are_disabled():
     merged = validate(full_config(cameras=CAMERAS_OFF))
     assert merged["robot"]["end_effector"]["type"] == "linkerhand_l6"
-    assert merged["xr"]["frame_timeout_ms"] == 300
+    assert merged["teleop"]["xr"]["frame_timeout_ms"] == 300
 
 
 def test_unknown_field_is_rejected_with_its_path():
@@ -117,9 +117,9 @@ def test_values_that_do_not_fit_are_rejected_with_a_message_that_names_the_field
 
 
 def test_xr_defaults_to_ethernet_and_accepts_wifi_binding():
-    assert make_cfg()["xr"]["network_mode"] == "ethernet"
+    assert make_cfg()["teleop"]["xr"]["network_mode"] == "ethernet"
     cfg = make_cfg(xr={"network_mode": "wifi", "network_interface": "wlan0", "device_id": "PICO-001"})
-    assert cfg["xr"]["device_id"] == "PICO-001"
+    assert cfg["teleop"]["xr"]["device_id"] == "PICO-001"
     with pytest.raises(ConfigError, match="network_mode"):
         make_cfg(xr={"network_mode": "bluetooth"})
 
@@ -175,16 +175,24 @@ def test_wrist_eye_follows_rotation(rotation, eye):
     assert wrist_eye(rotation) == eye
 
 
-def test_wrist_spec_remaps_used_eye_and_writes_rotation():
+@pytest.mark.parametrize("selection, eye", [(None, "left"), ("left", "left"), ("right", "right")])
+def test_wrist_spec_remaps_used_eye_and_writes_rotation(selection, eye):
     cams = cams_with_serials()
     cams["left_wrist"]["rotation"] = 90
-    spec = next(s for s in camera_specs(validate(full_config(cameras=cams))) if s.name == "camera_left_wrist")
+    if selection is not None:
+        cams["left_wrist"]["color_eye"] = selection
+    config = full_config(cameras=cams)
+    if selection is None:
+        config["cameras"]["left_wrist"].pop("color_eye")
+    spec = next(s for s in camera_specs(validate(config)) if s.name == "camera_left_wrist")
     assert spec.launch_file == "gemini305.launch.py"
-    assert ("/camera_left_wrist/left_color/image_raw/compressed",
+    assert (f"/camera_left_wrist/{eye}_color/image_raw/compressed",
             "/camera_left_wrist/color/image_raw/compressed") in spec.remaps
-    assert spec.config_yaml["left_color_rotation"] == 90
-    assert spec.config_yaml["enable_left_color"] is True
-    assert spec.config_yaml["right_color_fps"] == 5
+    assert spec.config_yaml[f"{eye}_color_rotation"] == 90
+    assert spec.config_yaml[f"enable_{eye}_color"] is True
+    assert spec.config_yaml["device_preset"] == "Dual Color Streams"
+    assert spec.config_yaml["left_color_fps"] == spec.config_yaml["right_color_fps"] == 30
+    assert spec.config_yaml["right_color_format"] == "YUYV"
     assert spec.args["serial_number"] == "CP222"
     assert spec.args["color_exposure"] == "50"
     assert "usb_port" not in spec.args

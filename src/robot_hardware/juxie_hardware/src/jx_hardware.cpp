@@ -14,6 +14,10 @@ namespace juxie_hardware {
 
 JxHardware::JxHardware() : bus_(std::make_unique<robot_comm::SocketCanBus>()) {}
 
+JxHardware::~JxHardware() {
+    stopControl();
+}
+
 void JxHardware::setBusForTesting(std::unique_ptr<robot_comm::CanBus> bus) {
     bus_ = std::move(bus);
     bus_injected_ = true;
@@ -205,7 +209,24 @@ hardware_interface::CallbackReturn JxHardware::on_activate(
 hardware_interface::CallbackReturn JxHardware::on_deactivate(
     const rclcpp_lifecycle::State & /* previous_state */) {
     RCLCPP_INFO(get_node()->get_logger(), "Deactivating JxHardware...");
+    stopControl();
+    RCLCPP_INFO(get_node()->get_logger(), "JxHardware deactivated");
+    return hardware_interface::CallbackReturn::SUCCESS;
+}
 
+hardware_interface::CallbackReturn JxHardware::on_error(
+    const rclcpp_lifecycle::State & /* previous_state */) {
+    stopControl();
+    return hardware_interface::CallbackReturn::SUCCESS;
+}
+
+hardware_interface::CallbackReturn JxHardware::on_shutdown(
+    const rclcpp_lifecycle::State & /* previous_state */) {
+    stopControl();
+    return hardware_interface::CallbackReturn::SUCCESS;
+}
+
+void JxHardware::stopControl() {
     health_timer_.reset();
 
     // 停止控制线程（运行中因错误自行停止时 running_ 已是 false，线程仍要回收）
@@ -214,11 +235,9 @@ hardware_interface::CallbackReturn JxHardware::on_deactivate(
         control_thread_.join();
     }
 
-    // 关闭CAN FD接口
-    bus_->close();
-
-    RCLCPP_INFO(get_node()->get_logger(), "JxHardware deactivated");
-    return hardware_interface::CallbackReturn::SUCCESS;
+    if (bus_) {
+        bus_->close();
+    }
 }
 
 // === 导出接口 ===

@@ -114,7 +114,7 @@ class EeSetup(SetupSession):
         with self.lock:
             self.active()
             if request.get('revision') != self.revision:
-                raise ValueError('配置已变化，请先应用配置')
+                raise ValueError('配置已变化，请重新进行开合测试')
             side, operation = request.get('side'), request.get('operation')
             if side not in ('left', 'right') or operation not in ('probe', 'test') or self.draft['hand'] == 'none':
                 raise ValueError('无效的手部操作')
@@ -171,7 +171,7 @@ class EeSetup(SetupSession):
 
 class EePanel:
     """The cards of the hand window: the options row and one card per hand."""
-    title, size, swap_label, apply_label = 'W2 左右手配置', (860, 730), '交换左右手串口', '应用配置'
+    title, size, swap_label = 'ee设置', (860, 730), '交换左右手串口'
     hint = '分别点击“开合测试”：手会慢速半握再张开，据此核对是机器人的左手还是右手。'
 
     def __init__(self, window):
@@ -184,12 +184,17 @@ class EePanel:
         self.hand = window.combo([('none', '不使用手'), ('linkerhand_l6', 'LinkerHand L6'), ('xhand1', 'XHand1')], draft['hand'])
         self.drive = window.combo([('usb', 'usb_rs485（485 转 USB 接电脑）'), ('485', 'arm_rs485（接机械臂 485 接口）')], draft['drive'])
         self.device_ip = Q.QLineEdit(str(draft['device_ip']))
-        self.device_ip.textEdited.connect(window.mark_dirty)
+        self.device_ip.textChanged.connect(window.mark_dirty)
+        self.device_ip.textChanged.connect(self.stage_edit)
+        self.hand.currentIndexChanged.connect(self.stage_edit)
+        self.drive.currentIndexChanged.connect(self.stage_edit)
         self.ip_label = Q.QLabel('485 控制器 IP')
         for widget in (Q.QLabel('末端'), self.hand, Q.QLabel('接线'), self.drive, self.ip_label, self.device_ip):
             options.addWidget(widget)
         ports = [(p['path'], p['path'].rsplit('/', 1)[-1]) for p in window.state['ports']]  # label = vendor_model_serial
-        if not ports:
+        if ports:
+            ports.insert(0, ('', '请选择串口'))
+        else:
             ports = [('', '未发现带序列号的串口（/dev/serial/by-id）；容器需映射设备')]
         for index, side in enumerate(('left', 'right')):
             title = '左手' if side == 'left' else '右手'
@@ -197,6 +202,7 @@ class EePanel:
             body = Q.QVBoxLayout(box)
             form = Q.QFormLayout()
             port = window.combo(ports, draft[side + '_port'])
+            port.currentIndexChanged.connect(self.stage_edit)
             port_label = Q.QLabel('USB 串口')
             form.addRow(port_label, port)
             arm = Q.QLabel('485：机器人' + ('左臂（A）' if side == 'left' else '右臂（B）') + '法兰口 1')
@@ -227,14 +233,36 @@ class EePanel:
     def apply_payload(self):
         return {'draft': self.draft()}
 
+    def stage_edit(self, *_):
+        self.stage_draft(self.draft())
+
+    def stage_draft(self, draft):
+        # Draft validation does not open devices. Keep the IP field editable while typing.
+        window = self.window
+        try:
+            window.state = window.session.update({'draft': draft})
+        except (ValueError, OSError) as exc:
+            window.dirty = True
+            window.show_message(str(exc), True)
+            window.refresh()
+            return False
+        window.dirty = False
+        window.show_message('请选择开合测试，核对左右手。' if draft['hand'] != 'none' else '确认后保存末端设置。')
+        window.refresh()
+        return True
+
     def swap(self):
+        from PyQt5.QtCore import QSignalBlocker
+
         if self.drive.currentData() != 'usb':
             self.window.show_message('485 左右臂接口固定，请核对并调整实物接线。', True)
             return False
         left, right = self.window.cards['left']['port'], self.window.cards['right']['port']
         first, second = left.currentData(), right.currentData()
-        left.setCurrentIndex(left.findData(second))
-        right.setCurrentIndex(right.findData(first))
+        with QSignalBlocker(left), QSignalBlocker(right):
+            left.setCurrentIndex(left.findData(second))
+            right.setCurrentIndex(right.findData(first))
+        self.window.mark_dirty()
         return True
 
     def confirmed(self):
@@ -244,7 +272,8 @@ class EePanel:
         from PyQt5 import QtWidgets as Q
         window = self.window
         if window.dirty:
-            window.show_message('请先应用配置，再做开合测试。', True)
+            return
+        if window.state['revision'] == 0 and not self.stage_draft(window.state['draft']):
             return
         payload = {'side': side, 'operation': operation, 'revision': window.state['revision']}
         if window.state['draft']['drive'] == '485':
@@ -275,7 +304,7 @@ class EePanel:
             card['port'].setVisible(drive == 'usb')
             card['port_label'].setVisible(drive == 'usb')
             card['arm'].setVisible(drive == '485')
-            result = window.state['results'].get(side, {})
+            result = window.state['results'].get(side, {}) if not window.dirty else {}
             card['feedback'].setText(result.get('message', '尚未测试'))
             card['test'].setEnabled(not busy and not window.dirty and enabled)
             card['check'].setEnabled(not busy and not window.dirty and enabled and bool(result.get('ok')))

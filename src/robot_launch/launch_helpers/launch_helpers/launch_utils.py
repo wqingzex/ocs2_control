@@ -3,6 +3,7 @@ Launch helpers shared by every launch entry point: rmw_zenoh router and launch-m
 """
 
 import os
+import socket
 import subprocess
 
 from launch.actions import DeclareLaunchArgument
@@ -21,12 +22,7 @@ def is_rmw_zenoh():
 
 
 def is_zenoh_router_running():
-    """
-    检测系统中是否已经有zenoh router在运行
-    
-    Returns:
-        bool: 如果已经有zenoh router在运行则返回True，否则返回False
-    """
+    """Check for a local Zenoh process or a listener on the default endpoint."""
     try:
         # 按进程名查找可用的路由，排除启动命令本身和退出后的僵尸进程。
         result = subprocess.run(
@@ -34,10 +30,19 @@ def is_zenoh_router_running():
             capture_output=True,
             text=True
         )
-        return any(state[0] not in 'ZX' for state in result.stdout.split())
-    except OSError as e:
-        # 如果检测失败（例如pgrep命令不存在），默认返回False，允许启动
-        print(f"[WARNING] Failed to check if zenoh router is running: {e}")
+        if any(state[0] not in 'ZX' for state in result.stdout.split()):
+            return True
+    except OSError as exc:
+        print(f"[WARNING] Failed to check for Zenoh router processes: {exc}")
+
+    if os.environ.get('ZENOH_ROUTER_CONFIG_URI') or 'listen/endpoints' in os.environ.get('ZENOH_CONFIG_OVERRIDE', ''):
+        return False
+
+    # Host-networked containers can reach the host's router across PID namespaces.
+    try:
+        with socket.create_connection(('localhost', 7447), timeout=0.25):
+            return True
+    except OSError:
         return False
 
 

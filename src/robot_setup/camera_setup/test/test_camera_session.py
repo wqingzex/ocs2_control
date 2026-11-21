@@ -23,18 +23,20 @@ def test_camera_cancel_preserves_original_config(camera, config):
 
 def test_camera_visual_confirmation_saves_rotations_and_preserves_other_sections(camera, config):
     mapping = copy.deepcopy(camera.mapping)
-    mapping['LEFT'] = {'role': 'right_wrist', 'rotation': 90}
-    mapping['RIGHT'] = {'role': 'left_wrist', 'rotation': 270}
+    mapping['LEFT'] = {'role': 'right_wrist', 'rotation': 90, 'color_eye': 'right'}
+    mapping['RIGHT'] = {'role': 'left_wrist', 'rotation': 270, 'color_eye': 'left'}
     camera.update({'mapping': mapping})
     camera.previews.fresh = set(camera.by_serial)
     camera.save({'revision': camera.revision, 'confirmed': ['head', 'left_wrist', 'right_wrist']})
     raw = yaml.safe_load(config.read_text())
     assert raw['cameras']['right_wrist']['serial'] == 'LEFT'
     assert raw['cameras']['right_wrist']['rotation'] == 90
+    assert raw['cameras']['right_wrist']['color_eye'] == 'right'
     assert raw['cameras']['left_wrist']['rotation'] == 270
+    assert raw['cameras']['left_wrist']['color_eye'] == 'left'
     assert raw['xr']['device_id'] == 'PICO-BOUND' and raw['control']['limits']['max_joint_speed'] == 17
     assert '# preserve this comment' in config.read_text() and config_file.confirmed(raw, 'cameras')
-    config_file.set_cameras(str(config), {'left_wrist': {'rotation': 180}})
+    config_file.set_cameras(str(config), {'left_wrist': {'color_eye': 'right'}})
     assert not config_file.confirmed(yaml.safe_load(config.read_text()), 'cameras')
 
 
@@ -142,10 +144,17 @@ def test_choosing_a_rotation_turns_the_picture_without_pressing_apply(camera, co
     rotation.setCurrentIndex(rotation.findData(90))
     wait_qt(qt_app, window)  # applies by itself
     assert not window.dirty and camera.mapping['LEFT']['rotation'] == 90
+    assert card['color_eye'].currentData() == camera.mapping['LEFT']['color_eye'] == 'right'
     camera.previews.fresh = set(camera.by_serial)  # the fake preview forgets its frames on every update
     window.tick()
     turned = card['image'].pixmap()
     assert turned.height() > turned.width()
+    eye = card['color_eye']
+    eye.setCurrentIndex(eye.findData('left'))
+    wait_qt(qt_app, window)
+    assert camera.mapping['LEFT']['color_eye'] == 'left'
+    assert camera.mapping['LEFT']['rotation'] == 90
+    assert window.cards['HEAD']['color_eye'] is None
     window.close()
 
 
@@ -231,20 +240,31 @@ def test_the_preview_config_keeps_every_camera_field_the_loader_requires(tmp_pat
     pool.probe = types.SimpleNamespace(watch_image=lambda topic: None)
     pool.directory = types.SimpleNamespace(name=str(tmp_path))
     pool.prefix, pool.supervisor, pool.entries = 'setup_test_', supervisor, {}
-    pool.configure(DEVICES[1], 90)
+    pool.configure(DEVICES[1], 90, color_eye='left')
     path = next(arg for arg in commands[0] if str(arg).startswith('config:=')).split('=', 1)[1]
     cameras = yaml.safe_load(open(path))['cameras']
     required = {'enable', 'serial', 'usb_port', 'rotation', 'white_balance', 'ae_max_exposure', 'exposure', 'gain'}
     for role in ('head', 'left_wrist', 'right_wrist'):
         assert required <= set(cameras[role]), (role, sorted(required - set(cameras[role])))
-    # The preview driver always runs upright; the window turns the picture, so a rotation never restarts a driver.
-    assert cameras['left_wrist']['enable'] and cameras['left_wrist']['rotation'] == 0
+    from launch_helpers.devices.camera import camera_specs
+    assert cameras['left_wrist']['enable'] and cameras['left_wrist']['rotation'] == 90
+    assert 'upright_preview:=true' in commands[0]
+    spec, = camera_specs({'cameras': cameras}, upright_preview=True)
+    assert spec.config_yaml['left_color_rotation'] == 0
+    assert spec.config_yaml['left_color_format'] == 'YUYV'
+    assert pool.entries['LEFT']['stream'] == 'left_color'
     assert not cameras['head']['enable'] and cameras['head']['serial'] == ''
     supervisor.is_running = lambda unit: True
     supervisor.status = lambda unit: types.SimpleNamespace(last_error='')
     pool.probe.latest_image = lambda topic: None
-    pool.configure(DEVICES[1], 270)
-    assert len(commands) == 1, 'choosing another angle must not start the driver again'
+    pool.configure(DEVICES[1], 0, color_eye='left')
+    assert len(commands) == 1, 'a rotation must not restart the manually selected eye'
+    pool.configure(DEVICES[1], 0, {'exposure': 80, 'gain': 20}, color_eye='right')
+    assert len(commands) == 2
+    assert pool.entries['LEFT']['stream'] == 'right_color'
+    new_cameras = yaml.safe_load(open(path))['cameras']
+    assert new_cameras['left_wrist']['exposure'] == 80
+    assert new_cameras['left_wrist']['gain'] == 20
 
 
 def test_every_relative_import_of_the_package_resolves():
@@ -277,8 +297,11 @@ def test_set_imaging_reaches_the_driver_and_keeps_the_confirmation(camera):
     assert {d['serial']: (d['exposure'], d['gain']) for d in camera.state()['devices']}['LEFT'] == (80, 20)
 
 
-@pytest.mark.parametrize('exposure, gain', [(-1, 16), (50, -1), (0, 16), (50, -2), (True, 16), (1.5, 16), ('50', 16)])
-def test_set_imaging_rejects_values_the_config_would_refuse(camera, exposure, gain):
+@pytest.mark.parametrize('exposure, gain', [
+    (-1, 16), (50, -1), (0, 16), (50, -2), (True, 16), (1.5, 16), ('50', 16),
+    (1991, 16), (50, 15), (50, 249),
+])
+def test_set_imaging_rejects_invalid_or_out_of_range_values(camera, exposure, gain):
     with pytest.raises(ValueError, match='曝光'):
         camera.set_imaging({'serial': 'LEFT', 'exposure': exposure, 'gain': gain})
     assert not getattr(camera.previews, 'imaging', None)
@@ -347,6 +370,8 @@ def test_window_exposure_controls_send_manual_values_and_switch_auto_back_on(cam
     wait_qt(qt_app, window)
     card = window.cards['LEFT']
     assert not card['auto'].isChecked() and card['exposure'].value() == 50 and card['gain'].value() == 16
+    assert (card['exposure'].minimum(), card['exposure'].maximum()) == (1, 1990)
+    assert (card['gain'].minimum(), card['gain'].maximum()) == (16, 248)
     assert window.cards['HEAD']['auto'].isChecked() and not window.cards['HEAD']['exposure'].isEnabled()
     card['exposure'].setValue(90)
     assert card['timer'].isActive(), 'a change is sent after a short pause, not on every key press'

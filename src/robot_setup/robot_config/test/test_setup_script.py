@@ -22,7 +22,7 @@ record_step() { printf '%s\\n' "$1" >> "$W2_TEST_STEPS"; }
     for function, step in (
         ("step_deps", "deps"), ("step_config", "config"), ("host_udev", "udev"), ("host_sudoers", "can"),
         ("host_pc_service", "sdk"), ("step_marvin", "marvin"), ("step_build", "build"), ("step_cameras", "cameras"),
-        ("step_ee", "ee"), ("step_dyn", "dyn"), ("step_xr", "xr"), ("step_summary", "summary"),
+        ("step_home", "home"), ("step_ee", "ee"), ("step_dyn", "dyn"), ("step_xr", "xr"), ("step_summary", "summary"),
     ):
         if function == "step_marvin" and not stub_marvin:
             continue
@@ -37,35 +37,35 @@ record_step() { printf '%s\\n' "$1" >> "$W2_TEST_STEPS"; }
 
 @pytest.mark.parametrize("container", [False, True])
 def test_default_init_keeps_camera_hand_and_xr_steps(tmp_path, container):
-    result, steps = run_init(tmp_path, container=container)
+    result, steps = run_init(tmp_path, container=container, args=("--yes",))
     assert result.returncode == 0, result.stdout + result.stderr
     host_setup = [] if container else ["udev", "can"]
-    assert steps == ["deps", "config", *host_setup, "sdk", "marvin", "build", "cameras", "ee", "xr", "summary"]
-    assert "10/10" in result.stdout and "dyn: 默认值" in result.stdout
+    assert steps == ["config", "deps", *host_setup, "sdk", "marvin", "build", "cameras", "ee", "xr", "home", "summary"]
+    assert "11/11" in result.stdout and "dyn: 默认值" in result.stdout
 
 
 @pytest.mark.parametrize("failed_step", ["ee", "xr", "summary"])
 def test_unfinished_configuration_does_not_report_init_success(tmp_path, failed_step):
-    result, steps = run_init(tmp_path, container=True, failed_step=failed_step)
+    result, steps = run_init(tmp_path, container=True, failed_step=failed_step, args=("--yes",))
     assert result.returncode == 1
-    assert steps == ["deps", "config", "sdk", "marvin", "build", "cameras", "ee", "xr", "summary"]
+    assert steps == ["config", "deps", "sdk", "marvin", "build", "cameras", "ee", "xr", "home", "summary"]
     assert "初始化尚未完成" in result.stderr
     assert "下一步：./scripts/start.sh" not in result.stdout
 
 
 @pytest.mark.parametrize("container", [False, True])
 def test_camera_failure_exits_before_hand_xr_or_summary(tmp_path, container):
-    result, steps = run_init(tmp_path, container=container, failed_step="cameras")
+    result, steps = run_init(tmp_path, container=container, failed_step="cameras", args=("--yes",))
     assert result.returncode == 1
     host_setup = [] if container else ["udev", "can"]
-    assert steps == ["deps", "config", *host_setup, "sdk", "marvin", "build", "cameras"]
+    assert steps == ["config", "deps", *host_setup, "sdk", "marvin", "build", "cameras"]
     assert "初始化结果" not in result.stdout
     assert "下一步：./scripts/start.sh" not in result.stdout
 
 
 @pytest.mark.parametrize("command,expected", [
     ("cam", "cameras"), ("ee", "ee"), ("xr", "xr"),
-    ("build", "build"), ("marvin", "marvin"),
+    ("build", "build"), ("marvin", "marvin"), ("home", "home"),
     ("deps", "deps"), ("config", "config"), ("host", "sdk"), ("check", "summary"),
     ("cameras", "cameras"), ("summary", "summary"),
 ])
@@ -78,7 +78,7 @@ def test_single_step_never_runs_other_stages(tmp_path, command, expected):
 
 
 def test_camera_retry_does_not_repeat_dependency_install_or_build(tmp_path):
-    failure, _ = run_init(tmp_path, container=True, failed_step="cameras")
+    failure, _ = run_init(tmp_path, container=True, failed_step="cameras", args=("--yes",))
     assert failure.returncode == 1
     retry, steps = run_init(tmp_path, container=True, args=("cam",))
     assert retry.returncode == 0
@@ -87,17 +87,17 @@ def test_camera_retry_does_not_repeat_dependency_install_or_build(tmp_path):
 
 @pytest.mark.parametrize("container", [False, True])
 @pytest.mark.parametrize("command,index", [
-    ("deps", 0), ("config", 1), ("host", 2), ("marvin", 3), ("build", 4), ("cam", 5),
-    ("ee", 6), ("xr", 8), ("check", 9),
+    ("config", 0), ("deps", 1), ("host", 2), ("marvin", 3), ("build", 4), ("cam", 5),
+    ("ee", 6), ("xr", 8), ("home", 9), ("check", 10),
 ])
 def test_from_runs_only_the_selected_step_and_remaining_stages(tmp_path, container, command, index):
-    result, steps = run_init(tmp_path, container=container, args=(command, "--from"))
+    result, steps = run_init(tmp_path, container=container, args=(command, "--from", "--yes"))
     assert result.returncode == 0, result.stdout + result.stderr
     host = ["sdk"] if container else ["udev", "can", "sdk"]
-    stages = [["deps"], ["config"], host, ["marvin"], ["build"], ["cameras"], ["ee"], [], ["xr"], ["summary"]]  # dyn: default usable
+    stages = [["config"], ["deps"], host, ["marvin"], ["build"], ["cameras"], ["ee"], [], ["xr"], ["home"], ["summary"]]
     assert steps == [step for stage in stages[index:] for step in stage]
-    assert f"{index + 1}/10" in result.stdout
-    assert "10/10" in result.stdout
+    assert f"{index + 1}/11" in result.stdout
+    assert "11/11" in result.stdout
     assert "下一步：./scripts/start.sh" in result.stdout
 
 
@@ -110,15 +110,15 @@ def test_from_rejects_missing_or_multiple_start_steps_without_running_anything(t
 
 
 def test_from_does_not_continue_after_camera_failure(tmp_path):
-    result, steps = run_init(tmp_path, container=True, failed_step="cameras", args=("cam", "--from"))
+    result, steps = run_init(tmp_path, container=True, failed_step="cameras", args=("cam", "--from", "--yes"))
     assert result.returncode == 1
     assert steps == ["cameras"]
 
 
 def test_from_works_with_existing_flags(tmp_path):
-    result, steps = run_init(tmp_path, container=True, args=("build", "--from", "--yes", "--minimal"))
+    result, steps = run_init(tmp_path, container=True, args=("build", "--from", "--yes"))
     assert result.returncode == 0
-    assert steps == ["build", "cameras", "ee", "xr", "summary"]
+    assert steps == ["build", "cameras", "ee", "xr", "home", "summary"]
 
 
 def test_cancelled_xr_step_stops_init_without_running_final_check(tmp_path):
@@ -128,9 +128,11 @@ def test_cancelled_xr_step_stops_init_without_running_final_check(tmp_path):
     harness = '''source "$1"
 CONFIG="$W2_TEST_CONFIG"
 source_ros() { :; }
+load_build_selection() { BUILD_TELEOP=xr; }
+stop_old_xr_setup() { :; }
 python3() { return 130; }
 step_summary() { printf 'UNEXPECTED_CHECK\\n'; }
-main xr --from
+main xr --from --yes
 '''
     result = subprocess.run(["bash", "-c", harness, "--", str(script)],
                             env=dict(os.environ, W2_TEST_CONFIG=str(config)),
@@ -139,7 +141,7 @@ main xr --from
     assert "UNEXPECTED_CHECK" not in result.stdout
 
 
-# ---- steps that are configured, or have a usable default, are not asked again --------------------
+# ---- the interactive wizard asks before every step ------------------------------------------------
 def _merge(target, values):
     for key, value in values.items():
         if isinstance(value, dict) and isinstance(target.get(key), dict):
@@ -161,19 +163,46 @@ def configured_config(**overrides):
     return yaml.safe_dump(raw)
 
 
-def test_configured_steps_are_skipped_in_the_full_flow(tmp_path):
-    result, steps = run_init(tmp_path, container=True, config_text=configured_config())
+@pytest.mark.parametrize("args,stdin", [((), "\n" * 11), (("--yes",), None)])
+def test_configured_steps_default_to_skip_in_the_full_flow(tmp_path, args, stdin):
+    result, steps = run_init(tmp_path, container=True, config_text=configured_config(), args=args, stdin=stdin)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert steps == ["deps", "sdk", "build", "summary"]
+    assert steps == ["deps", "sdk", "build", "home", "summary"]
     for line in ("配置完整", "已选择 338", "相机映射已确认", "左右手实物已确认", "已绑定头显 PICO-1", "使用 linkerhand_l6 的内置辨识值"):
         assert line in result.stdout
     assert result.stdout.count("已跳过") == 6
+    assert result.stdout.count("是否执行本步") == (0 if args else 11)
+
+
+def test_full_wizard_can_run_a_step_with_defaults_and_skip_other_steps(tmp_path):
+    answers = ["n"] * 7 + ["y", "n", "y", "n"]
+    result, steps = run_init(tmp_path, container=True, config_text=configured_config(), stdin="\n".join(answers) + "\n")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert steps == ["dyn", "home"]
+    assert result.stdout.count("是否执行本步") == 11
+    dyn_output = result.stdout.split("8/11 负载辨识", 1)[1].split("9/11", 1)[0]
+    assert dyn_output.index("使用 linkerhand_l6 的内置辨识值") < dyn_output.index("是否执行本步")
+    assert "下一步：./scripts/start.sh" not in result.stdout
+
+
+def test_from_prompt_retries_invalid_answer_and_can_skip_starting_step(tmp_path):
+    result, steps = run_init(tmp_path, container=True, config_text=configured_config(),
+                             args=("cam", "--from"), stdin="?\nn\ny\nn\nn\nn\ny\n")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert steps == ["ee", "summary"]
+    assert "请输入 y 或 n" in result.stdout and result.stdout.count("是否执行本步") == 7
+
+
+def test_closed_input_does_not_execute_an_unconfirmed_wizard_step(tmp_path):
+    result, steps = run_init(tmp_path, container=True, stdin="")
+    assert result.returncode == 1 and steps == []
+    assert "未收到本步选择" in result.stderr
 
 
 def test_force_configures_everything_again(tmp_path):
-    result, steps = run_init(tmp_path, container=True, config_text=configured_config(), args=("--force",))
+    result, steps = run_init(tmp_path, container=True, config_text=configured_config(), args=("--force", "--yes"))
     assert result.returncode == 0, result.stdout + result.stderr
-    assert steps == ["deps", "config", "sdk", "marvin", "build", "cameras", "ee", "dyn", "xr", "summary"]
+    assert steps == ["config", "deps", "sdk", "marvin", "build", "cameras", "ee", "dyn", "xr", "home", "summary"]
     assert "已跳过" not in result.stdout
 
 
@@ -186,14 +215,14 @@ def test_a_single_step_always_runs_even_when_it_is_configured(tmp_path, step, ex
 
 def test_a_half_filled_load_is_not_a_usable_default(tmp_path):
     text = configured_config(robot={"end_effector": {"dyn_param": {"left": [1.0] * 10}}})
-    result, steps = run_init(tmp_path, container=True, config_text=text)
-    assert steps == ["deps", "sdk", "build", "dyn", "summary"]  # the reason (only the left arm is filled) is config_file's, tested there
+    result, steps = run_init(tmp_path, container=True, config_text=text, args=("--yes",))
+    assert steps == ["deps", "sdk", "build", "dyn", "home", "summary"]
 
 
 def test_simulation_and_no_hand_need_no_load_identification(tmp_path):
     for robot, reason in (({"hardware": "mock_components"}, "不是真机"), ({"end_effector": {"type": "none"}}, "没有末端")):
         text = configured_config(robot=robot)
-        result, steps = run_init(tmp_path, container=True, config_text=text)
+        result, steps = run_init(tmp_path, container=True, config_text=text, args=("--yes",))
         assert "dyn" not in steps and reason in result.stdout
 
 
@@ -202,6 +231,30 @@ def test_reset_is_only_for_the_dyn_step(tmp_path):
     assert result.returncode != 0 and steps == [] and "--reset 只用于 dyn" in result.stderr
     result, steps = run_init(tmp_path, container=True, args=("dyn", "--reset"))
     assert result.returncode == 0 and steps == ["dyn"]
+
+
+@pytest.mark.parametrize("selection,removed,exit_code", [
+    ("1\n", {"build"}, 0),
+    ("2 3\n", {"install", "config.yaml"}, 0),
+    ("1 2 3\n", {"build", "install", "config.yaml"}, 0),
+    ("\n", set(), 0),
+    ("1 9\n", set(), 1),
+])
+def test_clean_changes_only_the_selected_paths_and_backs_up_config(tmp_path, selection, removed, exit_code):
+    for name in ("build", "install", "log"):
+        (tmp_path / name).mkdir()
+    config = "# 保留原配置\nrobot: {entry: whole_body}\n"
+    result, steps = run_init(tmp_path, container=True, args=("clean",), config_text=config,
+                             fake_ws=True, stdin=selection)
+    assert result.returncode == exit_code, result.stdout + result.stderr
+    assert steps == []
+    for name in ("build", "install", "log", "config.yaml"):
+        assert (tmp_path / name).exists() == (name not in removed)
+    backups = list(tmp_path.glob("config.yaml.before-clean.*"))
+    if "config.yaml" in removed:
+        assert len(backups) == 1 and backups[0].read_text() == config
+    else:
+        assert backups == []
 
 
 def test_the_old_build_workspace_command_is_gone(tmp_path):
@@ -224,6 +277,41 @@ def call(tmp_path, function, config_text="{}\n"):
     harness = 'source "$1"; CONFIG="$W2_TEST_CONFIG"; WS_DIR="$W2_TEST_WS"; ' + function
     return subprocess.run(["bash", "-c", harness, "--", str(script)], text=True, capture_output=True, timeout=10,
                           env=dict(os.environ, W2_TEST_CONFIG=str(config), W2_TEST_WS=str(tmp_path)))
+
+
+@pytest.mark.parametrize("dexcap", [False, True])
+def test_deps_uses_the_selected_devices(tmp_path, dexcap):
+    import yaml
+    config = yaml.safe_dump({
+        "robot": {"entry": "dual_arm", "arm": {"interface": {"firmware": 338}}},
+        "teleop": {"type": "dexcap" if dexcap else "xr"},
+        "cameras": {"enable": not dexcap},
+    })
+    result = call(tmp_path, r"""
+        git() { printf '%s\n' "$@"; }
+        colcon_ignore_submodule_dirs() { :; }
+        source_ros() { :; }
+        as_root() { "$@"; }
+        deps_rosdep_update() { :; }
+        colcon() {
+            printf '%s\n' "$@" >&2
+            echo src/required_package
+        }
+        rosdep() { printf '%s\n' "$@"; }
+        main deps
+    """, config)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "src/third_party/ocs2_ros2" in result.stdout
+    assert "src/third_party/TJ_FX_ROBOT_CONTRL_SDK_338" in result.stdout
+    assert "TJ_FX_ROBOT_CONTRL_SDK_343" not in result.stdout
+    assert ("src/third_party/dexcap-sdk-cpp" in result.stdout) == dexcap
+    assert ("src/third_party/OrbbecSDK_ROS2" in result.stdout) != dexcap
+    assert "xCoreSDK-CPP" not in result.stdout
+    assert "--packages-up-to" in result.stderr and "m6_ccs_description" in result.stderr
+    assert "juxie_hardware" not in result.stderr and "fa_w2_description" not in result.stderr
+    assert ("dexcap_teleop" in result.stderr) == dexcap
+    assert ("xr_setup" in result.stderr) != dexcap
+    assert "--from-paths\nsrc/required_package\n" in result.stdout
 
 
 def test_marvin_is_asked_and_the_choice_is_written_to_the_config(tmp_path):
@@ -262,6 +350,40 @@ def test_build_without_a_choice_keeps_the_built_version_and_warns(tmp_path):
     assert "./scripts/setup.sh marvin" in result.stderr
 
 
+def test_build_filters_its_own_overlay_and_keeps_incremental_outputs(tmp_path):
+    built_with(tmp_path, "338")
+    (tmp_path / "install").mkdir()
+    (tmp_path / "log").mkdir()
+    result = call(tmp_path, r"""
+        export COLCON_PREFIX_PATH="$WS_DIR/install:$WS_DIR/install/old:/other_ws/install"
+        export AMENT_PREFIX_PATH="$WS_DIR/install/old"
+        colcon_ignore_submodule_dirs() { :; }
+        source_ros() { :; }
+        colcon() {
+            printf '%s\n' "$@"
+            printf 'colcon_prefix=%s\n' "$COLCON_PREFIX_PATH"
+            printf 'ament_prefix=%s\n' "${AMENT_PREFIX_PATH-unset}"
+        }
+        main build
+    """)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "-DMARVIN_FIRMWARE=338" in result.stdout
+    assert "-DXR_TELEOP_BUILD_NATIVE=1" in result.stdout
+    assert "fa_w2_description" in result.stdout
+    assert "rokae_hardware" not in result.stdout and "dexcap_teleop" not in result.stdout
+    assert "colcon_prefix=/other_ws/install\n" in result.stdout
+    assert "ament_prefix=unset\n" in result.stdout
+    assert all((tmp_path / name).is_dir() for name in ("build", "install", "log"))
+    assert (tmp_path / "config.yaml").is_file()
+
+
+@pytest.mark.parametrize("option", ["--clean", "--minimal"])
+def test_build_flags_removed_in_favor_of_clean_and_config(tmp_path, option):
+    result, steps = run_init(tmp_path, container=True, args=("build", option))
+    assert result.returncode == 1 and steps == []
+    assert f"未知参数: {option}" in result.stderr
+
+
 def test_an_invalid_version_in_the_config_is_an_error(tmp_path):
     result = call(tmp_path, "marvin_cmake_arg", "robot: {arm: {interface: {firmware: 340}}}\n")
     assert result.returncode != 0 and "robot.arm.interface.firmware" in result.stderr and "338 或 343" in result.stderr
@@ -293,7 +415,7 @@ def test_the_config_step_adds_the_keys_an_old_file_lacks(tmp_path):
     result, config = _run_config_step(tmp_path, ("config", "--yes"), "robot: {entry: whole_body, hardware: mock_components}\n")
     assert result.returncode == 0, result.stdout + result.stderr
     cfg = yaml.safe_load(config.read_text())
-    assert cfg["robot"]["hardware"] == "mock_components" and cfg["xr"]["network_mode"] == "ethernet"
+    assert cfg["robot"]["hardware"] == "mock_components" and cfg["teleop"]["xr"]["network_mode"] == "ethernet"
     assert (config.parent / "robot.local.yaml.bak").exists()
 
 
@@ -371,4 +493,5 @@ def test_old_xr_setup_processes_are_stopped_before_the_xr_step_starts():
 
 def test_the_xr_step_cleans_up_first():
     script = (Path(__file__).resolve().parents[4] / "scripts" / "setup.sh").read_text()
-    assert "step_xr() { stop_old_xr_setup; run_python_step xr; }" in script
+    body = script.split("step_xr() {", 1)[1].split("\n}", 1)[0]
+    assert body.index("stop_old_xr_setup") < body.index("run_python_step xr")

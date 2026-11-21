@@ -2,7 +2,7 @@
 
 Logs: <log_dir>/<unit>/<YYYYmmdd_HHMMSS>.log + latest.log (the newest few runs are kept per unit), and
 <log_dir>/events.log: one JSON line per event (unit start / stop / exit, mode changes) so the per-unit logs can be
-lined up in time. Stop: SIGINT to the group, then SIGTERM, SIGKILL."""
+lined up in time. Stop: SIGINT to the group or its launcher, then SIGTERM and SIGKILL to the group."""
 from __future__ import annotations
 
 import json
@@ -283,9 +283,13 @@ class Supervisor:
             pgid = state["pid"]
             for sig, wait in ((signal.SIGINT, timeout_s), (signal.SIGTERM, 3.0), (signal.SIGKILL, 2.0)):
                 try:
-                    os.killpg(pgid, sig)
+                    if sig == signal.SIGINT and unit.launcher_shutdown and run_state.start_ticks(pgid) is not None:
+                        os.kill(pgid, sig)
+                    else:
+                        os.killpg(pgid, sig)
                 except ProcessLookupError:
-                    break
+                    if not run_state.group_alive(pgid):
+                        break
                 deadline = time.monotonic() + wait
                 while time.monotonic() < deadline and run_state.group_alive(pgid):
                     child = self._children.get(name)

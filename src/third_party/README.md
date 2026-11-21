@@ -18,7 +18,7 @@
 
 上游 [DexRobot/dexcap-sdk-cpp](https://github.com/DexRobot/dexcap-sdk-cpp)，固定在 `fc6590e`（2026-07-07，"C interfaces updated"，Ubuntu 22 RC1）：这一版的 `libs/linux/` 和头文件与 `dexcap_teleop` 开发时用的拷贝逐字节一致。之后的上游提交把库挪到了 `libs/linux/x86_64/`、`aarch64/` 并换了 `libDexCap.so`，升级要改 `dexcap_teleop/CMakeLists.txt` 的 `DEXCAP_SDK_LIB_DIR` 并重新验证。
 
-目录里没有要编译的东西（`examples/` 是要 Qt6 的厂家示例 `DexGloveDemo`，`urdf/` 是 ROS 1 catkin 包），`./scripts/setup.sh deps` / `build` 会在子模块根放 `COLCON_IGNORE`，colcon 整个跳过。头文件需要系统的 `libserial-dev`（`dexcap_teleop` 的 `package.xml` 已声明，`./scripts/setup.sh deps` 经 rosdep 安装）。
+目录里没有要编译的东西（`examples/` 是要 Qt6 的厂家示例 `DexGloveDemo`，`urdf/` 是 ROS 1 catkin 包），`./scripts/setup.sh deps` / `build` 会在子模块根放 `COLCON_IGNORE`，colcon 整个跳过。头文件需要系统的 `libserial-dev`（`dexcap_teleop` 的 `package.xml` 已声明，选中 `teleop.type: dexcap` 时由 `./scripts/setup.sh deps` 安装）。
 
 ## wuji-sdk-c
 
@@ -30,4 +30,4 @@
 
 珞石官方仓库 [RokaeRobot/xCoreSDK-CPP](https://github.com/RokaeRobot/xCoreSDK-CPP)，固定在 `895c2e9`（tag `v0.7.1`）。仓库里只有头文件，**预编译库不在 git 里**，按平台放在 [Release v0.7.1](https://github.com/RokaeRobot/xCoreSDK-CPP/releases/tag/v0.7.1)（`xCoreSDK-0.7.1-linux-x86_64.tar.gz`、`-aarch64.tar.gz`）。`./scripts/setup.sh deps` 和 `build` 会下载、**校验 sha256**、解压到 `src/third_party/xCoreSDK-CPP/lib/Linux/<架构>/`（上游 `.gitignore` 已忽略，子模块不会变脏）。
 
-换版本：子模块切到新 tag，同时改 `scripts/setup.sh` 的 `ROKAE_SDK_VERSION` 和两个 sha256（版本对不上时 `setup.sh` 会拒绝继续）。v0.7.0 的库已经从上游清掉，取不到。整个目录被 `COLCON_IGNORE`，`rokae_hardware` 按路径引用。
+升级时要同时更新子模块和 Release 库。已有机型使用 Marvin，`setup.sh` 不会初始化 Rokae 的 SDK。独立编译时，在 SDK 目录放置 `COLCON_IGNORE`，`rokae_hardware` 按路径引用它。

@@ -7,6 +7,7 @@ from dataclasses import replace
 from typing import Any, Dict, Optional, Tuple
 
 from launch_helpers.devices.base import base_units
+from robot_config.config import DEXCAP_PORTS, teleop_type
 from robot_log_tools.logger import LOG_MODE_ENV  # set for every unit; the C++ components read it too
 from robot_runtime.units import Unit, UnitSet
 from launch_helpers.devices.camera import camera_units
@@ -18,13 +19,15 @@ from .robot import controller_launch
 def display_env(environ: Optional[Dict[str, str]] = None) -> Tuple[Tuple[str, str], ...]:
     """DISPLAY / XAUTHORITY for the RViz window on the robot's own screen.
 
-    Keeps the caller's DISPLAY; otherwise local X server :0 with the desktop user's Xauthority (e.g. over SSH)."""
+    Keeps the caller's DISPLAY; otherwise uses the lowest local X display and the desktop user's Xauthority."""
     environ = os.environ if environ is None else environ
     if environ.get("DISPLAY"):
         return ()
-    if not os.path.exists("/tmp/.X11-unix/X0"):
+    display_numbers = [os.path.basename(path)[1:] for path in glob.glob("/tmp/.X11-unix/X[0-9]*")]
+    display = min((int(number) for number in display_numbers if number.isdecimal()), default=None)
+    if display is None:
         return ()
-    env = [("DISPLAY", ":0")]
+    env = [("DISPLAY", f":{display}")]
     candidates = [os.path.join(environ.get("HOME", ""), ".Xauthority"),
                   f"/run/user/{os.getuid()}/gdm/Xauthority"]
     candidates += sorted(glob.glob(f"/run/user/{os.getuid()}/.mutter-Xwaylandauth.*"))
@@ -32,6 +35,21 @@ def display_env(environ: Optional[Dict[str, str]] = None) -> Tuple[Tuple[str, st
     if xauth and not environ.get("XAUTHORITY"):
         env.append(("XAUTHORITY", xauth))
     return tuple(env)
+
+
+def dexcap_launch_args(cfg: Dict[str, Any]) -> Dict[str, str]:
+    ports = cfg["teleop"]["dexcap"]
+    robot = cfg["robot"]
+    eef = {"linkerhand_l6": "hand", "jodell_rg75": "gripper"}.get(robot["end_effector"]["type"], "none")
+    args = {}
+    for device, key in zip(("upper_body", "left_hand", "right_hand"), DEXCAP_PORTS):
+        args[f"start_{device}"] = "true" if ports[key] else "false"
+        if ports[key]:
+            args[f"{device}_serial_port"] = ports[key]
+    args["arm_mapper"] = "true" if ports["upper_body_port"] and robot["entry"] != "whole_body" else "false"
+    for side in ("left", "right"):
+        args[f"{side}_eef"] = eef if ports[f"{side}_hand_port"] else "none"
+    return args
 
 
 def build_units(cfg: Dict[str, Any], config_path: str, ws_root: str) -> UnitSet:
@@ -66,6 +84,15 @@ def build_units(cfg: Dict[str, Any], config_path: str, ws_root: str) -> UnitSet:
     units.update(base)
     units.update({"control": control, "rviz": rviz})
     units.update({name: unit for name, unit in xr.items() if name != "pc_service"})
+    if teleop_type(cfg) == "dexcap":
+        args = dexcap_launch_args(cfg)
+        sensors = (("upper_body_port", "/dexcap/left_arm"), ("left_hand_port", "/dexcap/left_hand"),
+                   ("right_hand_port", "/dexcap/right_hand"))
+        units["dexcap"] = Unit(
+            name="dexcap", title="DexCap", depends=("control",),
+            cmd=("ros2", "launch", "robot_startup", "dexcap.launch.py", *(f"{key}:={value}" for key, value in args.items())),
+            topics=tuple(topic for key, topic in sensors if cfg["teleop"]["dexcap"][key]),
+        )
     units.update(camera_units(cfg, config_path))
     # The log mode is one fact for the whole run: every process gets it in the environment and applies it once.
     for name, unit in units.items():

@@ -14,7 +14,7 @@ from pathlib import Path
 from robot_runtime.supervisor import Supervisor, UnitError
 from robot_runtime.units import UnitSet
 from robot_config import config_file
-from robot_config.config import load_lenient
+from robot_config.config import load_lenient, teleop_type, xr_settings
 from robot_config.setup_steps import Io
 
 from xr_teleop.config import EXTENSION
@@ -46,9 +46,9 @@ def _xr_network(config_path: str, xr: Dict, io: Io) -> bool:
         return False
     selected = addresses[int(answer) - 1]
     xr.update(network_mode=mode, network_interface=selected.interface)
-    config_file.set_fields(config_path, "xr", {"network_mode": mode, "network_interface": selected.interface})
-    io.info(f"在 Pico 的 XRoboToolkit App 中选择 PC Service 地址：{selected.address}（{selected.interface}）")
-    io.info("头显 App：Tracking 至少勾选 Head 或 Controller 一项，开启 Data & Control 的 Send（本次无需开启 Data Collection）")
+    config_file.set_fields(config_path, "teleop.xr", {"network_mode": mode, "network_interface": selected.interface})
+    io.info(f"在 Pico App 的 Network → PC Service 中选择或输入 {selected.address}（{selected.interface}）")
+    io.info("头显 App：Tracking 至少勾选 Head 或 Controller 一项，开启 Send，关闭 Switch w/ A Button")
     interface_path = (Path("/sys/class/net") / selected.interface).resolve()
     if (Path("/.dockerenv").exists() and "/devices/virtual/" in str(interface_path)
             and os.environ.get("W2_CONTAINER_NETWORK") != "host"):
@@ -58,15 +58,10 @@ def _xr_network(config_path: str, xr: Dict, io: Io) -> bool:
 
 def step_xr(config_path: str, ws_root: str, io: Io, timeout_s: Optional[float] = None, probe_factory=None) -> bool:
     cfg = load_lenient(config_path, EXTENSION)
-    xr = cfg["xr"]
-    if not xr["enable"]:
-        answer = io.ask("XR 当前关闭，是否现在启用并配对头显？y/n", "y")
-        if answer.lower() not in ("y", "yes", "是"):
-            io.info("按选择保持 XR 关闭")
-            return True
-        config_file.set_fields(config_path, "xr", {"enable": True})
-        cfg = load_lenient(config_path, EXTENSION)
-        xr = cfg["xr"]
+    if teleop_type(cfg) != "xr":
+        io.info("当前未选择 XR，使用 setup.sh config 切换遥操作输入")
+        return True
+    xr = xr_settings(cfg)
     if xr["start_pc_service"] and not os.path.isfile(xr["pc_service_script"]):
         io.warn(f"未安装 XRoboToolkit PC Service（{xr['pc_service_script']}）：./scripts/setup.sh host")
         return False
@@ -107,7 +102,7 @@ def step_xr(config_path: str, ws_root: str, io: Io, timeout_s: Optional[float] =
             if answer.lower() not in ("y", "yes", "是"):
                 io.error("未绑定头显，配对未完成")
                 return False
-        config_file.set_fields(config_path, "xr", {"device_id": device_id})
+        config_file.set_fields(config_path, "teleop.xr", {"device_id": device_id})
         io.info(f"头显已连接并保存 ID: {device_id}；日常启动自动匹配，断线后等待同一设备恢复")
         return True
     except UnitError as exc:
@@ -123,9 +118,10 @@ def step_xr(config_path: str, ws_root: str, io: Io, timeout_s: Optional[float] =
 
 def xr_status(raw) -> Tuple[bool, str]:
     """(needs pairing, reason): nothing to do when XR is off or a headset id is already saved."""
-    xr = raw.get("xr") or {}
-    if xr.get("enable") is False:
-        return False, "XR 已关闭（xr.enable: false）"
+    selected = teleop_type(raw)
+    if selected != "xr":
+        return False, f"遥操作输入为 {selected}，无需 XR 配对"
+    xr = xr_settings(raw)
     if xr.get("device_id"):
         return False, f"已绑定头显 {xr['device_id']}"
     return True, "头显尚未配对"

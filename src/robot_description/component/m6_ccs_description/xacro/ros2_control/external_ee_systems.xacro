@@ -49,14 +49,20 @@
 	     body_can_interface: the waist / head bus (CAN FD) of a whole robot, empty for a dual-arm robot; a hand on
 	     the same interface would reconfigure it to classic CAN, so that is rejected. -->
 	<xacro:macro name="external_ee_systems" params="
-		usb_left_port:=/dev/ttyUSB0
-		usb_right_port:=/dev/ttyUSB2
+		usb_left_port
+		usb_right_port
 		left_ee_rw_rate:=''
 		right_ee_rw_rate:=''
 		left_ee_can_interface:=can0
 		right_ee_can_interface:=can1
 		body_can_interface:=''
 		device_ip:=''">
+		<xacro:if value="${left_drive_type == 'usb' and left_hand_type in ['linkerhand_l6', 'xhand1'] and not usb_left_port.strip()}">
+			${xacro.fatal('usb_left_port is required for the left USB-RS485 hand (see setup.sh ee)')}
+		</xacro:if>
+		<xacro:if value="${right_drive_type == 'usb' and right_hand_type in ['linkerhand_l6', 'xhand1'] and not usb_right_port.strip()}">
+			${xacro.fatal('usb_right_port is required for the right USB-RS485 hand (see setup.sh ee)')}
+		</xacro:if>
 		<xacro:if value="${left_drive_type == 'arm_bus'}">
 			<xacro:side_arm_bus_system side="left" hand_type="${left_hand_type}" gripper_type="${left_gripper_type}" device_ip="${device_ip}"/>
 		</xacro:if>

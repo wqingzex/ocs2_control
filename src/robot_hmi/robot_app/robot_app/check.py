@@ -8,6 +8,7 @@ import os
 import sys
 
 from launch_helpers.devices.camera import camera_specs
+from robot_config.config import teleop_type, xr_settings
 from .config import ConfigError, load
 from .robot import controller_launch
 
@@ -30,8 +31,8 @@ def main(argv=None) -> int:
     arg_text = " ".join(f"{k}:={v}" for k, v in args.items())
     print(f"配置: {path}")
     print(f"  运控: ros2 launch robot_startup {launch_file} {arg_text}")
-    xr = cfg["xr"]
-    if xr["enable"]:
+    selected, xr = teleop_type(cfg), xr_settings(cfg)
+    if selected == "xr":
         suffix = "（自动启动 PC Service）" if xr["start_pc_service"] else ""
         print(f"  XR:   xr_bridge{suffix}")
         mode = "网线" if xr["network_mode"] == "ethernet" else "Wi-Fi"
@@ -46,8 +47,11 @@ def main(argv=None) -> int:
             print(f"        PC Service 地址: {entry.address} ({entry.interface})")
         if not addresses:
             print("        所选网络暂无可用 IPv4 地址，请检查网线/Wi-Fi 或重新配置 XR 网卡")
+    elif selected == "dexcap":
+        ports = ", ".join(port for port in cfg["teleop"]["dexcap"].values() if port)
+        print(f"  遥操作: DexCap（{ports}）")
     else:
-        print("  XR:   关闭")
+        print("  遥操作: 关闭")
     cams = camera_specs(cfg)
     cam_text = ", ".join("{}({})".format(c.name, c.args["serial_number"]) for c in cams) if cams else "关闭"
     print(f"  相机: {cam_text}")

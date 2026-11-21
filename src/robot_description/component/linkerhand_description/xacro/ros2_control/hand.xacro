@@ -1,6 +1,8 @@
 <?xml version="1.0"?>
 <robot name="LinkerHand_$(arg type)" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
+    <xacro:arg name="serial_port" default=""/>
+
     <link name="world"/>
 
     <joint name="world_fixed" type="fixed">
@@ -30,10 +32,13 @@
             </xacro:if>
 
             <xacro:if value="${'$(arg ros2_control_hardware_type)' == 'real'}">
+                <xacro:if value="${not '$(arg serial_port)'.strip()}">
+                    ${xacro.fatal('serial_port is required for a real USB-RS485 hand')}
+                </xacro:if>
                 <plugin>end_effector_hardware/EndEffectorHardware</plugin>
                 <param name="device">linkerhand_$(arg type)</param>
                 <param name="side">${'left' if '$(arg direction)' == '1' else 'right'}</param>
-                <param name="bus">usb_rs485:///dev/ttyUSB0?baud=115200</param>
+                <param name="bus">usb_rs485://$(arg serial_port)?baud=115200</param>
             </xacro:if>
         </hardware>
 

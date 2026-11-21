@@ -89,12 +89,17 @@ def template_text(entry: str) -> str:
 
 ROTATIONS = (0, 90, 180, 270)
 ROLES = ("head", "left_wrist", "right_wrist")  # camera positions
+WRIST_EYES = ("left", "right")
+OPTIONAL_CAMERA_FIELDS = ("cameras.left_wrist.color_eye", "cameras.right_wrist.color_eye")
 SERIAL_RE = re.compile(r"^[A-Za-z0-9._:-]*$")
 END_EFFECTORS = ("none", "linkerhand_l6", "xhand1", "wuji_hand2", "jodell_rg75")  # hands and the gripper
 # usb_rs485: USB-RS485 adapter on the PC; arm_rs485: the RS485 port at the arm's flange; usb_can: USB-CAN (L6);
 # ethernet: Wuji Hand 2
 END_EFFECTOR_BUSES = ("usb_rs485", "arm_rs485", "usb_can", "ethernet")
 HARDWARE = ("real", "mock_components", "isaac")
+TELEOP_TYPES = ("xr", "dexcap", "none")
+DEXCAP_PORTS = ("upper_body_port", "left_hand_port", "right_hand_port")
+DEVICE_PATH = re.compile(r"/dev/(?:serial/by-(?:id|path)/)?[A-Za-z0-9_.:+-]+")
 BASE_TYPES = ("linkhou_s2", "linkhou_s2_v2")  # the mobile base
 BODY_TYPES = ("juxie",)  # waist and head motors (CAN FD)
 # Arm drivers the robot descriptions can build (xacro arg arm_driver); marvin is the only one with a robot model.
@@ -133,9 +138,65 @@ def expect(cond: bool, message: str) -> None:
         raise ConfigError(message)
 
 
+def migrate_teleop(config: Dict[str, Any]) -> bool:
+    """Move the old top-level XR settings into teleop while retaining pairing and network settings."""
+    if "xr" not in config:
+        return False
+    legacy = config["xr"]
+    expect(isinstance(legacy, dict), "'xr' must be a mapping")
+    enabled = legacy.get("enable", True)
+    expect(isinstance(enabled, bool), "'xr.enable' must be true/false")
+    teleop = config.setdefault("teleop", {})
+    expect(isinstance(teleop, dict), "'teleop' must be a mapping")
+    legacy = config.pop("xr")
+    legacy.pop("enable", None)
+    xr = teleop.setdefault("xr", legacy)
+    expect(isinstance(xr, dict), "'teleop.xr' must be a mapping")
+    for key, value in legacy.items():
+        xr.setdefault(key, value)
+    teleop.setdefault("type", "xr" if enabled else "none")
+    teleop.setdefault("dexcap", section_defaults("teleop")["dexcap"])
+    return True
+
+
+def teleop_type(config: Dict[str, Any]) -> str:
+    """Select one input, with a fallback for an existing XR-only config."""
+    if "teleop" in config:
+        return config["teleop"]["type"]
+    return "xr" if (config.get("xr") or {}).get("enable", True) else "none"
+
+
+def xr_settings(config: Dict[str, Any]) -> Dict[str, Any]:
+    if "teleop" in config:
+        return config["teleop"]["xr"]
+    return config.get("xr") or {}
+
+
+def check_teleop(teleop: Dict[str, Any]) -> None:
+    expect(teleop["type"] in TELEOP_TYPES, f"'teleop.type' must be one of {list(TELEOP_TYPES)}")
+    ports = []
+    for key in DEXCAP_PORTS:
+        port = teleop["dexcap"][key]
+        expect(isinstance(port, str) and (not port or DEVICE_PATH.fullmatch(port) is not None),
+               f"'teleop.dexcap.{key}' must be a /dev/ serial path or empty")
+        if port:
+            ports.append(port)
+    expect(teleop["type"] != "dexcap" or ports, "teleop.dexcap 至少要配置一个串口")
+    expect(len(set(ports)) == len(ports), "teleop.dexcap 串口不能重复")
+
+
+def _with_current_teleop(config: Any) -> Any:
+    if isinstance(config, dict) and "xr" in config:
+        config = copy.deepcopy(config)
+        migrate_teleop(config)
+    return config
+
+
 def _check_type(cfg: Dict[str, Any], defaults: Dict[str, Any], path: str) -> None:
     for key, default in defaults.items():
         name = f"{path}.{key}" if path else key
+        if name in OPTIONAL_CAMERA_FIELDS and key not in cfg:
+            continue
         value = cfg[key]
         if isinstance(default, dict):
             _check_type(value, default, name)
@@ -233,6 +294,12 @@ def _check_imaging_pair(where: str, exposure: Any, gain: Any) -> None:
            f"got exposure={exposure!r}, gain={gain!r}")
 
 
+def _check_color_eye(role: str, value: Any) -> None:
+    where = f"cameras.{role}.color_eye"
+    expect(role in ROLES[1:], f"'{where}' is only available for wrist cameras")
+    expect(value in ("auto", *WRIST_EYES), f"'{where}' must be auto, left or right, got {value!r}")
+
+
 def _check_cameras(cams: Dict[str, Any]) -> None:
     expect(cams["fps"] in (30, 60), f"'cameras.fps' must be 30 or 60, got {cams['fps']!r}")
     for name in ROLES:
@@ -243,6 +310,8 @@ def _check_cameras(cams: Dict[str, Any]) -> None:
             expect(bool(SERIAL_RE.match(cam[key])),
                    f"'cameras.{name}.{key}' has invalid characters: {cam[key]!r}")
         _check_imaging(name, cam)
+        if "color_eye" in cam:
+            _check_color_eye(name, cam["color_eye"])
         if cams["enable"] and cam["enable"]:
             expect(cam["serial"] != "",
                    f"'cameras.{name}.serial' is empty: set it (ros2 run orbbec_camera list_devices_node) "
@@ -253,6 +322,8 @@ def _check_shape(schema: Dict[str, Any], cfg: Dict[str, Any], path: str) -> None
     """Every key of the schema is in cfg and cfg has no other key; scalars have the type of the template's value."""
     for key, node in schema.items():
         name = f"{path}.{key}" if path else key
+        if name in OPTIONAL_CAMERA_FIELDS and key not in cfg:
+            continue
         expect(key in cfg, f"missing field '{name}' (run ./scripts/setup.sh config to add it)")
         value = cfg[key]
         if name in FREEFORM:
@@ -266,6 +337,7 @@ def _check_shape(schema: Dict[str, Any], cfg: Dict[str, Any], path: str) -> None
 
 def validate(cfg: Dict[str, Any], ext: Extension | None = None) -> Dict[str, Any]:
     """Check a config against the template of its robot.entry; returns it without the control and setup sections."""
+    cfg = _with_current_teleop(cfg)
     expect(isinstance(cfg, dict), "config root must be a mapping")
     expect(isinstance(cfg.get("robot"), dict) and "entry" in cfg["robot"],
            "missing field 'robot.entry' (run ./scripts/setup.sh config to create the file)")
@@ -278,13 +350,14 @@ def validate(cfg: Dict[str, Any], ext: Extension | None = None) -> Dict[str, Any
     _check_robot(checked["robot"])
     _check_control(cfg["control"])
     _check_cameras(checked["cameras"])
+    check_teleop(checked["teleop"])
     for check in (ext or Extension()).checks:
         check(checked)
     return copy.deepcopy(checked)
 
 
 def validate_camera_assignments(assignments: Dict[str, Dict[str, Any]]) -> None:
-    """Check role -> {enable, serial, usb_port, rotation} before it is written to the config."""
+    """Check camera assignment changes before they are written to the config."""
     for role, values in assignments.items():
         where = f"cameras.{role}"
         if "enable" in values:
@@ -297,6 +370,8 @@ def validate_camera_assignments(assignments: Dict[str, Dict[str, Any]]) -> None:
             if key in values and values[key] is not None:
                 expect(isinstance(values[key], str) and bool(SERIAL_RE.match(values[key])),
                        f"'{where}.{key}' has invalid characters: {values[key]!r}")
+        if "color_eye" in values:
+            _check_color_eye(role, values["color_eye"])
         if "exposure" in values or "gain" in values:
             expect("exposure" in values and "gain" in values,
                    f"'{where}.exposure' and 'gain' are written together")
@@ -319,7 +394,7 @@ def read_yaml(path: str) -> Any:
 
 def load(path: str, ext: Extension | None = None, edit: Edit | None = None) -> Dict[str, Any]:
     """Read and validate a robot YAML file (edit: applied to the raw mapping first, e.g. command line overrides)."""
-    raw = read_yaml(path)
+    raw = _with_current_teleop(read_yaml(path))
     if edit is not None:
         raw = edit(dict(raw or {}))
     return validate(raw, ext)
@@ -330,7 +405,7 @@ def load_lenient(path: str, ext: Extension | None = None, edit: Edit | None = No
     try:
         return load(path, ext, edit)
     except ConfigError:
-        raw = dict(read_yaml(path) or {})
+        raw = dict(_with_current_teleop(read_yaml(path)) or {})
         if edit is not None:
             raw = edit(raw)
         raw["cameras"] = {**(raw.get("cameras") or {}), "enable": False}
@@ -385,6 +460,11 @@ def camera_mapping(raw: Dict[str, Any]) -> Dict[str, Any]:
             value[key].update(item)
         else:
             value[key] = item
+    # Preserve fingerprints made before the explicit color-eye setting was introduced.
+    for role in ROLES[1:]:
+        camera = _mapping(value.get(role))
+        if camera.get("color_eye") == "auto":
+            camera.pop("color_eye")
     return value
 
 

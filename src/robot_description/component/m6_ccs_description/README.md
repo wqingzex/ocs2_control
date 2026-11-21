@@ -76,7 +76,7 @@ control:
 | `interfaces.xacro` | `m6_interfaces` | 单臂 7 自由度关节接口 |
 | `end_effector_interfaces.xacro` | `side_hand_interfaces`、`dual_arm_ee_block` | 末端接口 |
 | `marvin_hardware.xacro` | `marvin_hardware_block` | Marvin 插件参数（含 `ee_dyn_param`） |
-| `external_ee_systems.xacro` | `external_ee_systems`、`side_usb_hand_system` | 外接 USB 末端，串口默认左 `/dev/ttyUSB0`、右 `/dev/ttyUSB2` |
+| `external_ee_systems.xacro` | `external_ee_systems`、`side_usb_hand_system` | 外接 USB-RS485 末端，左右串口由 `./scripts/setup.sh ee` 配置为对应的 `/dev/serial/by-id/…` |
 | `simulation_hardware.xacro` | `simulation_hardware_plugin` | 仿真硬件插件：mock / isaac |
 
 URDF 层复用 `eef_type_resolver.xacro`、`eefs.xacro`（`ee_dyn_param`）、`arm_mount.xacro`（`DualArmMount`，默认间距 ±0.062 m）。

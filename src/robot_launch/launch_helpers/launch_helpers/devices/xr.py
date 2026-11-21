@@ -5,6 +5,8 @@ node), and the readiness verdict read from the bridge log. The bridge itself is 
 step in robot_setup/xr_setup."""
 from __future__ import annotations
 
+import configparser
+from contextlib import ExitStack
 import json
 import os
 import re
@@ -14,13 +16,17 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, NamedTuple, Optional, Set
 
+from ament_index_python.packages import get_package_prefix
+from robot_config.config import teleop_type, xr_settings
 from robot_runtime.units import Unit
+from xr_teleop.xr_network import network_addresses
 
 # ---- PC Service: start / stop (runService.sh daemonises it and exits at once) ----------------------------------------
 # Started only if not running; on shutdown only the PIDs we started are stopped.
 
 # Linux comm is truncated to 15 characters: RoboticsServiceProcess -> RoboticsService
 PROCESS_COMM = "RoboticsService"
+PICO_TCP_PORT = 63901
 
 
 def _is_zombie(pid: int) -> bool:
@@ -37,31 +43,77 @@ def running_pids() -> Set[int]:
     return {pid for pid in map(int, result.stdout.split()) if not _is_zombie(pid)}
 
 
-def start_pc_service(script: str, timeout_s: float = 3.0, log_path: Optional[str] = None) -> List[int]:
+def _lan_endpoint(script: str, interface: str) -> tuple[str, int]:
+    for entry in network_addresses():
+        if entry.interface == interface:
+            config = configparser.ConfigParser(interpolation=None)
+            try:
+                config.read(Path(script).with_name("setting.ini"))
+                port = config.getint("TCP", "TcpBindPort", fallback=PICO_TCP_PORT)
+            except (configparser.Error, ValueError) as exc:
+                raise RuntimeError(f"无效的 PC Service TCP 端口配置：{exc}") from exc
+            if not 0 < port <= 65535:
+                raise RuntimeError(f"无效的 PC Service TCP 端口：{port}")
+            return entry.address, port
+    raise RuntimeError(f"XR 配置的网卡 {interface} 没有可用的局域网 IPv4 地址")
+
+
+def _listening_on(address: str, interface: str, port: int, pids: Set[int]) -> bool:
+    accepted = {f"{address}%{interface}:{port}", f"[::ffff:{address}]%{interface}:{port}"}
+    try:
+        result = subprocess.run(["ss", "-Hltnp", f"sport = :{port}"], capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RuntimeError(f"无法检查 PC Service 的 TCP {port} 监听：{exc}") from exc
+    endpoints = {line.split()[3] for line in result.stdout.splitlines()
+                 if any(int(pid) in pids for pid in re.findall(r"\bpid=(\d+)", line))}
+    return bool(endpoints) and endpoints <= accepted
+
+
+def start_pc_service(script: str, timeout_s: float = 3.0, log_path: Optional[str] = None, *,
+                     network_interface: str = "") -> List[int]:
     """Start the service if needed; return the PIDs this call started ([] if already running).
 
     Its output (stdout and stderr of the script, and of the service if it keeps the descriptors) goes to log_path.
 
     Raises RuntimeError if the script is missing or the process does not appear in time."""
-    if running_pids():
+    pids = running_pids()
+    endpoint = _lan_endpoint(script, network_interface) if network_interface else None
+    if pids:
+        if endpoint and not _listening_on(endpoint[0], network_interface, endpoint[1], pids):
+            raise RuntimeError(f"PC Service 已运行，但未绑定 {network_interface}；请重启 PC Service")
         return []
     if not os.path.isfile(script):
         raise RuntimeError(
             f"[XR-005] XRoboToolkit PC Service not found: {script} (install the PC Service deb, "
-            f"or set xr.start_pc_service: false)")
-    if log_path:
-        with open(log_path, "ab") as log:
-            subprocess.Popen(["bash", script], stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                             start_new_session=True)
-    else:
-        subprocess.Popen(["bash", script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=True)
+            f"or set teleop.xr.start_pc_service: false)")
+    with ExitStack() as stack:
+        log = stack.enter_context(open(log_path, "ab")) if log_path else subprocess.DEVNULL
+        env, fds = None, ()
+        if endpoint:
+            address, port = endpoint
+            library = Path(get_package_prefix("xr_teleop")) / "lib/xr_teleop/libxrt_lan_bind.so"
+            if not library.is_file():
+                raise RuntimeError(f"缺少 PC Service 网卡绑定库 {library}，请重新编译 xr_teleop")
+            bind_file = stack.enter_context(library.open("rb"))
+            fds = (bind_file.fileno(),)
+            previous = os.environ.get("LD_PRELOAD", "")
+            env = dict(os.environ, FA_XRT_LAN_IP=address, FA_XRT_LAN_INTERFACE=network_interface,
+                       FA_XRT_PICO_TCP_PORT=str(port),
+                       LD_PRELOAD=f"/proc/self/fd/{fds[0]}" + (f":{previous}" if previous else ""))
+            if log_path:
+                log.write(f"Pico PC Service: {address}:{port} ({network_interface})\n".encode())
+                log.flush()
+        subprocess.Popen(["bash", script], stdin=subprocess.DEVNULL, stdout=log,
+                         stderr=subprocess.STDOUT, start_new_session=True, env=env, pass_fds=fds)
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         pids = running_pids()
-        if pids:
+        if pids and (not endpoint or _listening_on(endpoint[0], network_interface, endpoint[1], pids)):
             return sorted(pids)
         time.sleep(0.2)
+    if endpoint:
+        stop_pc_service(sorted(pids))
+        raise RuntimeError(f"PC Service 未在 {endpoint[0]}:{endpoint[1]} ({network_interface}) 上就绪；请查看 PC Service 日志")
     raise RuntimeError(
         f"{PROCESS_COMM} did not start within {timeout_s:.0f}s (desktop build needs DISPLAY; "
         f"try running {script} manually)")
@@ -95,8 +147,9 @@ PROXY_VARIABLES = ("http_proxy", "https_proxy", "all_proxy", "grpc_proxy",
 class PcServiceDriver:
     """runService.sh daemonises the service and exits at once, so it is tracked by process name, not by group."""
 
-    def __init__(self, script: str):
+    def __init__(self, script: str, network_interface: str = ""):
         self.script = script
+        self.network_interface = network_interface
 
     def running(self) -> bool:
         return bool(running_pids())
@@ -105,33 +158,33 @@ class PcServiceDriver:
         return sorted(running_pids())
 
     def start(self, log_path: str) -> List[int]:
-        return start_pc_service(self.script, log_path=log_path)
+        return start_pc_service(self.script, log_path=log_path, network_interface=self.network_interface)
 
     def stop(self, pids: List[int]) -> None:
         stop_pc_service(pids)
 
 
 def xr_units(cfg: Dict[str, Any]) -> Dict[str, Unit]:
-    xr = cfg["xr"]
+    if teleop_type(cfg) != "xr":
+        return {}
+    xr = xr_settings(cfg)
     units: Dict[str, Unit] = {}
-    if xr["enable"] and xr["start_pc_service"]:
+    if xr["start_pc_service"]:
         units["pc_service"] = Unit(name="pc_service", title="PC Service", cmd=(),
-                                   driver=PcServiceDriver(xr["pc_service_script"]))
-    if xr["enable"]:
-        units["xr"] = Unit(
-            name="xr",
-            title="XR",
-            cmd=("ros2", "run", "xr_teleop", "xr_bridge_node", "--ros-args",
-                 "-r", "__node:=xr_target_node",
-                 "-p", f"frame_timeout_ms:={int(xr['frame_timeout_ms'])}",
-                 "-p", f"reconnect_interval_s:={float(xr['reconnect_interval_s'])}",
-                 "-p", f"device_id:={json.dumps(xr['device_id'])}"),
-            depends=("pc_service",) if "pc_service" in units else (),
-            topics=("/teleop/left_ee_pose", "/teleop/connection_status"),
-            # The bridge's gRPC client talks to the PC Service on 127.0.0.1. gRPC obeys http_proxy even for loopback
-            # (no_proxy is not enough), so a proxy inherited from the shell swallows the connection.
-            unset_env=PROXY_VARIABLES,
-        )
+                                   driver=PcServiceDriver(xr["pc_service_script"], xr["network_interface"]))
+    units["xr"] = Unit(
+        name="xr",
+        title="XR",
+        cmd=("ros2", "run", "xr_teleop", "xr_bridge_node", "--ros-args",
+             "-r", "__node:=xr_target_node",
+             "-p", f"frame_timeout_ms:={int(xr['frame_timeout_ms'])}",
+             "-p", f"reconnect_interval_s:={float(xr['reconnect_interval_s'])}",
+             "-p", f"device_id:={json.dumps(xr['device_id'])}"),
+        depends=("pc_service",) if "pc_service" in units else (),
+        topics=("/teleop/left_ee_pose", "/teleop/connection_status"),
+        # gRPC honors proxy variables on loopback, where the local PC Service listens.
+        unset_env=PROXY_VARIABLES,
+    )
     return units
 
 

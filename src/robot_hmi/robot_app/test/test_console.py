@@ -1,4 +1,5 @@
 """Web console API tests: FastAPI TestClient, fake ROS probe, shell commands as units."""
+from dataclasses import replace
 import os
 import json
 import time
@@ -35,6 +36,7 @@ SCAN = """\
 class FakeProbe:
     def __init__(self):
         self.fsm_state = 2
+        self.controllers = {"whole_body_controller": "active", "joint_state_broadcaster": "active"}
         self.xr_connected = True
         self.hold_ok = True
         self.hold_requests = 0
@@ -52,6 +54,9 @@ class FakeProbe:
 
     def watch(self, topics):
         pass
+
+    def controller_states(self):
+        return self.controllers
 
     def rate(self, topic, window_s=2.0):
         return 30.0
@@ -114,8 +119,29 @@ def test_state_reports_units_and_probe_data(setup):
     client, *_ = setup
     state = client.get("/api/state").json()
     assert [u["name"] for u in state["units"]] == ["control", "rviz", "xr", "camera_head"]
-    assert state["fsm_name"] == "HOLD" and state["xr_connected"] is True
+    assert state["fsm"] is None and state["xr_connected"] is True
     assert state["units"][3]["is_camera"] and state["units"][0]["rates"] == {"/fsm_state": 30.0}
+    assert client.post("/api/units/control/start").status_code == 200
+    assert client.get("/api/state").json()["fsm_name"] == "HOLD"
+
+
+def test_emergency_stop_does_not_leave_the_console_ready_with_a_cached_home_state(setup):
+    client, console, probe, _ = setup
+    console.read_log = lambda _: ("[INFO] [spawner-4]: process started\n"
+                                  "[INFO] [spawner-4]: process has finished cleanly\n")
+    assert client.post("/api/units/control/start").status_code == 200
+    probe.fsm_state = 1
+    probe.whole_body_capability = {"has_body_relative_constraint": True}
+    assert client.get("/api/state").json()["fsm_name"] == "HOME"
+    probe.controllers["whole_body_controller"] = "inactive"
+    probe.controllers["joint_state_broadcaster"] = "inactive"
+    state = client.get("/api/state").json()
+    control = next(row for row in state["summary"] if row["key"] == "control")
+    assert control["level"] == "bad" and "whole_body_controller（inactive）" in control["detail"]
+    assert state["fsm"] is None and state["fsm_actions"] == [] and state["body"]["options"] == []
+    assert client.post("/api/fsm/SWITCH_POSE").status_code == 409
+    assert client.post("/api/body/VERTICAL").status_code == 409
+    assert probe.sent == [] and probe.body_sent == []
 
 
 def test_start_stop_and_log(setup):
@@ -177,6 +203,60 @@ def test_restarting_a_unit_does_not_start_dependents_that_were_not_running(setup
     assert client.post("/api/units/control/restart", json={"confirm": False}).status_code == 200
     after = {u["name"]: u for u in client.get("/api/state").json()["units"]}
     assert after["control"]["running"] and not after["rviz"]["running"]
+
+
+def test_xr_start_and_restart_read_the_headset_selected_after_console_startup(setup, monkeypatch):
+    client, console, probe, cfg = setup
+    original_units = console.supervisor.units.units.copy()
+
+    def units_from_config(config, _path, _root):
+        units = original_units.copy()
+        units["xr"] = replace(units["xr"], cmd=(*SLEEPER, config["teleop"]["xr"]["device_id"]))
+        return UnitSet(units)
+
+    monkeypatch.setattr(server, "build_units", units_from_config)
+    config_file.set_fields(str(cfg), "teleop.xr", {"device_id": "PICO-OLD"})
+    console.reload()
+    assert client.post("/api/units/control/start").status_code == 200
+    control_pid = console.supervisor.status("control").pid
+
+    for action, device in (("start", "PICO-NEW"), ("restart", "PICO-NEXT")):
+        config_file.set_fields(str(cfg), "teleop.xr", {"device_id": device})
+        assert client.post(f"/api/units/xr/{action}").status_code == 200
+        assert console.supervisor._read_state("xr")["cmd"][-1] == device
+
+    xr_pid = console.supervisor.status("xr").pid
+    cfg.write_text("broken: [", encoding="utf-8")
+    response = client.post("/api/units/xr/restart")
+    assert response.status_code == 400 and "最新 XR 配置" in response.json()["detail"]["message"]
+    assert console.supervisor.status("xr").pid == xr_pid
+    assert console.supervisor.status("control").pid == control_pid and probe.sent == []
+
+
+def test_restarting_deactivated_control_skips_hold_even_with_cached_home(setup):
+    client, console, probe, _ = setup
+    assert client.post("/api/units/control/start").status_code == 200
+    old_pid = console.supervisor.status("control").pid
+    probe.fsm_state = 1  # Last HOME message before emergency stop
+    probe.controllers = {"whole_body_controller": "inactive", "joint_state_broadcaster": "inactive"}
+
+    assert client.post("/api/units/control/restart", json={"confirm": False}).status_code == 200
+    status = console.supervisor.status("control")
+    assert status.running and status.pid != old_pid
+    assert probe.hold_requests == 0 and probe.sent == []
+
+
+@pytest.mark.parametrize("controllers", [None, {"joint_state_broadcaster": "inactive"},
+                                         {"whole_body_controller": "active", "joint_state_broadcaster": "inactive"}])
+def test_restarting_control_requires_hold_without_confirmed_motion_deactivation(setup, controllers):
+    client, console, probe, _ = setup
+    assert client.post("/api/units/control/start").status_code == 200
+    probe.fsm_state = 1
+    probe.controllers = controllers
+
+    res = client.post("/api/units/control/restart", json={"confirm": False})
+    assert res.status_code == 409 and res.json()["detail"]["need_confirm"]
+    assert console.supervisor.is_running("control") and probe.hold_requests == 0
 
 
 def test_stopping_control_outside_hold_needs_confirmation(setup):
@@ -417,10 +497,28 @@ def test_console_listens_on_this_computer_only_by_default():
 def test_inference_starts_only_the_controllers_and_the_cameras(setup):
     client, console, probe, _ = setup
     assert client.post("/api/inference/start").status_code == 200
-    running = {u["name"] for u in client.get("/api/state").json()["units"] if u["running"]}
+    state = client.get("/api/state").json()
+    running = {u["name"] for u in state["units"] if u["running"]}
     assert running == {"control", "camera_head"}  # no XR, no RViz, no gamepad
+    assert state["inference_active"]
     probe.fsm_state = 3  # outside HOLD: stopping asks first, then goes to HOLD
     asked = client.post("/api/inference/stop", json={"confirm": False})
     assert asked.status_code == 409 and asked.json()["detail"]["need_confirm"]
+    assert client.get("/api/state").json()["inference_active"]
     assert client.post("/api/inference/stop", json={"confirm": True}).status_code == 200
     assert not console.supervisor.is_running("control") and not console.supervisor.is_running("camera_head")
+    assert not client.get("/api/state").json()["inference_active"]
+
+
+def test_start_all_does_not_activate_inference(setup):
+    client, *_ = setup
+    assert client.post("/api/all/start").status_code == 200
+    state = client.get("/api/state").json()
+    assert {u["name"] for u in state["units"] if u["running"]} == {"control", "camera_head", "xr"}
+    assert not state["inference_active"]
+
+    # Explicitly requesting inference still works when its modules are already running.
+    assert client.post("/api/inference/start").status_code == 200
+    assert client.get("/api/state").json()["inference_active"]
+    assert client.post("/api/all/start").status_code == 200
+    assert not client.get("/api/state").json()["inference_active"]

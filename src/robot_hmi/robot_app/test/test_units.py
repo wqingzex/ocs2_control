@@ -40,6 +40,21 @@ def test_xr_without_managed_pc_service_has_no_dependency():
     assert units["xr"].depends == ()
 
 
+@pytest.mark.parametrize("entry,arm_mapper", [("dual_arm", "true"), ("whole_body", "false")])
+def test_dexcap_starts_only_configured_devices_and_uses_the_selected_control_entry(entry, arm_mapper):
+    cfg = validate(full_config(entry, cameras={"enable": False}, teleop={
+        "type": "dexcap", "dexcap": {"upper_body_port": "/dev/ttyACM0", "left_hand_port": "/dev/ttyUSB1"},
+    }))
+    units = build_units(cfg, "/c.yaml", "/ws")
+    assert units.names() == ["control", "rviz", "dexcap"]
+    unit = units["dexcap"]
+    assert unit.depends == ("control",)
+    assert unit.topics == ("/dexcap/left_arm", "/dexcap/left_hand")
+    assert unit.cmd[:4] == ("ros2", "launch", "robot_startup", "dexcap.launch.py")
+    assert f"arm_mapper:={arm_mapper}" in unit.cmd and "left_eef:=hand" in unit.cmd
+    assert "start_right_hand:=false" in unit.cmd and "left_hand_serial_port:=/dev/ttyUSB1" in unit.cmd
+
+
 def test_start_order_adds_dependencies_first_and_stop_order_dependents_first():
     units = build_units(make_cfg(), "/c.yaml", "/ws")
     assert units.start_order(["xr"]) == ["pc_service", "xr"]
@@ -67,13 +82,16 @@ def test_rviz_is_a_separate_on_demand_unit():
     assert "rviz" in units.stop_order()               # "全部停止" still closes it
 
 
-def test_display_env_keeps_an_existing_display_and_falls_back_to_local_x(monkeypatch, tmp_path):
+@pytest.mark.parametrize("sockets,display", [(["X1"], ":1"), (["X10", "X2"], ":2"), (["X1", "X0"], ":0")])
+def test_display_env_falls_back_to_local_x(monkeypatch, tmp_path, sockets, display):
     from robot_app import units as units_mod
     assert units_mod.display_env({"DISPLAY": ":1"}) == ()
-    monkeypatch.setattr(units_mod.os.path, "exists", lambda p: p == "/tmp/.X11-unix/X0")
+    glob = units_mod.glob.glob
+    monkeypatch.setattr(units_mod.glob, "glob", lambda pattern: [f"/tmp/.X11-unix/{name}" for name in sockets]
+                        if pattern == "/tmp/.X11-unix/X[0-9]*" else glob(pattern))
     (tmp_path / ".Xauthority").write_text("x")
     env = dict(units_mod.display_env({"HOME": str(tmp_path)}))
-    assert env["DISPLAY"] == ":0" and env["XAUTHORITY"] == str(tmp_path / ".Xauthority")
+    assert env["DISPLAY"] == display and env["XAUTHORITY"] == str(tmp_path / ".Xauthority")
 
 def test_the_simulated_base_is_a_unit_only_with_mock_hardware_and_the_controller_starts_after_it():
     mock = build_units(make_cfg(robot={"hardware": "mock_components"}), "/c.yaml", "/ws")

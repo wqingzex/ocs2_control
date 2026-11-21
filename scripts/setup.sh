@@ -10,48 +10,32 @@ WS_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"   # 仓库根
 ROS_DISTRO="${ROS_DISTRO:-jazzy}"
 CONFIG="${WS_DIR}/config/robot.local.yaml"
 YES=""
-MINIMAL=""
-FORCE=""   # --force：完整流程里也重新配置已配置的步骤
+FORCE=""   # --force：向导里已配置的步骤也默认执行
 RESET=""   # --reset：dyn 恢复默认负载
 FULL_INIT=""
 ENTRY=""      # --entry：新建配置时的控制入口
 
 # 步骤的顺序和标题；序号 i/N 由这张表算出来。SOFT_STEPS 失败时只记录，不中断后面的步骤。
-STEP_ORDER=(deps config host marvin build cameras ee dyn xr summary)
+STEP_ORDER=(config deps host marvin build cameras ee dyn xr home summary)
 declare -A STEP_TITLE=(
   [deps]="依赖：子模块 + rosdep"
   [config]="本机配置 robot.local.yaml（没有就按入口从模板生成，缺的键补上）"
   [host]="主机配置：相机 udev、腰部 CAN 免密 sudo、XRoboToolkit PC Service"
   [marvin]="天机臂 SDK 版本（338 / 343，要和臂的控制器固件一致）"
-  [build]="编译整个 ROS 2 工作区（运控、驱动、机器人模型、相机、XR、控制台）"
+  [build]="按本机配置编译 ROS 2 工作区"
+  [home]="设置 HOME 位姿"
   [cameras]="相机"
   [ee]="末端（手、夹爪）"
-  [dyn]="负载辨识（有默认值就不用配置）"
-  [xr]="XR（头显）"
+  [dyn]="负载辨识"
+  [xr]="遥操作输入（XR 配对或 DexCap）"
   [summary]="配置检查"
+  [clean]="交互清理工作区"
 )
 SOFT_STEPS=(ee dyn xr summary)
 
-# ocs2_ros2（子模块，src/third_party/ocs2_ros2，固定在 ae75126）带着一批用不到的示例包：编译和 rosdep 都跳过。
-OCS2_SKIP_PACKAGES=(
-  ocs2_ballbot ocs2_ballbot_ros ocs2_ballbot_mpcnet
-  ocs2_cartpole ocs2_cartpole_ros
-  ocs2_double_integrator ocs2_double_integrator_ros
-  ocs2_legged_robot ocs2_legged_robot_ros ocs2_legged_robot_mpcnet ocs2_legged_robot_raisim
-  ocs2_quadrotor ocs2_quadrotor_ros
-  ocs2_mpcnet_core ocs2_raisim_core
-  ocs2_anymal_commands ocs2_anymal_loopshaping_mpc ocs2_anymal_models ocs2_anymal_mpc
-  ocs2_quadruped_interface ocs2_quadruped_loopshaping_interface
-  ocs2_switched_model_interface ocs2_switched_model_msgs segmented_planes_terrain_model
-)
 # 天机臂（Marvin）SDK 版本：config 的 robot.arm.interface.firmware，编译时传给 marvin_hardware 的 -DMARVIN_FIRMWARE。
 MARVIN_FIRMWARES=(338 343)
 MARVIN_FIRMWARE_DEFAULT=343   # 和 marvin_hardware/CMakeLists.txt 的默认值一致
-# build --minimal 只编译这些包及其依赖。
-MINIMAL_PACKAGES=(
-  fa_w2_description juxie_hardware marvin_hardware end_effector_hardware
-  keyboard_teleop xr_teleop topic_based_hardware robot_app camera_setup end_effector_setup
-)
 
 # ==================================================================================================
 # 2. 通用工具
@@ -73,21 +57,22 @@ step_command() {
 usage() {
   cat <<'EOF_USAGE'
 初始化：./scripts/setup.sh
-  依次完成：依赖、本机配置、主机 / SDK、天机臂 SDK 版本、编译、相机配置、手配置、负载辨识、XR 配对、最终检查。
-  已配置（有确认记录）或默认值可用的步骤会跳过；--force 全部重新配置。
+  先选本机组件，再安装依赖、配置主机和 SDK、编译，最后确认各设备。
+  每步先选择执行或跳过。已配置或有可用默认值时，回车跳过；其他步骤回车执行。
   相机和手会弹出本地配置窗口，确认后保存到 config/robot.local.yaml。
   容器内也保留完整向导；仅不执行物理机的 udev 和 CAN 操作。
 单步重试：./scripts/setup.sh <步骤>，只执行指定步骤：
   config 本机配置：没有 config/robot.local.yaml 就按入口（--entry whole_body|split_body|dual_arm，默认 whole_body）从模板生成；
          已有就把缺的键补上（保留你的值和注释，原文件备份为 .bak）。程序不会替你补默认值，模板改了键之后每台机器跑一次。
-  cam 相机；ee 末端（手、夹爪）；xr 头显配对；dyn 负载辨识（逐臂询问，默认不辨识；--reset 恢复默认负载）。
-  build 编译整个 ROS 2 工作区：运控、驱动、机器人模型、相机、XR、控制台。
-        使用增量编译，复用已有结果；不执行设备配置或配对，不启动运控。
+  cam 相机；ee 末端（手、夹爪）；teleop 遥操作输入（xr 是别名）；dyn 负载辨识（逐臂询问，默认不辨识；--reset 恢复默认负载）。
+  build 根据本机配置增量编译需要的运控、模型和硬件驱动。
+  home 打开 HOME 设置窗口：回已配置 HOME，到位后调整关节弧度或读取当前反馈，确认后保存。
+  clean 交互选择清理 build/、install/ 或本机配置。配置会备份，日志会保留。
   marvin 选择天机臂 SDK 版本（338 或 343，要和臂的控制器固件一致），写入配置，之后的编译都用它。
   deps 依赖；host 主机 / SDK；check 配置检查。
 从某步继续：./scripts/setup.sh cam --from
-  从相机开始，依次执行手、XR 配对和最终检查；其他步骤同样支持 --from。
-可选参数：--yes 使用建议值；--force 重新配置已配置的步骤；--minimal 只编译遥操作必需的包；-c 指定配置文件；--entry 新建配置时的控制入口。
+  从相机开始，继续末端、负载辨识、遥操作输入、HOME 和最终检查；其他步骤同样支持 --from。
+可选参数：--yes 自动使用每步建议选项；--force 每步默认执行；-c 指定配置文件；--entry 新建配置时的控制入口。
 EOF_USAGE
 }
 
@@ -129,11 +114,13 @@ deps_rosdep_update() {
 #   xCoreSDK-CPP：整个忽略。珞石 SDK 的头文件和库只给 rokae_hardware 按路径引用，它自己的 CMake 工程（示例、Eigen）不能被 colcon 当成包去编。
 # 子模块里的 COLCON_IGNORE 同时加入子模块的 info/exclude（写相对子模块根的路径），避免子模块显示为有未跟踪文件。
 colcon_ignore_submodule_dirs() {
-  local dir entry exclude
+  local dir entry exclude repository
   for dir in "${WS_DIR}"/src/third_party/TJ_FX_ROBOT_CONTRL_SDK_*/MarvinPlatform_EN \
              "${WS_DIR}"/src/third_party/dexcap-sdk-cpp \
              "${WS_DIR}"/src/third_party/xCoreSDK-CPP; do
     [[ -d "${dir}" ]] || continue
+    repository="$(git -C "${dir}" rev-parse --show-toplevel 2>/dev/null)" || continue
+    [[ "${repository}" != "${WS_DIR}" ]] || continue  # 精简模式可能保留还未检出的空子模块目录
     touch "${dir}/COLCON_IGNORE"
     entry="$(git -C "${dir}" rev-parse --show-prefix 2>/dev/null || true)COLCON_IGNORE"
     exclude="$(git -C "${dir}" rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null || true)"
@@ -144,56 +131,85 @@ colcon_ignore_submodule_dirs() {
   done
 }
 
-# 珞石 xCoreSDK：官方仓库（子模块 third_party/xCoreSDK-CPP，固定在发布 tag）不带预编译库，库按平台放在 GitHub Release 里。
-# 版本要和子模块一致；下载的包先校验 sha256 再解压，解压到子模块的 lib/（上游 .gitignore 已忽略，子模块不会变脏）。
-ROKAE_SDK_VERSION="0.7.1"
-rokae_sdk_sha256() {
-  case "$1" in
-    x86_64) echo "ccc125c41f0f72712eb12835f80a5be5fa62429ca045bc5476fe1be224b36270" ;;
-    aarch64) echo "78cc578b066c9edb2c015389a14bc5bdf1c3c69f6e8c1c7ee749dec568fc4518" ;;
-    *) return 1 ;;
+load_build_selection() {
+  local profile entry hardware hand firmware cameras xr
+  profile="$(PYTHONPATH="${SETUP_PYTHONPATH}:${PYTHONPATH:-}" python3 - "${CONFIG}" "${ENTRY}" <<'PYTHON'
+import sys
+from pathlib import Path
+
+import yaml
+from robot_config.config import ARM_TYPES, HARDWARE, MARVIN_FIRMWARES, TELEOP_TYPES, migrate_teleop, template_for
+from robot_config.setup_steps import DEFAULT_ENTRY, add_missing
+
+path = Path(sys.argv[1])
+try:
+    config = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.is_file() else {}
+    entry = (config.get("robot") or {}).get("entry") or sys.argv[2] or DEFAULT_ENTRY
+    migrate_teleop(config)
+    add_missing(config, template_for(entry))
+    robot = config["robot"]
+    if robot["hardware"] not in HARDWARE:
+        raise ValueError(f"robot.hardware 不支持 {robot['hardware']!r}")
+    if robot["arm"]["type"] not in ARM_TYPES:
+        raise ValueError(f"robot.arm.type 不支持 {robot['arm']['type']!r}")
+    hand = "wuji" if robot["end_effector"]["type"] == "wuji_hand2" else "other"
+    firmware = robot["arm"]["interface"]["firmware"]
+    firmware = str(firmware) if firmware in MARVIN_FIRMWARES else "unset"
+    teleop = config["teleop"]["type"]
+    if teleop not in TELEOP_TYPES:
+        raise ValueError(f"teleop.type 不支持 {teleop!r}")
+    print(entry, robot["hardware"], hand, firmware, int(config["cameras"]["enable"] is not False),
+          teleop)
+except (OSError, TypeError, ValueError, AttributeError, KeyError, yaml.YAMLError) as exc:
+    sys.exit(f"无法根据 {path} 选择编译包: {exc}")
+PYTHON
+)" || return
+  read -r entry hardware hand firmware cameras BUILD_TELEOP <<< "${profile}"
+  BUILD_PACKAGES=(robot_app keyboard_teleop control_rviz_panels)
+  BUILD_SUBMODULES=(src/third_party/ocs2_ros2)
+  BUILD_REAL=""
+  if [[ "${entry}" == dual_arm ]]; then
+    BUILD_PACKAGES+=(m6_ccs_description)
+  else
+    BUILD_PACKAGES+=(fa_w2_description)
+  fi
+  if [[ "${hardware}" == real ]]; then
+    BUILD_REAL=1
+    BUILD_PACKAGES+=(marvin_hardware dyn_setup)
+    [[ "${entry}" == dual_arm ]] || BUILD_PACKAGES+=(juxie_hardware)
+    [[ "${hand}" != wuji ]] || BUILD_PACKAGES+=(wuji_hardware)
+    # 若 SDK 尚未选择，依赖阶段准备两版，之后的 Marvin 步骤再选择。
+    if [[ "${firmware}" == unset || -n "${FORCE}" ]]; then
+      BUILD_SUBMODULES+=(src/third_party/TJ_FX_ROBOT_CONTRL_SDK_338 src/third_party/TJ_FX_ROBOT_CONTRL_SDK_343)
+    else
+      BUILD_SUBMODULES+=("src/third_party/TJ_FX_ROBOT_CONTRL_SDK_${firmware}")
+    fi
+  elif [[ "${hardware}" == isaac ]]; then
+    BUILD_PACKAGES+=(topic_based_hardware)
+  fi
+  [[ "${cameras}" == 0 ]] || BUILD_SUBMODULES+=(src/third_party/OrbbecSDK_ROS2)
+  export ROBOT_SETUP_CAMERAS="${cameras}"
+  BUILD_XR=0
+  case "${BUILD_TELEOP}" in
+    xr) BUILD_XR=1; BUILD_PACKAGES+=(xr_setup) ;;
+    dexcap) BUILD_PACKAGES+=(dexcap_teleop); BUILD_SUBMODULES+=(src/third_party/dexcap-sdk-cpp) ;;
   esac
-}
-rokae_sdk_libs() {
-  local dir="${WS_DIR}/src/third_party/xCoreSDK-CPP" arch pkg url tmpdir expected actual version
-  arch="$(uname -m)"
-  [[ -f "${dir}/CMakeLists.txt" ]] || die "缺少 ${dir}（先执行 ./scripts/setup.sh deps）"
-  version="$(sed -n 's/^project *( *xCoreSDK VERSION \([0-9.]*\).*/\1/p' "${dir}/CMakeLists.txt" | head -1)"
-  [[ "${version}" == "${ROKAE_SDK_VERSION}" ]] \
-    || die "子模块 xCoreSDK-CPP 是 ${version:-未知版本}，setup.sh 里固定的库是 ${ROKAE_SDK_VERSION}：换版本要一起改 ROKAE_SDK_VERSION 和两个 sha256"
-  if [[ -f "${dir}/lib/Linux/${arch}/libxCoreSDK.a" && -f "${dir}/lib/Linux/${arch}/libxMateModel.a" ]]; then
-    info "珞石 xCoreSDK ${ROKAE_SDK_VERSION} 的库已就绪"; return
-  fi
-  expected="$(rokae_sdk_sha256 "${arch}")" || die "珞石 xCoreSDK 没有 ${arch} 的发布包"
-  pkg="xCoreSDK-${ROKAE_SDK_VERSION}-linux-${arch}.tar.gz"
-  url="https://github.com/RokaeRobot/xCoreSDK-CPP/releases/download/v${ROKAE_SDK_VERSION}/${pkg}"
-  tmpdir="$(mktemp -d)"
-  info "下载 ${pkg}"
-  curl -fSL -o "${tmpdir}/${pkg}" "${url}" || { rm -rf "${tmpdir}"; die "下载失败：${url}"; }
-  actual="$(sha256sum "${tmpdir}/${pkg}" | cut -d' ' -f1)"
-  if [[ "${actual}" != "${expected}" ]]; then
-    rm -rf "${tmpdir}"
-    die "${pkg} 的 sha256 不对（期望 ${expected}，实际 ${actual}），未解压"
-  fi
-  tar -xzf "${tmpdir}/${pkg}" -C "${dir}"  # 包里的路径是 lib/Linux/<arch>/...
-  rm -rf "${tmpdir}"
-  info "珞石 xCoreSDK ${ROKAE_SDK_VERSION} 的库已解压到 ${dir}/lib/Linux/${arch}"
 }
 
 step_deps() {
-  git -C "${WS_DIR}" submodule update --init --recursive --depth 1  # 浅克隆：只取固定的提交
+  local paths=() listed
+  load_build_selection
+  git -C "${WS_DIR}" submodule update --init --recursive --depth 1 -- "${BUILD_SUBMODULES[@]}"
   colcon_ignore_submodule_dirs
-  rokae_sdk_libs
   source_ros
+  drop_workspace_build_paths
   command -v rosdep >/dev/null || die "未安装 rosdep：sudo apt install python3-rosdep"
+  command -v colcon >/dev/null || die "未安装 colcon"
+  listed="$(cd "${WS_DIR}" && colcon list --paths-only --packages-up-to "${BUILD_PACKAGES[@]}")"
+  [[ -n "${listed}" ]] || die "colcon 没有找到本机配置所需的包"
+  mapfile -t paths <<< "${listed}"
   [[ -d /etc/ros/rosdep/sources.list.d ]] || as_root rosdep init
   deps_rosdep_update
-  # 示例包不编译，它们的依赖（raisim、torch ...）也不让 rosdep 去装
-  local paths=()
-  if command -v colcon >/dev/null; then
-    mapfile -t paths < <(cd "${WS_DIR}" && colcon list --paths-only --packages-skip "${OCS2_SKIP_PACKAGES[@]}")
-  fi
-  (( ${#paths[@]} )) || paths=("${WS_DIR}/src")
   (cd "${WS_DIR}" && rosdep install --from-paths "${paths[@]}" --ignore-src -r -y --rosdistro "${ROS_DISTRO}")
 }
 
@@ -334,13 +350,14 @@ host_pc_service() {
 }
 
 step_host() {
+  load_build_selection
   if is_container; then
-    info "容器环境：仅准备 XR SDK，跳过 udev 和 CAN 配置"
+    info "容器环境：跳过 udev 和 CAN 配置"
   else
-    host_udev
-    host_sudoers
+    [[ "${ROBOT_SETUP_CAMERAS}" == 0 ]] || host_udev
+    [[ -z "${BUILD_REAL}" ]] || host_sudoers
   fi
-  host_pc_service
+  [[ "${BUILD_XR}" == 0 ]] || host_pc_service
 }
 
 # ---- marvin：天机臂 SDK 版本 -------------------------------------------------------------------------
@@ -408,18 +425,77 @@ PY
 }
 
 # ---- build ----------------------------------------------------------------------------------------
+drop_workspace_build_paths() {
+  local IFS=: variable path
+  local -a paths keep
+  for variable in AMENT_PREFIX_PATH COLCON_PREFIX_PATH CMAKE_PREFIX_PATH LD_LIBRARY_PATH PATH PKG_CONFIG_PATH PYTHONPATH; do
+    [[ -v "${variable}" ]] || continue
+    read -r -a paths <<< "${!variable}:"
+    keep=()
+    for path in "${paths[@]}"; do
+      case "${path}" in
+        "${WS_DIR}/build"|"${WS_DIR}/build/"*|"${WS_DIR}/install"|"${WS_DIR}/install/"*) ;;
+        *) keep+=("${path}") ;;
+      esac
+    done
+    if (( ${#keep[@]} )); then
+      export "${variable}=${keep[*]}"
+    else
+      unset "${variable}"
+    fi
+  done
+}
+
 step_build() {
+  load_build_selection
   colcon_ignore_submodule_dirs
-  [[ -n "${MINIMAL}" ]] || rokae_sdk_libs  # rokae_hardware 要这些库；--minimal 不编它
   source_ros
+  drop_workspace_build_paths
   cd "${WS_DIR}"
   export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-8}"
   export MAKEFLAGS="${MAKEFLAGS:--j${CMAKE_BUILD_PARALLEL_LEVEL}}"
-  local select=(--packages-skip "${OCS2_SKIP_PACKAGES[@]}") marvin_arg
-  [[ -n "${MINIMAL}" ]] && select=(--packages-up-to "${MINIMAL_PACKAGES[@]}")  # 和完整编译用同样的安装方式
-  marvin_arg="$(marvin_cmake_arg)"
-  colcon build "${select[@]}" --parallel-workers "${COLCON_PARALLEL_WORKERS:-8}" \
-    --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF "${marvin_arg}"
+  local cmake_args=(--no-warn-unused-cli -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF "-DXR_TELEOP_BUILD_NATIVE=${BUILD_XR}") marvin_arg
+  if [[ -n "${BUILD_REAL}" ]]; then
+    marvin_arg="$(marvin_cmake_arg)"
+    cmake_args+=("${marvin_arg}")
+  fi
+  colcon build --packages-up-to "${BUILD_PACKAGES[@]}" --parallel-workers "${COLCON_PARALLEL_WORKERS:-8}" \
+    --cmake-args "${cmake_args[@]}"
+}
+
+# ---- clean ----------------------------------------------------------------------------------------
+step_clean() {
+  local -a selected=() dirs=()
+  local item backup clean_config=""
+  printf '  1) build/       编译缓存\n  2) install/     已安装的编译产物\n  3) %s（备份后清除）\n' "${CONFIG}"
+  printf '输入要清理的编号（空格分隔，回车取消）: '
+  if ! IFS=$' \t' read -r -a selected || (( ${#selected[@]} == 0 )); then
+    info "已取消清理"
+    return 0
+  fi
+  for item in "${selected[@]}"; do
+    case "${item}" in
+      1) dirs+=("${WS_DIR:?}/build") ;;
+      2) dirs+=("${WS_DIR:?}/install") ;;
+      3) clean_config=1 ;;
+      *) die "无效的清理选项 ${item}，请输入 1、2 或 3" ;;
+    esac
+  done
+  if [[ -n "${clean_config}" ]]; then
+    if [[ -f "${CONFIG}" ]]; then
+      backup="$(mktemp "${CONFIG}.before-clean.XXXXXX")"
+      mv -- "${CONFIG}" "${backup}"
+      info "本机配置已备份到 ${backup}"
+    elif [[ -e "${CONFIG}" ]]; then
+      die "本机配置路径不是普通文件: ${CONFIG}"
+    else
+      info "本机配置文件已不存在: ${CONFIG}"
+    fi
+  fi
+  if (( ${#dirs[@]} )); then
+    rm -rf -- "${dirs[@]}"
+    info "已清理 ${dirs[*]}"
+  fi
 }
 
 # ---- 相机 camera_setup、末端 end_effector_setup、负载辨识 robot_config；XR 配对由 xr_teleop 处理 ---------------------------------
@@ -433,6 +509,9 @@ run_python_step() {
       module=camera_setup.session
       python_path="${python_path}:${SETUP_RUNTIME_PYTHONPATH}" ;;
     ee) module=end_effector_setup.session ;;
+    home)
+      module=robot_app.home_setup
+      python_path="${WS_DIR}/src/robot_hmi/robot_app:${python_path}" ;;
     dyn) module=robot_config.setup_steps command=dyn ;;
     xr)
       module=xr_setup.session
@@ -508,18 +587,31 @@ PY
 }
 stop_old_xr_setup() { stop_old_setup_processes XR OLD_XR_SETUP_PATTERNS; }
 step_cameras() { stop_old_camera_setup; run_python_step cameras; }
+step_home() { run_python_step home; }
 step_ee() { run_python_step ee; }
 step_dyn() { run_python_step dyn; }
-step_xr() { stop_old_xr_setup; run_python_step xr; }
+step_xr() {
+  load_build_selection || return
+  if [[ "${BUILD_TELEOP}" != xr ]]; then
+    info "当前遥操作输入为 ${BUILD_TELEOP}，无需 XR 配对"
+    return 0
+  fi
+  stop_old_xr_setup
+  run_python_step xr
+}
 
-# ---- 已配置或默认值可用的步骤不再配置 ---------------------------------------------------------------
-# 完整流程里这样的步骤直接跳过；单步命令（如 ./scripts/setup.sh cam）和 --force 永远重新配置。
+# ---- 向导的步骤建议 ------------------------------------------------------------------------------
 step_ready() {  # 返回 0 表示不用配置；原因写入 READY_REASON
   local status=0 python_path="${SETUP_PYTHONPATH}:${PYTHONPATH:-}"
   READY_REASON=""
   case "$1" in
     marvin)
       local firmware
+      load_build_selection || return 1
+      if [[ -z "${BUILD_REAL}" ]]; then
+        READY_REASON="仿真不需要天机臂 SDK"
+        return 0
+      fi
       firmware="$(marvin_firmware_config)" || return 1   # 值不对：不跳过，由 step_marvin 报错
       [[ -n "${firmware}" ]] || return 1
       READY_REASON="已选择 ${firmware}" ;;
@@ -552,14 +644,13 @@ step_summary() {
 # ==================================================================================================
 # 4. 入口
 # ==================================================================================================
-parse_args() {  # 结果：STEPS（要执行的步骤）、YES、MINIMAL、CONFIG
+parse_args() {  # 解析步骤、配置文件和选项
   STEPS=()
   FULL_INIT=""
   local from_step="" step_index first_step
   while (( $# )); do
     case "$1" in
       --yes|-y) YES="--yes" ;;
-      --minimal) MINIMAL=1 ;;
       --from) from_step=1 ;;
       --force) FORCE=1 ;;
       --reset) RESET="--reset" ;;
@@ -567,11 +658,15 @@ parse_args() {  # 结果：STEPS（要执行的步骤）、YES、MINIMAL、CONFI
       --entry) [[ -n "${2:-}" ]] || die "--entry 需要取值（whole_body | split_body | dual_arm）"; ENTRY="$2"; shift ;;
       -h|--help|help) usage; exit 0 ;;
       cam) STEPS+=(cameras) ;;
+      teleop) STEPS+=(xr) ;;
       check) STEPS+=(summary) ;;
       *) [[ -n "${STEP_TITLE[$1]:-}" ]] || die "未知参数: $1（./scripts/setup.sh help 查看用法）"; STEPS+=("$1") ;;
     esac
     shift
   done
+  if [[ " ${STEPS[*]} " == *" clean "* ]]; then
+    (( ${#STEPS[@]} == 1 )) && [[ -z "${from_step}" ]] || die "请单独运行 ./scripts/setup.sh clean"
+  fi
   if [[ -n "${from_step}" ]]; then
     (( ${#STEPS[@]} == 1 )) || die "--from 需要且只能指定一个起始步骤，例如 ./scripts/setup.sh cam --from"
     first_step="${STEPS[0]}"
@@ -588,7 +683,7 @@ parse_args() {  # 结果：STEPS（要执行的步骤）、YES、MINIMAL、CONFI
   fi
   [[ -z "${RESET}" || " ${STEPS[*]} " == *" dyn "* ]] || die "--reset 只用于 dyn：./scripts/setup.sh dyn --reset"
   [[ "${CONFIG}" = /* ]] || CONFIG="${PWD}/${CONFIG}"
-  [[ -f "${CONFIG}" || " ${STEPS[*]} " == *" config "* ]] \
+  [[ -f "${CONFIG}" || " ${STEPS[*]} " == *" config "* || "${STEPS[0]}" == clean ]] \
     || die "配置文件不存在: ${CONFIG}（先运行 ./scripts/setup.sh config 生成）"
 }
 
@@ -607,13 +702,42 @@ step_number() {  # 本次流程里的序号：i/N
   done
 }
 
+confirm_step() {
+  local default="$1" answer options="Y/n"
+  [[ "${default}" == y ]] || options="y/N"
+  if [[ -n "${YES}" ]]; then
+    [[ "${default}" == y ]]
+    return
+  fi
+  while true; do
+    printf '是否执行本步（y 执行，n 跳过）？[%s] ' "${options}"
+    read -r answer || die "未收到本步选择。自动执行可用 ./scripts/setup.sh --yes"
+    case "${answer,,}" in
+      "") [[ "${default}" == y ]]; return ;;
+      y|yes|是) return 0 ;;
+      n|no|否|跳过) return 1 ;;
+      *) info "请输入 y 或 n" ;;
+    esac
+  done
+}
+
 run_step() {  # 结果记入 RESULTS；SOFT_STEPS 失败不中断
-  local name="$1"
+  local name="$1" default=y ready=""
   log "$(step_number "${name}") ${STEP_TITLE[${name}]}"
-  if [[ -n "${FULL_INIT}" && -z "${FORCE}" ]] && step_ready "${name}"; then
-    info "跳过：${READY_REASON}（重新配置：./scripts/setup.sh $(step_command "${name}")）"
-    RESULTS+=("$(step_command "${name}"): ${READY_REASON}，已跳过")
-    return 0
+  if [[ -n "${FULL_INIT}" ]]; then
+    if step_ready "${name}"; then
+      ready=1
+      [[ -n "${FORCE}" ]] || default=n
+    fi
+    if [[ -n "${READY_REASON}" && -z "${YES}" ]]; then
+      info "${READY_REASON}"
+    fi
+    if ! confirm_step "${default}"; then
+      info "跳过本步${READY_REASON:+（${READY_REASON}）}"
+      RESULTS+=("$(step_command "${name}"): ${READY_REASON:+${READY_REASON}，}已跳过")
+      [[ -n "${ready}" ]] || SKIPPED_UNREADY=1
+      return 0
+    fi
   fi
   if ! is_soft_step "${name}"; then
     "step_${name}"  # 必须成功：失败时 set -e 直接中断
@@ -630,6 +754,7 @@ main() {
   parse_args "$@"
   RESULTS=()
   INCOMPLETE=()
+  SKIPPED_UNREADY=""
   local step
   for step in "${STEPS[@]}"; do run_step "${step}"; done
   log "初始化结果"
@@ -639,7 +764,9 @@ main() {
     return 1
   fi
   if [[ -n "${FULL_INIT}" ]]; then
-    printf '\n下一步：./scripts/start.sh\n'
+    if [[ -z "${SKIPPED_UNREADY}" ]]; then
+      printf '\n下一步：./scripts/start.sh\n'
+    fi
   else
     info "所选步骤已完成"
   fi

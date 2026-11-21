@@ -33,6 +33,7 @@ namespace juxie_hardware {
 class JxHardware : public hardware_interface::SystemInterface {
 public:
     JxHardware();
+    ~JxHardware() override;
 
     hardware_interface::CallbackReturn on_init(
         const hardware_interface::HardwareComponentInterfaceParams &params) override;
@@ -41,6 +42,10 @@ public:
         const rclcpp_lifecycle::State &previous_state) override;
     
     hardware_interface::CallbackReturn on_deactivate(
+        const rclcpp_lifecycle::State &previous_state) override;
+    hardware_interface::CallbackReturn on_error(
+        const rclcpp_lifecycle::State &previous_state) override;
+    hardware_interface::CallbackReturn on_shutdown(
         const rclcpp_lifecycle::State &previous_state) override;
     
     std::vector<hardware_interface::StateInterface::ConstSharedPtr> 
@@ -96,7 +101,7 @@ private:
 
     // 控制标志
     bool is_first_command_ = true;    // 标记是否是第一次发送命令
-    std::atomic<bool> running_;       // 线程运行标志
+    std::atomic<bool> running_{false};    // 线程运行标志
 
     // CAN FD通信相关
     std::unique_ptr<robot_comm::CanBus> bus_;
@@ -128,6 +133,7 @@ private:
     bool initCanFd();                   // 配置并打开 CAN 总线
     bool enableMotors();                // 使能电机
     void controlLoop();                 // 控制线程循环
+    void stopControl();
     bool readMotorStates(bool strict_check); // 读取所有电机状态
     void publishFault(uint8_t motor_id, uint16_t fault_code, bool known);
     void parseAndReportErrorCode(uint8_t motor_id, uint16_t error_code_raw, const std::string& source);

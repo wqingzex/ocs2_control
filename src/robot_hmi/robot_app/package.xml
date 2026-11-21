@@ -21,17 +21,22 @@
   <exec_depend>python3-ruamel.yaml</exec_depend>
   <exec_depend>python3-fastapi</exec_depend>
   <exec_depend>python3-uvicorn</exec_depend>
+  <exec_depend>python3-pyqt5</exec_depend>
   <exec_depend>robot_config</exec_depend>
   <exec_depend>robot_utils</exec_depend>
   <exec_depend>camera_setup</exec_depend>
   <exec_depend>launch_helpers</exec_depend>
   <exec_depend>end_effector_setup</exec_depend>
   <exec_depend>end_effector_hardware</exec_depend>  <!-- start.sh bus_probe runs its bus_probe program -->
-  <exec_depend>orbbec_camera</exec_depend>
+  <exec_depend condition="$ROBOT_SETUP_CAMERAS != '0'">orbbec_camera</exec_depend>
   <exec_depend>target_generator</exec_depend>
   <exec_depend>robot_startup</exec_depend>
   <exec_depend>xr_teleop</exec_depend>
   <exec_depend>robot_control_msgs</exec_depend>
+  <exec_depend>controller_manager_msgs</exec_depend>
+  <exec_depend>rcl_interfaces</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>robot_visualize</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>

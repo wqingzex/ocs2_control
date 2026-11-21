@@ -342,12 +342,9 @@ customJointLock
     {
         [0] 0                       ; body_joint1 锁定
         [1] 1                       ; body_joint2 锁定
-        [2] 18
-        [3] 19
         ;[2] 2                       ; body_joint3 锁定
         ;[3] 3                       ; body_joint4 锁定
-        ;[0] 18                     ; head_joint1 锁定示例
-        ;[1] 19                     ; head_joint2 锁定示例
+        ; head_joint1/2 由 HEAD_DISABLE 的默认头部约束锁定。
         ;[6] 4                      ; left_joint1 锁定示例
         ;[4] 10                     ; right_joint1 锁定示例
         ;[5] 17                     ; right_joint1 锁定示例
